@@ -10,8 +10,8 @@ name: Atualização de cotações
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "0 * * * *"
+  schedule:
+    - cron: "17 * * * *"
 
 concurrency:
   group: quote-sync
