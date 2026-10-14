@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { motion, useReducedMotion, type Transition } from "motion/react";
 import { useQueryState } from "nuqs";
 
@@ -14,47 +16,42 @@ type SliceDefinition = {
   key: string;
   label: string;
   group: AllocationGroupKey;
-  /** Título do gráfico do recorte. */
+
   chartTitle: string;
-  /** Linhas de uma classe só, como as moedas do caixa. */
+
   parentClass?: string;
 };
 
 const CLASSIFICATIONS: { key: string; label: string; slices: SliceDefinition[] }[] = [
   {
     key: "geral",
-    label: "Geral",
+    label: "Overall",
     slices: [
-      { key: "classe", label: "Classe", group: "ASSET_CLASS", chartTitle: "Classe de ativos" },
-      { key: "moeda", label: "Moeda", group: "CURRENCY", chartTitle: "Moeda" },
-      { key: "estrategia", label: "Estratégia", group: "STRATEGY", chartTitle: "Estratégia" },
+      { key: "classe", label: "Class", group: "ASSET_CLASS", chartTitle: "Asset class" },
+      { key: "moeda", label: "Currency", group: "CURRENCY", chartTitle: "Currency" },
+      { key: "estrategia", label: "Strategy", group: "STRATEGY", chartTitle: "Strategy" },
     ],
   },
   {
     key: "caixa",
     label: "Caixa",
-    slices: [{ key: "moeda", label: "Moeda", group: "CLASS_CURRENCY", parentClass: "Caixa", chartTitle: "Caixa por moeda" }],
+    slices: [{ key: "moeda", label: "Currency", group: "CLASS_CURRENCY", parentClass: "Caixa", chartTitle: "Cash by currency" }],
   },
   {
     key: "renda-fixa",
     label: "Renda Fixa",
-    slices: [{ key: "subclasse", label: "Subclasse", group: "FIXED_INCOME", chartTitle: "Renda fixa por resgate" }],
+    slices: [{ key: "subclasse", label: "Subclass", group: "FIXED_INCOME", chartTitle: "Fixed income by redemption term" }],
   },
   {
     key: "renda-variavel",
     label: "Renda Variável",
-    slices: [{ key: "subclasse", label: "Subclasse", group: "VARIABLE_INCOME", chartTitle: "Renda variável por subclasse" }],
+    slices: [{ key: "subclasse", label: "Subclass", group: "VARIABLE_INCOME", chartTitle: "Equities by subclass" }],
   },
 ];
 
 const SPRING: Transition = { type: "spring", stiffness: 420, damping: 36 };
 
-/**
- * Alocação da Visão geral (spec 078): as abas Geral, Caixa, Renda Fixa e Renda
- * Variável ficam fora de comprar e vender e escolhem, juntas, o gráfico de cima
- * e as linhas de comprar e vender de baixo. A evolução e o tipo de ativo ficam
- * sempre à vista, fora deste bloco.
- */
+
 export function AllocationExplorer({
   groups,
   fixedIncomeDuration,
@@ -68,8 +65,8 @@ export function AllocationExplorer({
   const activeClassification = CLASSIFICATIONS.find((entry) => entry.key === classification) ?? CLASSIFICATIONS[0];
   const activeSlice = activeClassification.slices.find((entry) => entry.key === slice) ?? activeClassification.slices[0];
   const allRows = groups.find((entry) => entry.key === activeSlice.group)?.rows ?? [];
-  // Meta 0 e nada aplicado (spec 079): o item não aparece, como o prefixado
-  // antes da primeira aplicação.
+
+
   const rows = (activeSlice.parentClass
     ? allRows.filter((row) => row.label.startsWith(`${activeSlice.parentClass} ·`))
     : allRows
@@ -78,13 +75,12 @@ export function AllocationExplorer({
   const reduceMotion = useReducedMotion();
 
   return (
-    <section id="alocacao" aria-label="Alocação" className="mt-6 scroll-mt-32 space-y-4">
-      {/* Abas em dois níveis, uma embaixo da outra (spec 078): o recorte em cima
-          e a divisão dele embaixo, menor, cada uma do tamanho do conteúdo. */}
+    <section id="alocacao" aria-label="Allocation" className="mt-6 scroll-mt-32 space-y-4">
+
       <div className="flex flex-col items-start gap-2">
         <div
           role="group"
-          aria-label="Recorte da alocação"
+          aria-label="Allocation view"
           className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-border bg-card/70 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {CLASSIFICATIONS.map((entry) => {
@@ -111,7 +107,7 @@ export function AllocationExplorer({
                     transition={reduceMotion ? { duration: 0 } : SPRING}
                   />
                 ) : null}
-                <span className="relative z-10">{entry.label}</span>
+                <span className="relative z-10">{englishLabel(entry.label)}</span>
               </button>
             );
           })}
@@ -119,7 +115,7 @@ export function AllocationExplorer({
 
         <div
           role="group"
-          aria-label="Divisão do recorte"
+          aria-label="View breakdown"
           className="flex max-w-full items-center gap-0.5 overflow-x-auto pl-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {activeClassification.slices.map((entry) => {
@@ -143,7 +139,7 @@ export function AllocationExplorer({
                     transition={reduceMotion ? { duration: 0 } : SPRING}
                   />
                 ) : null}
-                <span className="relative z-10">{entry.label}</span>
+                <span className="relative z-10">{englishLabel(entry.label)}</span>
               </button>
             );
           })}

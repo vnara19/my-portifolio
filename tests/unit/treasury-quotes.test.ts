@@ -23,7 +23,7 @@ const identity = {
   baseCurrency: "BRL",
 };
 
-test("usa PU Base D0 e identifica dois vencimentos do mesmo tipo/ano", () => {
+test("official base price distinguishes securities with different maturities in the same year", () => {
   const book = parseTreasuryCsv(`\uFEFF${fixture.replace(/\n/g, "\r\n")}`);
   const bonds = getTreasuryCatalog(book, "2026-10-04");
   assert.equal(bonds.length, 3);
@@ -35,7 +35,7 @@ test("usa PU Base D0 e identifica dois vencimentos do mesmo tipo/ano", () => {
   assert.equal(bonds.some((bond) => bond.type === "Tesouro Selic"), false);
 });
 
-test("consulta atrasada preserva data oficial e consulta passada não usa preço futuro", async () => {
+test("delayed queries retain official dates and historical queries do not use future prices", async () => {
   const loadBook = async () => parseTreasuryCsv(fixture);
   const [now] = await fetchTreasuryQuotes([identity], { today: "2026-10-04", loadBook });
   assert.deepEqual(now, { symbol: identity.symbol, provider: "tesouro", status: "SUCCESS", valueBrl: 1479.25, quoteDate: "2026-10-02" });
@@ -44,7 +44,7 @@ test("consulta atrasada preserva data oficial e consulta passada não usa preço
   if (past.status === "SUCCESS") assert.equal(past.quoteDate, "2026-09-30");
 });
 
-test("identificador conflitante, ausência e título vencido são falhas sem preço substituto", async () => {
+test("conflicting identifiers, missing and matured securities fail without substitute prices", async () => {
   const loadBook = async () => parseTreasuryCsv(fixture);
   const results = await fetchTreasuryQuotes([
     { ...identity, providerId: treasuryProviderId("Tesouro IPCA+", "2035-08-15") },
@@ -55,7 +55,7 @@ test("identificador conflitante, ausência e título vencido são falhas sem pre
   assert.equal(results.some((result) => "valueBrl" in result), false);
 });
 
-test("falha da fonte não se converte em cotação e uma nova carga pode recuperar", async () => {
+test("source failures do not create prices and a later load can recover", async () => {
   let calls = 0;
   const loadBook = createTreasurySource(async () => {
     calls += 1;
@@ -70,7 +70,7 @@ test("falha da fonte não se converte em cotação e uma nova carga pode recuper
   assert.equal(calls, 2);
 });
 
-test("catálogo, preços e histórico compartilham uma carga concorrente e expiram após uma hora", async () => {
+test("catalog, prices and history share a concurrent cache that expires after an hour", async () => {
   let clock = 100;
   let calls = 0;
   const loadBook = createTreasurySource(async () => { calls += 1; return fixture; }, () => clock);
@@ -84,25 +84,25 @@ test("catálogo, preços e histórico compartilham uma carga concorrente e expir
   assert.equal(calls, 2);
 });
 
-test("histórico guarda fechamentos observados e rejeita buraco dentro da cobertura", () => {
+test("history stores observed closes and rejects gaps within coverage", () => {
   const book = parseTreasuryCsv(fixture);
   const series = treasurySeriesOf(book, identity)!;
   const closes = treasuryMonthEndPoints(series, ["2026-07", "2026-08", "2026-09"], "2026-10");
-  assert.equal(closes.size, 2); // Julho é anterior ao primeiro PU observado.
+  assert.equal(closes.size, 2);
   assert.equal(closes.get("2026-09")?.day, "2026-09-30");
   const gap = { ...series, points: series.points.filter((point) => !point.day.startsWith("2026-09")) };
   assert.throws(() => treasuryMonthEndPoints(gap, ["2026-08", "2026-09"], "2026-10"), /2026-09/);
 });
 
-test("mudança de colunas, datas impossíveis, arquivo parcial e PU inválido são recusados", () => {
-  assert.throws(() => parseTreasuryCsv(fixture.replace("PU Base Manha", "PU Venda")), /colunas/);
-  assert.throws(() => parseTreasuryCsv(fixture.replace("02/10/2026", "31/02/2026")), /data inválida/);
-  assert.throws(() => parseTreasuryCsv(`${header}\nTesouro IPCA+;15/05/2035\n`), /linha incompleta/);
-  assert.throws(() => parseTreasuryCsv(fixture.replace("1.479,25", "não-disponível")), /preço inválido/);
-  assert.throws(() => parseTreasuryCsv(`${header}\n"incompleto`), /incompleto/);
+test("changed columns, impossible dates, partial files and invalid base prices are rejected", () => {
+  assert.throws(() => parseTreasuryCsv(fixture.replace("PU Base Manha", "PU Venda")), /columns/);
+  assert.throws(() => parseTreasuryCsv(fixture.replace("02/10/2026", "31/02/2026")), /invalid date/);
+  assert.throws(() => parseTreasuryCsv(`${header}\nTesouro IPCA+;15/05/2035\n`), /incomplete row/);
+  assert.throws(() => parseTreasuryCsv(fixture.replace("1.479,25", "unavailable")), /invalid price/);
+  assert.throws(() => parseTreasuryCsv(`${header}\n"incompleto`), /incomplete/);
 });
 
-test("cadeia atual usa somente Tesouro para TESOURO, com data da fonte", async () => {
+test("Tesouro Direto assets use only the official provider and its quote date", async () => {
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];
   globalThis.fetch = async (input) => {
@@ -143,7 +143,7 @@ function syncFixture() {
   return { prisma, raw, results };
 }
 
-test("job persiste data oficial por símbolo e reprecifica pelo preço mensal aceito", async () => {
+test("the job persists official dates per symbol and reprices accepted monthly quotes", async () => {
   const fixture = syncFixture();
   const result = await syncQuotes({
     prisma: fixture.prisma,
@@ -163,7 +163,7 @@ test("job persiste data oficial por símbolo e reprecifica pelo preço mensal ac
   assert.match(positions.sql, /"q"\."value_brl"/);
 });
 
-test("job recusa data impossível ou futura sem gravar preço inválido", async () => {
+test("the job rejects impossible or future dates without writing invalid prices", async () => {
   for (const quoteDate of ["2026-10-05", "2026-02-31"]) {
     const fixture = syncFixture();
     const result = await syncQuotes({

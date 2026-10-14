@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { useQueryState } from "nuqs";
 import { useMemo, useState, useTransition } from "react";
 import {
@@ -29,15 +31,15 @@ type ChartRow = {
 
 const STACK_MODES: { key: StackMode; label: string }[] = [
   { key: "total", label: "Total" },
-  { key: "class", label: "Classe" },
-  { key: "currency", label: "Moeda" },
+  { key: "class", label: "Class" },
+  { key: "currency", label: "Currency" },
 ];
 
 const PRESETS: { key: string; label: string; months: number | "ytd" | "all" }[] = [
   { key: "6m", label: "6M", months: 6 },
   { key: "12m", label: "12M", months: 12 },
   { key: "ytd", label: "YTD", months: "ytd" },
-  { key: "all", label: "Tudo", months: "all" },
+  { key: "all", label: "All", months: "all" },
 ];
 
 export function PortfolioEvolutionChart({
@@ -115,7 +117,7 @@ export function PortfolioEvolutionChart({
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {mode.label}
+              {englishLabel(mode.label)}
             </button>
           ))}
         </div>
@@ -128,7 +130,7 @@ export function PortfolioEvolutionChart({
               onClick={() => applyPreset(preset.months)}
               className="rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              {preset.label}
+              {englishLabel(preset.label)}
             </button>
           ))}
         </div>
@@ -142,8 +144,7 @@ export function PortfolioEvolutionChart({
             onClick={(state) => {
               const month = monthByLabel.get(String(state?.activeLabel ?? ""));
 
-              // No toque (spec 078), tocar mostra a indicação; o mês muda pela
-              // faixa de competências. No mouse, o clique abre a competência.
+
               if (month && !touch.isTouch()) {
                 void setMonth(month);
               }
@@ -176,7 +177,7 @@ export function PortfolioEvolutionChart({
 
                 return (
                   <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-                    <p className="text-[11px] font-medium text-foreground">{label}</p>
+                    <p className="text-[11px] font-medium text-foreground">{englishLabel(label)}</p>
                     <p className="mt-1 font-mono text-xs text-foreground">{formatBrl(total)}</p>
                     {stackMode === "total" ? null : (
                       <div className="mt-2 space-y-1">
@@ -201,7 +202,7 @@ export function PortfolioEvolutionChart({
               }}
             />
             {series.map((key) => (
-              <Bar key={key} dataKey={key} stackId="portfolio" name={key === "total" ? "Patrimônio" : key}>
+              <Bar key={key} dataKey={key} stackId="portfolio" name={key === "total" ? "Portfolio value" : key}>
                 {visibleData.map((row) => (
                   <Cell
                     key={row.month}

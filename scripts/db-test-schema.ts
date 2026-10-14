@@ -6,20 +6,18 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
 
-// Schemas de teste dentro do Postgres local (ideia do usuário em 2026-10-03):
-// um schema novo recebe as migrações e serve para testar importações e
-// restaurações sem tocar nos dados reais, que ficam no schema `public`.
+
 //
-//   pnpm db:test-schema create teste      cria e aplica as migrações
-//   pnpm db:test-schema url teste         mostra a DATABASE_URL do schema
-//   pnpm db:test-schema drop teste        apaga o schema e tudo nele
+
+
+//   pnpm db:test-schema drop test_schema  deletes the isolated schema and its contents
 //
-// Para usar: DATABASE_URL="$(pnpm --silent db:test-schema url teste)" <comando>.
+
 
 const [command, name] = process.argv.slice(2);
 
 function usage(): never {
-  console.error("Uso: db:test-schema <create|url|drop> <nome>");
+  console.error("Usage: db:test-schema <create|url|drop> <name>");
   process.exit(1);
 }
 
@@ -27,7 +25,7 @@ function schemaUrl(schema: string) {
   const base = process.env.DATABASE_URL;
 
   if (!base) {
-    throw new Error("DATABASE_URL não está configurada.");
+    throw new Error("DATABASE_URL is not configured.");
   }
 
   const url = new URL(base);
@@ -41,7 +39,7 @@ async function main() {
   }
 
   if (!/^[a-z_][a-z0-9_]{0,40}$/.test(name) || name === "public") {
-    throw new Error("Nome inválido: use letras minúsculas, números e _, e nunca public.");
+    throw new Error("Invalid name: use lowercase letters, numbers and _, and never public.");
   }
 
   const url = schemaUrl(name);
@@ -56,7 +54,7 @@ async function main() {
       stdio: "inherit",
       env: { ...process.env, DATABASE_URL: url },
     });
-    console.info(`Schema ${name} pronto. DATABASE_URL=${url}`);
+    console.info(`Schema ${name} ready. Connection details remain private.`);
     return;
   }
 
@@ -64,7 +62,7 @@ async function main() {
     const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
     await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
     await prisma.$disconnect();
-    console.info(`Schema ${name} apagado.`);
+    console.info(`Schema ${name} deleted.`);
     return;
   }
 

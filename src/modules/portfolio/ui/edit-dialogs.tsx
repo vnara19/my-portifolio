@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import type { ReactNode } from "react";
 
 import { headerButton } from "@/components/product/page-controls";
@@ -7,8 +9,6 @@ import { Picker } from "@/components/ui/picker";
 import { LIQUIDITY_SUGGESTIONS } from "@/modules/portfolio/domain/liquidity";
 import { isRedemption, redemptionLabel, REDEMPTION_VALUES } from "@/modules/portfolio/domain/redemption";
 
-// Classes e campos comuns dos diálogos de edição: o formulário da posição
-// (spec 043), a remoção, a abertura do mês e o backup.
 
 export const backdropClass =
   "fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0";
@@ -21,20 +21,16 @@ export const primaryButtonClass =
 export const secondaryButtonClass =
   "inline-flex h-9 items-center justify-center rounded-lg border border-border px-3.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50";
 
-/** Botão principal do cabeçalho, como "Adicionar posição" e o clone do mês. */
+
 export const headerPrimaryButtonClass = headerButton({ variant: "primary" });
 
-/**
- * Classificação do rateio (spec 068): só as opções da lista fixa, dependentes
- * da classe. Um valor antigo da posição, fora da lista, aparece marcado até
- * ser trocado.
- */
+
 export function AllocationPicker({
   label,
   values,
   value,
   onChange,
-  placeholder = "Escolha",
+  placeholder = "Choose",
   disabled = false,
 }: {
   label: string;
@@ -45,28 +41,24 @@ export function AllocationPicker({
   disabled?: boolean;
 }) {
   const options = [
-    ...values.map((entry) => ({ value: entry, label: entry })),
-    ...(value && !values.includes(value) ? [{ value, label: value, hint: "fora da lista" }] : []),
+    ...values.map((entry) => ({ value: entry, label: englishLabel(entry) })),
+    ...(value && !values.includes(value) ? [{ value, label: englishLabel(value), hint: "not in the list" }] : []),
   ];
 
   return (
     <Picker
-      aria-label={label}
+      aria-label={englishLabel(label)}
       options={options}
       value={value || null}
       onValueChange={onChange}
       placeholder={placeholder}
       disabled={disabled}
-      emptyMessage="Nenhuma opção com esse nome"
+      emptyMessage="No option with this name"
     />
   );
 }
 
-/**
- * Prazo de resgate da classificação (specs 035 e 068): os prazos que valem
- * para a classe escolhida. Um prazo antigo da posição, como D+0, aparece como
- * opção até ser trocado.
- */
+
 export function RedemptionPicker({
   label,
   values = REDEMPTION_VALUES,
@@ -82,16 +74,16 @@ export function RedemptionPicker({
 }) {
   const options = [
     ...values.map((entry) => ({ value: entry, label: redemptionLabel(entry) })),
-    ...(value && !values.includes(value) ? [{ value, label: redemptionLabel(value), hint: isRedemption(value) ? "fora da lista" : "da planilha" }] : []),
+    ...(value && !values.includes(value) ? [{ value, label: redemptionLabel(value), hint: isRedemption(value) ? "not in the list" : "from spreadsheet" }] : []),
   ];
 
   return (
     <Picker
-      aria-label={label}
+      aria-label={englishLabel(label)}
       options={options}
       value={value || null}
       onValueChange={onChange}
-      placeholder={disabled ? "Escolha a classe" : "Escolha"}
+      placeholder={disabled ? "Choose the class" : "Choose"}
       disabled={disabled}
     />
   );
@@ -99,12 +91,9 @@ export function RedemptionPicker({
 
 const NO_LIQUIDITY_VALUE = "__sem_liquidez__";
 
-/**
- * Prazo de liquidez do ativo (spec 039): sugestões comuns, como D+0 e D+1, ou
- * outro valor digitado, confirmado em "Usar". "Não informar" deixa em branco.
- */
+
 export function LiquidityPicker({
-  label = "Liquidez",
+  label = "Liquidity",
   value,
   onChange,
 }: {
@@ -113,21 +102,21 @@ export function LiquidityPicker({
   onChange: (value: string) => void;
 }) {
   const options = [
-    { value: NO_LIQUIDITY_VALUE, label: "Não informar" },
-    ...(value && !LIQUIDITY_SUGGESTIONS.includes(value) ? [value] : []).map((entry) => ({ value: entry, label: entry })),
-    ...LIQUIDITY_SUGGESTIONS.map((entry) => ({ value: entry, label: entry })),
+    { value: NO_LIQUIDITY_VALUE, label: "Leave unspecified" },
+    ...(value && !LIQUIDITY_SUGGESTIONS.includes(value) ? [value] : []).map((entry) => ({ value: entry, label: englishLabel(entry) })),
+    ...LIQUIDITY_SUGGESTIONS.map((entry) => ({ value: entry, label: englishLabel(entry) })),
   ];
 
   return (
     <Picker
-      aria-label={label}
+      aria-label={englishLabel(label)}
       options={options}
       value={value || null}
-      placeholder="Opcional"
+      placeholder="Optional"
       onValueChange={(next) => onChange(next === NO_LIQUIDITY_VALUE ? "" : next)}
       onCreate={(text) => onChange(text)}
-      createLabel={(text) => `Usar “${text}”`}
-      emptyMessage="Digite para usar outro prazo"
+      createLabel={(text) => `Use “${text}”`}
+      emptyMessage="Type to use a different term"
     />
   );
 }
@@ -135,7 +124,7 @@ export function LiquidityPicker({
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{label}</span>
+      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
       {children}
     </label>
   );

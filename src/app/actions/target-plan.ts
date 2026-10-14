@@ -22,19 +22,19 @@ export async function saveTargetPlanAction(input: unknown): Promise<TargetPlanAc
   const parsed = schema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os percentuais informados." };
+    return { ok: false, message: "Review the entered percentages." };
   }
 
   try {
     await saveTargetPlan(parsed.data);
     revalidatePath("/");
     revalidatePath("/configuracao");
-    return { ok: true, message: "Metas salvas. Elas passam a valer em todas as análises." };
+    return { ok: true, message: "Targets saved. They now apply to all analyses." };
   } catch (error) {
     unstable_rethrow(error);
     return {
       ok: false,
-      message: error instanceof TargetPlanError ? error.message : "Não foi possível salvar as metas.",
+      message: error instanceof TargetPlanError ? error.message : "Could not save the targets.",
     };
   }
 }

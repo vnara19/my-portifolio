@@ -9,7 +9,7 @@ import { PositionsWorkspace } from "@/modules/portfolio/ui/positions-workspace";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Posições",
+  title: "Positions",
 };
 
 export default async function PositionsPage({

@@ -9,9 +9,7 @@ import { parseMonthParam } from "@/modules/portfolio/presentation/reference-mont
 import type { QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 import { formatRefreshDateTime } from "@/modules/quotes/presentation/refresh-time";
 
-// Última atualização das cotações, feita só pelo job agendado, de hora em hora
-// (spec 053). Usa o mesmo cliente do indicador do topo. Aparece só no mês
-// corrente, o único que a atualização muda (spec 038).
+
 export function LastRefreshCard({
   summary: serverSummary,
   currentMonth,
@@ -37,8 +35,7 @@ export function LastRefreshCard({
         <h2
           id="last-refresh-title"
           className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
-        >
-          Última atualização
+        >Last update
         </h2>
         <p
           data-testid="last-refresh-time"
@@ -47,20 +44,18 @@ export function LastRefreshCard({
             now === null && summary?.lastUpdatedAt ? "invisible" : null,
           )}
         >
-          {time?.long ?? (summary?.lastUpdatedAt ? "Atualizado há 10 min" : "Cotações sem atualização")}
+          {time?.long ?? (summary?.lastUpdatedAt ? "Updated 10 min ago" : "Quotes not updated yet")}
         </p>
-        {time ? <p className="mt-0.5 text-xs text-muted-foreground">Em {time.absolute}</p> : null}
+        {time ? <p className="mt-0.5 text-xs text-muted-foreground">In {time.absolute}</p> : null}
         {hasIssues && lastRun && now !== null ? (
           <p data-testid="last-refresh-issue" className="mt-1.5 text-xs text-destructive">
-            {lastAttemptIsLatestUpdate ? "Nessa atualização" : `Última tentativa em ${formatRefreshDateTime(lastRun.startedAt)}`}
+            {lastAttemptIsLatestUpdate ? "In this update" : `Last attempt on ${formatRefreshDateTime(lastRun.startedAt)}`}
             {failed.length > 0
-              ? `: ${failed.length} ${failed.length === 1 ? "cotação" : "cotações"} com falha (${failed.map((failure) => failure.symbol).join(", ")}).`
-              : `: ${lastRun.errorMessage ?? "a atualização falhou."}`}
+              ? `: ${failed.length} ${failed.length === 1 ? "quote" : "quotes"} failed (${failed.map((failure) => failure.symbol).join(", ")}).`
+              : `: ${lastRun.errorMessage ?? "the update failed."}`}
           </p>
         ) : null}
-        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-          As cotações são atualizadas automaticamente de hora em hora, sem depender do aplicativo aberto, e
-          recalculam as posições de {compact(currentMonth)}.
+        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">Quotes are updated automatically every hour, even when the application is closed, and recalculate positions for {compact(currentMonth)}.
         </p>
       </div>
 

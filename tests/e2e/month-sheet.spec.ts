@@ -9,11 +9,9 @@ import {
 } from "./support/competence";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// Spec 096: no celular a faixa de anos e meses dá lugar a um botão com o mês
-// escolhido, que abre a competência numa folha de baixo para cima. No
-// computador a faixa continua (month-timeline.spec.ts). Só leitura.
+
 test.beforeEach(async ({ page, isMobile }) => {
-  test.skip(!isMobile, "A folha de competência é do celular; no computador vale a faixa.");
+  test.skip(!isMobile, "The reporting-month sheet is for mobile; desktop uses the timeline.");
   await stubQuoteChecks(page);
 });
 
@@ -25,71 +23,71 @@ async function openOverview(page: Page, month: string) {
   await waitForCompetenceHydration(page);
 }
 
-test("o botão mostra a competência no lugar da faixa e a folha abre no ano dela", async ({ page }) => {
+test("the compact selector shows the reporting month and opens its year", async ({ page }) => {
   await openOverview(page, "2026-02");
 
   await expect(competenceNav(page)).toBeHidden();
   const trigger = competenceTrigger(page);
-  await expect(trigger).toHaveAccessibleName("Competência: Fevereiro de 2026");
+  await expect(trigger).toHaveAccessibleName("Reporting month: February 2026");
   await expect(trigger).toContainText("Fev/26");
   expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(40);
 
   await openCompetenceSheet(page);
-  await expect(competenceSheet(page).getByRole("group", { name: "Meses de 2026" })).toBeVisible();
+  await expect(competenceSheet(page).getByRole("group", { name: "Months in 2026" })).toBeVisible();
   await expect(years(page).first()).toHaveText("2026");
   await expect(years(page).first()).toHaveAttribute("aria-pressed", "true");
   await expect(months(page)).toHaveCount(12);
-  await expect(months(page).filter({ hasText: "Fev" })).toHaveAttribute("aria-current", "date");
+  await expect(months(page).filter({ hasText: "Feb" })).toHaveAttribute("aria-current", "date");
   await expect(months(page).filter({ hasText: "Jan" })).toHaveAccessibleName(/^Janeiro de 2026, [+-]/);
 
-  // Alvos de toque de pelo menos 44 px.
+
   for (const target of [years(page).first(), months(page).first()]) {
     expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
 });
 
-test("trocar de ano só consulta; escolher o mês muda a competência e fecha a folha", async ({ page }) => {
+test("browsing years does not write; choosing a month updates selection and closes the sheet", async ({ page }) => {
   await openOverview(page, "2026-02");
   await openCompetenceSheet(page);
 
   await competenceSheet(page).getByRole("button", { name: "2025", exact: true }).click();
-  await expect(competenceSheet(page).getByRole("group", { name: "Meses de 2025" })).toBeVisible();
+  await expect(competenceSheet(page).getByRole("group", { name: "Months in 2025" })).toBeVisible();
   await expect(page).toHaveURL(/mes=2026-02/);
-  await expect(competenceSheet(page).getByRole("button", { name: "2026, competência selecionada" })).toBeVisible();
+  await expect(competenceSheet(page).getByRole("button", { name: "2026, selected reporting month" })).toBeVisible();
   await expect(competenceSheet(page).locator("[aria-current='date']")).toHaveCount(0);
 
   await competenceSheet(page).getByRole("button", { name: /^Dezembro de 2025/ }).click();
   await expect(page).toHaveURL(/mes=2025-12/);
   await expect(competenceSheet(page)).toHaveCount(0);
-  await expect(competenceTrigger(page)).toHaveAccessibleName("Competência: Dezembro de 2025");
+  await expect(competenceTrigger(page)).toHaveAccessibleName("Reporting month: December 2025");
   await expect(competenceTrigger(page)).toContainText("Dez/25");
 
-  // Reaberta, a folha volta ao ano da competência.
+
   await openCompetenceSheet(page);
-  await expect(competenceSheet(page).getByRole("group", { name: "Meses de 2025" })).toBeVisible();
+  await expect(competenceSheet(page).getByRole("group", { name: "Months in 2025" })).toBeVisible();
 });
 
-test("mês sem registro fica apagado e a folha fecha sem trocar a competência", async ({ page }) => {
+test("an unavailable month is disabled and does not change selection", async ({ page }) => {
   await openOverview(page, "2026-02");
   await openCompetenceSheet(page);
 
-  // O histórico começa no meio de 2023 (spec 041).
+
   await competenceSheet(page).getByRole("button", { name: "2023", exact: true }).click();
-  await expect(competenceSheet(page).getByRole("button", { name: "Janeiro de 2023" })).toBeDisabled();
+  await expect(competenceSheet(page).getByRole("button", { name: "January 2023" })).toBeDisabled();
   await expect(months(page)).toHaveCount(12);
 
-  await competenceSheet(page).getByRole("button", { name: "Fechar" }).click();
+  await competenceSheet(page).getByRole("button", { name: "Close" }).click();
   await expect(competenceSheet(page)).toHaveCount(0);
   await expect(page).toHaveURL(/mes=2026-02/);
 
-  // O mês atual, escolhido de novo, só fecha a folha.
+
   await openCompetenceSheet(page);
-  await months(page).filter({ hasText: "Fev" }).click();
+  await months(page).filter({ hasText: "Feb" }).click();
   await expect(competenceSheet(page)).toHaveCount(0);
   await expect(page).toHaveURL(/mes=2026-02/);
 });
 
-test("alterações pendentes seguram a troca de mês, mas não a de ano", async ({ page }) => {
+test("unsaved changes block month changes but not year browsing", async ({ page }) => {
   const dialogs: string[] = [];
   page.on("dialog", (dialog) => {
     dialogs.push(dialog.message());
@@ -99,8 +97,8 @@ test("alterações pendentes seguram a troca de mês, mas não a de ano", async 
   await openOverview(page, "2026-09");
   await page.goto("/configuracao?mes=2026-09");
   await waitForCompetenceHydration(page);
-  await page.getByRole("textbox", { name: "Tolerância em pontos percentuais" }).fill("3");
-  await expect(page.getByText("1 alteração", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Tolerance in percentage points" }).fill("3");
+  await expect(page.getByText("1 change", { exact: true })).toBeVisible();
 
   await openCompetenceSheet(page);
   await competenceSheet(page).getByRole("button", { name: "2025", exact: true }).click();
@@ -108,15 +106,15 @@ test("alterações pendentes seguram a troca de mês, mas não a de ano", async 
 
   await competenceSheet(page).getByRole("button", { name: /^Dezembro de 2025/ }).click();
   await expect.poll(() => dialogs.length).toBe(1);
-  expect(dialogs[0]).toContain("alteração não salva");
+  expect(dialogs[0]).toContain("unsaved change");
   await expect(page).toHaveURL(/mes=2026-09/);
-  await expect(competenceTrigger(page)).toHaveAccessibleName("Competência: Setembro de 2026");
+  await expect(competenceTrigger(page)).toHaveAccessibleName("Reporting month: September 2026");
 
-  await page.getByRole("button", { name: "Descartar" }).click();
-  await expect(page.getByText("1 alteração", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByText("1 change", { exact: true })).toHaveCount(0);
 });
 
-test("o botão e a situação do mês cabem na tela sem rolagem lateral", async ({ page }) => {
+test("the selector and month status fit without horizontal page scrolling", async ({ page }) => {
   await openOverview(page, "2026-09");
 
   const fits = () =>
@@ -135,7 +133,7 @@ test("o botão e a situação do mês cabem na tela sem rolagem lateral", async 
   const ok = { page: true, inside: true, apart: true };
   await expect.poll(fits).toEqual(ok);
 
-  // Também na menor largura de telefone; o WebKit leva um instante para refazer o layout.
+
   await page.setViewportSize({ width: 320, height: 700 });
   await expect.poll(fits).toEqual(ok);
 });

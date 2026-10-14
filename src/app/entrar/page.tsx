@@ -8,10 +8,10 @@ import { SignInForm } from "@/modules/auth/ui/sign-in-form";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Entrar",
+  title: "Sign in",
 };
 
-/** Só endereços do próprio app: um `para` externo levaria o usuário embora. */
+
 function safeTarget(value: string | undefined) {
   return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/entrar") ? value : "/";
 }
@@ -31,8 +31,8 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           <span className="brand-mark grid size-11 place-items-center rounded-2xl text-primary-foreground">
             <ChartDonutIcon aria-hidden="true" size={22} weight="bold" />
           </span>
-          <h1 className="mt-5 text-xl font-semibold tracking-[-0.03em]">Meu portfólio</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Entre para ver a sua carteira.</p>
+          <h1 className="mt-5 text-xl font-semibold tracking-[-0.03em]">My portfolio</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">Sign in to view your portfolio.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card/80 p-6 shadow-2xl backdrop-blur">
           <SignInForm redirectTo={target} />

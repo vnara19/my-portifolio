@@ -5,7 +5,7 @@ import { quoteFailure } from "@/modules/quotes/domain/quote-types";
 import { describeProviderError, fetchJson, ProviderRefusalError } from "@/modules/quotes/infrastructure/http";
 
 const alphaVantageSchema = z.object({
-  // Um símbolo desconhecido volta com "Global Quote" vazio.
+
   "Global Quote": z.record(z.string(), z.string()).optional(),
   Note: z.string().optional(),
   Information: z.string().optional(),
@@ -22,7 +22,7 @@ export async function fetchAlphaVantageQuotes(
         symbol,
         "alpha-vantage",
         "MISSING_API_KEY",
-        "Configure ALPHA_VANTAGE_API_KEY para atualizar este ativo.",
+        "Configure ALPHA_VANTAGE_API_KEY to update this asset.",
       ),
     );
   }
@@ -37,19 +37,18 @@ export async function fetchAlphaVantageQuotes(
       url.searchParams.set("apikey", apiKey);
       const payload = alphaVantageSchema.parse(await fetchJson(url));
 
-      // O limite diário e a chave sem acesso vêm com HTTP 200 em "Note" ou
-      // "Information"; sem isso, a falha aparecia como formato inesperado.
+
       if (payload.Note || payload.Information) {
         throw new ProviderRefusalError(
           "RATE_LIMITED",
-          "O Alpha Vantage recusou a consulta: limite de 25 consultas por dia atingido ou chave sem acesso.",
+          "Alpha Vantage rejected the request: the 25 daily request limit was reached or the key has no access.",
         );
       }
 
       const price = Number(payload["Global Quote"]?.["05. price"]);
 
       if (payload["Error Message"] || !(price > 0)) {
-        throw new ProviderRefusalError("NOT_FOUND", `O Alpha Vantage não retornou a cotação de ${symbol}.`);
+        throw new ProviderRefusalError("NOT_FOUND", `Alpha Vantage did not return the quote for ${symbol}.`);
       }
 
       results.push({ symbol, provider: "alpha-vantage", status: "SUCCESS", valueBrl: price });
@@ -71,12 +70,7 @@ const alphaVantageLookupSchema = z.object({
   "Error Message": z.string().optional(),
 });
 
-/**
- * Confere se o Alpha Vantage conhece o símbolo (spec 026). Um símbolo
- * desconhecido volta com "Global Quote" vazio; o aviso de limite de uso e o de
- * chave sem acesso vêm com HTTP 200 em "Note" ou "Information" e não provam que
- * o ticker falta, então viram recusa do provedor.
- */
+
 export async function lookupAlphaVantageSymbol(
   symbol: string,
   apiKey: string,
@@ -90,12 +84,12 @@ export async function lookupAlphaVantageSymbol(
   if (payload.Note || payload.Information) {
     throw new ProviderRefusalError(
       "RATE_LIMITED",
-      "O Alpha Vantage recusou a consulta: limite de uso atingido ou chave sem acesso.",
+      "Alpha Vantage rejected the request: the usage limit was reached or the key has no access.",
     );
   }
 
   if (payload["Error Message"]) {
-    throw new ProviderRefusalError("PROVIDER_ERROR", "O Alpha Vantage recusou a consulta.");
+    throw new ProviderRefusalError("PROVIDER_ERROR", "Alpha Vantage rejected the request.");
   }
 
   const quote = payload["Global Quote"];
@@ -111,11 +105,7 @@ const alphaVantageMonthlySchema = z.object({
   "Error Message": z.string().optional(),
 });
 
-/**
- * Fechamento mensal de um símbolo numa única consulta (spec 029): o Alpha
- * Vantage devolve todo o histórico, um ponto no último pregão de cada mês, na
- * moeda do ativo. Consome uma das 25 consultas diárias do plano gratuito.
- */
+
 export async function fetchAlphaVantageMonthlyCloses(symbol: string, apiKey: string) {
   const url = new URL("https://www.alphavantage.co/query");
   url.searchParams.set("function", "TIME_SERIES_MONTHLY");
@@ -126,12 +116,12 @@ export async function fetchAlphaVantageMonthlyCloses(symbol: string, apiKey: str
   if (payload.Note || payload.Information) {
     throw new ProviderRefusalError(
       "RATE_LIMITED",
-      "O Alpha Vantage recusou a consulta: limite de uso atingido ou chave sem acesso.",
+      "Alpha Vantage rejected the request: the usage limit was reached or the key has no access.",
     );
   }
 
   if (payload["Error Message"] || !payload["Monthly Time Series"]) {
-    throw new ProviderRefusalError("NOT_FOUND", `O Alpha Vantage não tem o histórico de ${symbol}.`);
+    throw new ProviderRefusalError("NOT_FOUND", `Alpha Vantage has no history for ${symbol}.`);
   }
 
   return Object.entries(payload["Monthly Time Series"]).map(([day, values]) => ({ day, value: values["4. close"] }));

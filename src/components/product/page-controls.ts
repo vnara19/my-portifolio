@@ -1,9 +1,5 @@
 import { tv } from "tailwind-variants";
 
-// Controles do cabeçalho das páginas de Finanças (spec 090): o selo de filtro
-// (ano, pessoa) e os botões do topo. Gastos familiares, Recebimentos e
-// Previdência importam daqui; `headerPrimaryButtonClass`, de `edit-dialogs.tsx`,
-// sai de `headerButton`. Átomos usam `tailwind-variants` (guia de estilos).
 
 export const filterBadge = tv({
   base: "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-8",
@@ -12,8 +8,8 @@ export const filterBadge = tv({
       true: "border-primary/30 bg-primary/[0.08] text-primary",
       false: "border-border bg-card/60 text-muted-foreground hover:text-foreground",
     },
-    // Selo de um grupo que não está aberto mas guarda itens selecionados, como o
-    // ano com meses marcados quando outro ano está na tela.
+
+
     marked: { true: "", false: "" },
   },
   compoundVariants: [{ active: false, marked: true, class: "border-primary/25 text-foreground" }],

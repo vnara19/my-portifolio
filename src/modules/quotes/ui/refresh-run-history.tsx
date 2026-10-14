@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import {
   CaretDownIcon,
   CheckCircleIcon,
@@ -20,23 +22,20 @@ import type {
 import { providerLabel } from "@/modules/quotes/domain/quote-refresh";
 
 const STATUS: Record<QuoteRunHistoryStatus, { label: string; className: string }> = {
-  COMPLETED: { label: "Concluída", className: "bg-primary/10 text-primary" },
-  COMPLETED_WITH_ISSUES: { label: "Com falhas", className: "bg-warning/50 text-warning-foreground" },
-  FAILED: { label: "Falhou", className: "bg-destructive/12 text-destructive" },
-  RUNNING: { label: "Em andamento", className: "bg-white/[0.06] text-muted-foreground" },
+  COMPLETED: { label: "Completed", className: "bg-primary/10 text-primary" },
+  COMPLETED_WITH_ISSUES: { label: "Completed with issues", className: "bg-warning/50 text-warning-foreground" },
+  FAILED: { label: "Failed", className: "bg-destructive/12 text-destructive" },
+  RUNNING: { label: "In progress", className: "bg-white/[0.06] text-muted-foreground" },
 };
 
-/**
- * Execuções da competência selecionada (spec 046), da mais recente para a mais
- * antiga; "Mostrar mais" busca a página seguinte do mesmo mês.
- */
+
 export function RefreshRunHistory({
   initial,
   month,
   monthLabel,
 }: {
   initial: QuoteRunHistoryPage | null;
-  /** AAAA-MM */
+  /** YYYY-MM */
   month: string;
   monthLabel: string;
 }) {
@@ -45,7 +44,7 @@ export function RefreshRunHistory({
   const [cursor, setCursor] = useState(initial?.nextCursor ?? null);
   const [isLoading, startLoading] = useTransition();
 
-  // Uma nova execução atualiza a primeira página e recomeça a paginação.
+
   if (initial !== initialPage) {
     setInitialPage(initial);
     setExtra([]);
@@ -74,17 +73,16 @@ export function RefreshRunHistory({
     <section className="premium-panel mt-6 overflow-hidden rounded-[24px]" aria-labelledby="run-history-title">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-5 py-4 sm:px-6">
         <ListChecksIcon aria-hidden="true" className="text-primary" size={17} weight="duotone" />
-        <h2 id="run-history-title" className="text-sm font-semibold text-foreground">
-          Histórico de execuções
+        <h2 id="run-history-title" className="text-sm font-semibold text-foreground">Execution history
         </h2>
         <span data-testid="run-history-count" className="text-[11px] text-muted-foreground">
-          {total} {total === 1 ? "execução" : "execuções"} em {monthLabel}
+          {total} {total === 1 ? "execution" : "executions"} in {monthLabel}
         </span>
       </div>
 
       {runs.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-muted-foreground sm:px-6">
-          {initial ? `Nenhuma atualização de cotações em ${monthLabel}.` : "Não foi possível ler o histórico de execuções."}
+          {initial ? `No quote updates in ${monthLabel}.` : "Could not load the execution history."}
         </p>
       ) : (
         <ol className="divide-y divide-border/55">
@@ -96,8 +94,7 @@ export function RefreshRunHistory({
 
       {cursor ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-5 py-3 sm:px-6">
-          <p className="text-[11px] text-muted-foreground">
-            Mostrando {runs.length} de {total}.
+          <p className="text-[11px] text-muted-foreground">Showing {runs.length} of {total}.
           </p>
           <button
             type="button"
@@ -105,7 +102,7 @@ export function RefreshRunHistory({
             disabled={isLoading}
             className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
           >
-            {isLoading ? "Carregando…" : "Mostrar mais"}
+            {isLoading ? "Loading…" : "Show more"}
           </button>
         </div>
       ) : null}
@@ -134,7 +131,7 @@ function RunRow({ run }: { run: QuoteRunHistoryEntry }) {
           status.className,
         )}
       >
-        {status.label}
+        {englishLabel(status.label)}
       </span>
       {expandable ? (
         <CaretDownIcon
@@ -210,26 +207,26 @@ function plural(count: number, singular: string, pluralForm: string) {
 
 function describeRun(run: QuoteRunHistoryEntry) {
   if (run.status === "RUNNING") {
-    return "Consultando os provedores.";
+    return "Contacting providers.";
   }
 
   const total = run.succeeded + run.failures.length;
 
   if (total === 0) {
     return run.status === "FAILED"
-      ? (run.errorMessage ?? "A atualização falhou antes de consultar os provedores.")
-      : "Nenhuma cotação para atualizar.";
+      ? (run.errorMessage ?? "The update failed before contacting providers.")
+      : "No quotes to update.";
   }
 
   if (run.failures.length === 0) {
-    return `${plural(run.succeeded, "cotação atualizada", "cotações atualizadas")}.`;
+    return `${plural(run.succeeded, "quote updated", "quotes updated")}.`;
   }
 
   if (run.succeeded === 0) {
     return run.failures.every((failure) => failure.errorCode === "NOT_SAVED")
-      ? `${plural(total, "cotação consultada", "cotações consultadas")}, mas não gravadas.`
-      : `${plural(run.failures.length, "cotação com falha", "cotações com falha")}; nada mudou.`;
+      ? `${plural(total, "quote fetched", "quotes fetched")}, but not saved.`
+      : `${plural(run.failures.length, "failed quote", "failed quotes")}; nada mudou.`;
   }
 
-  return `${plural(run.succeeded, "cotação atualizada", "cotações atualizadas")} e ${plural(run.failures.length, "com falha", "com falha")}.`;
+  return `${plural(run.succeeded, "quote updated", "quotes updated")} e ${plural(run.failures.length, "failed", "failed")}.`;
 }

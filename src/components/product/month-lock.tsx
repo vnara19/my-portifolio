@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { Dialog } from "@base-ui/react/dialog";
 import { LockKeyIcon, LockKeyOpenIcon } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
@@ -21,11 +23,7 @@ import {
 const chipClass =
   "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 sm:px-3";
 
-/**
- * Situação do mês selecionado na linha do tempo (spec 034): aberto, com o
- * botão "Fechar mês", ou fechado, que abre de novo com confirmação. Só o mês
- * aberto aceita editar posições, rateio e cotações à mão.
- */
+
 export function MonthLock({ month }: { month: PortfolioMonthSummary }) {
   const router = useRouter();
   const [isSaving, startSaving] = useTransition();
@@ -34,7 +32,7 @@ export function MonthLock({ month }: { month: PortfolioMonthSummary }) {
 
   const change = (next: boolean) => {
     if (!next && hasPendingChanges()) {
-      showAppToast({ tone: "warning", title: "Salve ou descarte as alterações antes de fechar o mês." });
+      showAppToast({ tone: "warning", title: "Save or discard changes before closing the month." });
       return;
     }
 
@@ -49,22 +47,20 @@ export function MonthLock({ month }: { month: PortfolioMonthSummary }) {
     return (
       <div data-testid="month-lock" data-state="open" className="flex shrink-0 items-center gap-1.5">
         <span
-          title={`${label} está aberto para edição`}
+          title={`${englishLabel(label)} is open for editing`}
           className="hidden items-center gap-1.5 px-1 text-[11px] font-medium text-warning-foreground sm:inline-flex"
         >
-          <LockKeyOpenIcon aria-hidden="true" size={14} weight="bold" />
-          Aberto
+          <LockKeyOpenIcon aria-hidden="true" size={14} weight="bold" />Open
         </span>
         <button
           type="button"
           disabled={isSaving}
           onClick={() => change(false)}
-          aria-label={`Fechar ${label}`}
+          aria-label={`Close ${englishLabel(label)}`}
           className={cn(chipClass, "border-border bg-card/70 text-foreground hover:bg-white/[0.05]")}
         >
           <LockKeyOpenIcon aria-hidden="true" size={14} weight="bold" className="text-warning-foreground sm:hidden" />
-          <LockKeyIcon aria-hidden="true" size={14} weight="bold" className="hidden sm:block" />
-          Fechar mês
+          <LockKeyIcon aria-hidden="true" size={14} weight="bold" className="hidden sm:block" />Close month
         </button>
       </div>
     );
@@ -76,24 +72,20 @@ export function MonthLock({ month }: { month: PortfolioMonthSummary }) {
         data-testid="month-lock"
         data-state="closed"
         disabled={isSaving}
-        aria-label={`${label} fechado. Abrir para editar`}
+        aria-label={`${englishLabel(label)} closed. Open to edit`}
         className={cn(chipClass, "border-border bg-card/70 text-muted-foreground hover:text-foreground")}
       >
-        <LockKeyIcon aria-hidden="true" size={14} weight="bold" />
-        Fechado
+        <LockKeyIcon aria-hidden="true" size={14} weight="bold" />Closed
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className={backdropClass} />
         <Dialog.Popup className={centeredPopupClass}>
-          <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Abrir {label}?</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-            Aberto, {label} aceita editar posições, rateio e cotações à mão, e as alterações valem para todas as
-            análises do mês. Feche de novo quando terminar.
+          <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Open {englishLabel(label)}?</Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">Open, {englishLabel(label)}allows editing positions, allocations and manual quotes. Changes apply to all analyses for the month. Close it again when finished.
           </Dialog.Description>
           <div className="mt-6 flex justify-end gap-2">
-            <Dialog.Close className={secondaryButtonClass}>Cancelar</Dialog.Close>
-            <Dialog.Close className={primaryButtonClass} onClick={() => change(true)}>
-              Abrir mês
+            <Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close>
+            <Dialog.Close className={primaryButtonClass} onClick={() => change(true)}>Open month
             </Dialog.Close>
           </div>
         </Dialog.Popup>

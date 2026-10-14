@@ -4,10 +4,6 @@ import { afterEach, test } from "node:test";
 import { fetchCurrentQuotes } from "@/modules/quotes/application/fetch-current-quotes";
 import { fetchJson } from "@/modules/quotes/infrastructure/http";
 
-// Cotação de cripto no job do Neon (região dos EUA): a CoinGecko às vezes não
-// responde e a Binance recusa a região com HTTP 451. A cadeia agora é
-// CoinGecko (duas tentativas) → Coinbase → Yahoo → Binance. A rede é simulada
-// por endereço, sem consultar provedor nenhum.
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -17,7 +13,7 @@ afterEach(() => {
 type Reply = { status: number; body?: unknown } | "timeout";
 type Routes = Record<string, Reply | Reply[]>;
 
-/** Responde pelo trecho do endereço; uma lista entrega uma resposta por chamada. */
+
 function stubNetwork(routes: Routes) {
   const calls: string[] = [];
 
@@ -42,7 +38,7 @@ const dollar = { "economia.awesomeapi.com.br": { status: 200, body: { USDBRL: { 
 const request = [{ symbol: "BTC", instrumentType: "CRIPTO", baseCurrency: "BTC" }];
 const run = (symbols = request) => fetchCurrentQuotes(symbols, {}, "2026-10-07");
 
-test("CoinGecko que não responde na primeira vez é recuperada na segunda, sem usar reserva", async () => {
+test("CoinGecko succeeds on retry without falling back", async () => {
   const calls = stubNetwork({
     ...dollar,
     "api.coingecko.com/api/v3/simple/price": [
@@ -57,7 +53,7 @@ test("CoinGecko que não responde na primeira vez é recuperada na segunda, sem 
   assert.equal(calls.some((url) => url.includes("coinbase") || url.includes("binance")), false);
 });
 
-test("CoinGecko fora do ar nas duas tentativas cai na Coinbase, em reais", async () => {
+test("two failed CoinGecko attempts fall back to Coinbase in BRL", async () => {
   const calls = stubNetwork({
     ...dollar,
     "api.coingecko.com": "timeout",
@@ -70,7 +66,7 @@ test("CoinGecko fora do ar nas duas tentativas cai na Coinbase, em reais", async
   assert.equal(calls.some((url) => url.includes("binance")), false);
 });
 
-test("sem Coinbase, o Yahoo cota o par em dólar e converte pelo dólar do dia", async () => {
+test("without Coinbase, Yahoo quotes in USD and converts using the daily exchange rate", async () => {
   stubNetwork({
     ...dollar,
     "api.coingecko.com": "timeout",
@@ -85,7 +81,7 @@ test("sem Coinbase, o Yahoo cota o par em dólar e converte pelo dólar do dia",
   assert.deepEqual(btc, { symbol: "BTC", provider: "yahoo", status: "SUCCESS", valueBrl: 415000 });
 });
 
-test("Binance só é tentada por último, e o 451 vai ao espelho de dados de mercado", async () => {
+test("Binance is the last fallback and HTTP 451 tries the market-data mirror", async () => {
   const calls = stubNetwork({
     ...dollar,
     "api.coingecko.com": "timeout",
@@ -102,7 +98,7 @@ test("Binance só é tentada por último, e o 451 vai ao espelho de dados de mer
   assert.equal(order.every((index) => index >= 0), true);
 });
 
-test("quando tudo falha, a mensagem lista cada provedor e explica o 451", async () => {
+test("when every provider fails, the error identifies each provider and explains HTTP 451", async () => {
   stubNetwork({
     ...dollar,
     "api.coingecko.com": "timeout",
@@ -114,14 +110,14 @@ test("quando tudo falha, a mensagem lista cada provedor e explica o 451", async 
 
   assert.equal(btc.status, "FAILED");
   if (btc.status === "FAILED") {
-    assert.match(btc.errorMessage, /CoinGecko: O provedor excedeu o tempo limite\./);
-    assert.match(btc.errorMessage, /Coinbase: A Coinbase não negocia BTC em reais\./);
-    assert.match(btc.errorMessage, /Binance: O provedor bloqueia a região do servidor \(HTTP 451\)\./);
+    assert.match(btc.errorMessage, /CoinGecko: The provider timed out\./);
+    assert.match(btc.errorMessage, /Coinbase: Coinbase does not trade BTC in BRL\./);
+    assert.match(btc.errorMessage, /Binance: The provider blocks the server region \(HTTP 451\)\./);
     assert.equal(btc.errorCode, "REGION_BLOCKED");
   }
 });
 
-test("recusa do provedor (4xx) não repete; falha de servidor (5xx) repete", async () => {
+test("provider rejections do not retry; server failures do", async () => {
   const limited = stubNetwork({ "provedor.test": { status: 429 } });
   await assert.rejects(fetchJson(new URL("https://provedor.test/x"), undefined, { attempts: 3 }));
   assert.equal(limited.length, 1);

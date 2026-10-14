@@ -1,5 +1,7 @@
+
+/** English formatting for dates, prices and percentages. Accept English numeric input and legacy Brazilian decimal input. */
 export function formatBrl(value: number, options?: { compact?: boolean }) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "BRL",
     notation: options?.compact ? "compact" : "standard",
@@ -7,9 +9,9 @@ export function formatBrl(value: number, options?: { compact?: boolean }) {
   }).format(value);
 }
 
-// Preço unitário com a precisão guardada, até oito casas, como a cotação do mês.
+
 export function formatPriceBrl(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: 2,
@@ -19,7 +21,13 @@ export function formatPriceBrl(value: number) {
 
 export function parseLocaleNumber(value: string) {
   const trimmed = value.trim().replace(/\s/g, "");
-  const normalized = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed;
+  const comma = trimmed.lastIndexOf(",");
+  const dot = trimmed.lastIndexOf(".");
+  // Accept English grouping and decimal separators, plus legacy Brazilian input.
+  const normalized = comma >= 0 && dot >= 0
+    ? comma > dot ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed.replace(/,/g, "")
+    : comma >= 0 ? /^\d{1,3}(,\d{3})+$/.test(trimmed) ? trimmed.replace(/,/g, "") : trimmed.replace(",", ".")
+    : trimmed;
 
   if (!/^\d+(?:\.\d+)?$/.test(normalized)) {
     return null;
@@ -29,7 +37,7 @@ export function parseLocaleNumber(value: string) {
 }
 
 export function formatSharePercent(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-GB", {
     style: "percent",
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -37,7 +45,7 @@ export function formatSharePercent(value: number) {
 }
 
 export function formatPercent(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-GB", {
     style: "percent",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -46,21 +54,21 @@ export function formatPercent(value: number) {
 }
 
 export function formatMonthCompact(date: Date) {
-  const month = new Intl.DateTimeFormat("pt-BR", { month: "short", timeZone: "UTC" })
+  const month = new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" })
     .format(date)
     .replace(".", "");
 
-  return `${month.charAt(0).toLocaleUpperCase("pt-BR")}${month.slice(1)}/${String(
+  return `${month.charAt(0).toLocaleUpperCase("en-GB")}${month.slice(1)}/${String(
     date.getUTCFullYear(),
   ).slice(2)}`;
 }
 
 export function formatMonth(date: Date, short = false) {
-  const formatted = new Intl.DateTimeFormat("pt-BR", {
+  const formatted = new Intl.DateTimeFormat("en-GB", {
     month: short ? "short" : "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(date);
 
-  return formatted.charAt(0).toLocaleUpperCase("pt-BR") + formatted.slice(1);
+  return formatted.charAt(0).toLocaleUpperCase("en-GB") + formatted.slice(1);
 }

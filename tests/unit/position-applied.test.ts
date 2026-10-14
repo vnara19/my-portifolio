@@ -9,8 +9,6 @@ import {
 } from "@/modules/portfolio/domain/position-history";
 import { emptyRecordedMonth, recordedByMonth, type StoredTransactionKind } from "@/modules/portfolio/domain/position-transactions";
 
-// Spec 073: valor aplicado, rendimento e preço médio pelas movimentações, com o
-// saldo inicial valendo como aplicação. Dados fictícios.
 
 type Movement = { month: string; kind: StoredTransactionKind; quantity: number; amountBrl: number; occurredOn: string };
 
@@ -41,7 +39,7 @@ function history(
   return { slots, at: (month: string) => summarizeHistory(slots, month, quoted) };
 }
 
-test("saldo em reais: saldo inicial e aportes somam, o rendimento não, a retirada tira a parte proporcional e realiza o ganho", () => {
+test("BRL opening balance and contributions affect cost; returns do not; withdrawals realize proportional gains", () => {
   const { slots, at } = history(
     [
       { month: "2026-01", quantity: 1000, opening: 0, price: null },
@@ -59,18 +57,18 @@ test("saldo em reais: saldo inicial e aportes somam, o rendimento não, a retira
   );
   const present = slots.filter((slot): slot is PresentSlot => slot.kind === "present");
   assert.deepEqual(present.map((slot) => slot.appliedBrl), [1000, 1500, 1500, 750]);
-  // Um mês acompanhado sem movimentações é registrado, não estimado.
+
   assert.equal(present[2].source, "recorded");
   assert.equal(at("2026-02").gainBrl, 10);
-  // A retirada leva metade do rendimento como lucro realizado (spec 076): o
-  // rendimento da posição continua sendo os R$ 10 que ela rendeu.
+
+
   assert.equal(present[3].realizedBrl, 5);
   assert.equal(at("2026-04").gainBrl, 10);
   assert.equal(at("2026-01").startValueBrl, 1000);
   assert.equal(at("2026-04").costSource, "opening");
 });
 
-test("rendimento negativo reduz o saldo sem mexer no valor aplicado", () => {
+test("negative returns reduce balance without changing invested capital", () => {
   const { at } = history(
     [
       { month: "2026-01", quantity: 2000, opening: 0, price: null },
@@ -86,7 +84,7 @@ test("rendimento negativo reduz o saldo sem mexer no valor aplicado", () => {
   assert.equal(at("2026-02").gainBrl, -100);
 });
 
-test("ativo cotado: preço médio pelo custo, staking sem custo e venda pelo preço médio", () => {
+test("quoted assets use average cost; staking adds no cost and sales use average cost", () => {
   const { at } = history(
     [
       { month: "2026-01", quantity: 10, opening: 0, price: 30 },
@@ -109,12 +107,12 @@ test("ativo cotado: preço médio pelo custo, staking sem custo e venda pelo pre
   assert.equal(march.appliedBrl, 175);
   assert.equal(march.averagePriceBrl, 28);
   assert.equal(march.costSource, "opening");
-  // Vendeu metade por R$ 312,50 com custo de R$ 175: o ganho realizado soma ao
-  // que continua na posição.
+
+
   assert.equal(march.gainBrl, 6.25 * 50 - 175 + (312.5 - 175));
 });
 
-test("retirada total liquida a posição: ela fica no mês da saída, com o resultado", () => {
+test("full withdrawals liquidate the position while retaining exit-month results", () => {
   const { slots, at } = history(
     [
       { month: "2026-01", quantity: 1000, opening: 0, price: null },
@@ -135,12 +133,12 @@ test("retirada total liquida a posição: ela fica no mês da saída, com o resu
   assert.equal(march.current?.valueBrl, 0);
   assert.equal(march.appliedBrl, 0);
   assert.equal(march.gainBrl, 20);
-  // A saída explica toda a variação do mês: nada sem registro.
+
   assert.equal(march.monthStep?.flowBrl, -1020);
   assert.equal(march.monthStep?.unexplainedBrl, 0);
 });
 
-test("retirada total de um ativo cotado pelo último valor não inventa efeito de preço", () => {
+test("full withdrawals at the last quote do not invent a price effect", () => {
   const { at } = history(
     [
       { month: "2026-01", quantity: 2, opening: 0, price: 100 },
@@ -158,7 +156,7 @@ test("retirada total de um ativo cotado pelo último valor não inventa efeito d
   assert.equal(february.monthStep?.priceEffectBrl, 0);
 });
 
-test("só aportes, sem saldo inicial, dão preço médio de compra conhecido", () => {
+test("contributions without an opening balance establish a known average purchase cost", () => {
   const { at } = history(
     [{ month: "2026-01", quantity: 4, opening: 0, price: 25 }],
     [{ month: "2026-01", kind: "CONTRIBUTION", quantity: 4, amountBrl: 90, occurredOn: "2026-01-15" }],

@@ -1,3 +1,5 @@
+
+/** Two-step restore: check validates without writing; apply replaces only the authenticated user's portfolio. A route avoids the Server Action upload-size limit. */
 import { rejectForeignRequest } from "@/lib/same-origin-request";
 import { rejectWithoutSession } from "@/modules/auth/session";
 import { BackupValidationError, previewBackup, restoreBackup } from "@/modules/backup/application/backup";
@@ -5,9 +7,7 @@ import type { BackupRestoreResponse } from "@/modules/backup/domain/backup-forma
 
 export const dynamic = "force-dynamic";
 
-// Restauração do backup (spec 042), em dois passos: `check` confere o arquivo
-// e devolve o resumo sem gravar; `apply` substitui todos os dados. É rota, e
-// não Server Action, porque o arquivo passa do limite de 1 MB das actions.
+
 export async function POST(request: Request) {
   const rejection = rejectForeignRequest(request);
 
@@ -26,11 +26,11 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return invalid("O arquivo não é um JSON válido.");
+    return invalid("The file is not valid JSON.");
   }
 
   if (body.mode !== "check" && body.mode !== "apply") {
-    return invalid("Pedido sem o modo da restauração.");
+    return invalid("The request is missing the restore mode.");
   }
 
   try {
@@ -46,9 +46,9 @@ export async function POST(request: Request) {
       return invalid(error.message);
     }
 
-    console.error("Falha ao restaurar o backup:", error);
+    console.error("Backup restoration failed:", error);
     return respond(
-      { state: "invalid", message: "A restauração falhou e nada foi alterado. Confira se o arquivo está completo." },
+      { state: "invalid", message: "Restoration failed and nothing was changed. Check that the file is complete." },
       500,
     );
   }
@@ -63,5 +63,5 @@ function invalid(message: string) {
 }
 
 function unavailable() {
-  return respond({ state: "invalid", message: "O banco de dados não está disponível." }, 503);
+  return respond({ state: "invalid", message: "The database is unavailable." }, 503);
 }

@@ -6,26 +6,23 @@ import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 export const SELIC_RATE_KEY = "SELIC_TARGET";
 export const SELIC_REFRESH_MS = 24 * 60 * 60 * 1000;
 const SELIC_LOCK_KEY = 2_026_100_204;
-/** Primeira carga do histórico: o limite de uma consulta da API do SGS. */
+
 const HISTORY_YEARS = 10;
 
-/** Meta Selic vigente numa competência (spec 067). */
+
 export type SelicMonthView = {
   percentAnnual: number;
-  /** Dia a que a taxa se refere: o último do mês, ou hoje no mês corrente. */
+
   asOf: string;
-  /** Desde quando a taxa vale (a reunião do Copom que a definiu). */
+
   effectiveOn: string;
-  /** O dia pedido passa da última observação conhecida: a taxa é a última disponível. */
+
   stale: boolean;
 };
 
 export type SelicSyncReport = { state: "fetched" | "fresh" | "failed"; observedOn: string | null; message?: string };
 
-/**
- * Meta Selic da competência, só leitura: abrir uma tela nunca consulta o Banco
- * Central. Num mês passado, a taxa do último dia; no mês corrente, a de hoje.
- */
+
 export async function getSelicForMonth(referenceDate: Date | null | undefined, now = new Date()): Promise<SelicMonthView | null> {
   const prisma = getPrismaClient();
   if (!prisma || !referenceDate) return null;
@@ -51,11 +48,7 @@ export async function getSelicForMonth(referenceDate: Date | null | undefined, n
   };
 }
 
-/**
- * Job compartilhado, com uma tentativa por 24 horas e reserva atômica. A
- * primeira consulta traz dez anos de histórico; as seguintes, desde a última
- * observação. Só as mudanças da taxa viram pontos.
- */
+
 export async function syncSelicReference(
   prisma: PrismaClient,
   { now = new Date(), fetchRate = fetchSelicTarget }: { now?: Date; fetchRate?: SelicFetcher } = {},
@@ -68,9 +61,8 @@ export async function syncSelicReference(
     ]);
     const observedOn = row?.observedOn?.toISOString().slice(0, 10) ?? null;
     const recent = row?.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < SELIC_REFRESH_MS;
-    // Sem histórico ainda, como logo depois desta spec, a carga não espera as
-    // 24 horas, desde que a última tentativa tenha terminado com sucesso: uma
-    // tentativa em andamento ou uma falha registrada voltam a esperar.
+
+
     const backfill =
       !anyPoint && !row?.errorMessage && Boolean(row?.fetchedAt && row.lastAttemptAt && row.lastAttemptAt <= row.fetchedAt);
 
@@ -93,8 +85,8 @@ export async function syncSelicReference(
   }
 
   try {
-    // A fonte deve corresponder ao dia de Brasília, inclusive quando o job
-    // roda em UTC (Neon), para não mostrar uma observação do dia seguinte.
+
+
     const today = saoPauloDay(now);
     const start = claim.observedOn ?? historyStart(today);
     const history = await fetchRate(start, today);
@@ -103,7 +95,7 @@ export async function syncSelicReference(
     const observedDate = new Date(`${latest?.observedOn}T00:00:00.000Z`);
 
     if (!latest || !Number.isFinite(observedDate.getTime()) || latest.observedOn > today || !percent.isFinite() || percent.isNegative() || percent.greaterThan(1000)) {
-      throw new Error("A fonte devolveu uma meta Selic inválida ou futura.");
+      throw new Error("The source returned an invalid or future Selic target rate.");
     }
 
     const before = await prisma.referenceRatePoint.findFirst({

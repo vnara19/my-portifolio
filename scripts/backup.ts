@@ -8,14 +8,13 @@ import { runAsUser } from "../src/lib/user-db";
 import { exportBackup, previewBackup, restoreBackup } from "../src/modules/backup/application/backup";
 import { BACKUP_TABLES, backupFileName } from "../src/modules/backup/domain/backup-format";
 
-// Backup pelo terminal, com as mesmas funções da tela de Configuração (spec 042),
-// sempre com os dados de um usuário (spec 050):
+
 //
-//   pnpm backup:export --user <e-mail> [arquivo]            grava em backups/ quando sem arquivo
-//   pnpm backup:restore --user <e-mail> <arquivo>           confere e mostra o resumo
-//   pnpm backup:restore --user <e-mail> <arquivo> --apply   substitui os dados do usuário
+
+//   pnpm backup:restore --user <email> <file>           validates and shows the summary
+
 //
-// Com DATABASE_URL de um schema de teste (pnpm db:test-schema), age só nele.
+
 
 function readArguments() {
   const args = process.argv.slice(2);
@@ -30,17 +29,17 @@ async function main() {
   const prisma = getPrismaClient();
 
   if (!prisma) {
-    throw new Error("DATABASE_URL não está configurada.");
+    throw new Error("DATABASE_URL is not configured.");
   }
 
   if (!email) {
-    throw new Error("Informe o usuário: --user <e-mail> (pnpm auth:user list mostra as contas).");
+    throw new Error("Specify the user: --user <email> (pnpm auth:user list shows accounts).");
   }
 
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } });
 
   if (!user) {
-    throw new Error(`Não existe conta com o e-mail ${email}.`);
+    throw new Error(`No account exists with the email ${email}.`);
   }
 
   await runAsUser(user.id, () => run(command, file, apply));
@@ -51,32 +50,32 @@ async function run(command: string | undefined, file: string | undefined, apply:
   if (command === "export") {
     const backup = await exportBackup();
     if (!backup) {
-      throw new Error("DATABASE_URL não está configurada.");
+      throw new Error("DATABASE_URL is not configured.");
     }
     const target = file ?? path.join("backups", backupFileName(new Date(backup.exportedAt)));
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, JSON.stringify(backup));
     console.info(
-      `Backup gravado em ${target}: ${BACKUP_TABLES.map(({ key }) => `${key} ${backup.tables[key].length}`).join(", ")}.`,
+      `Backup saved to ${target}: ${BACKUP_TABLES.map(({ key }) => `${key} ${backup.tables[key].length}`).join(", ")}.`,
     );
   } else if (command === "restore" && file) {
     const input = JSON.parse(await readFile(file, "utf8")) as unknown;
     const preview = await previewBackup(input);
     if (!preview) {
-      throw new Error("DATABASE_URL não está configurada.");
+      throw new Error("DATABASE_URL is not configured.");
     }
-    console.info(`Backup de ${preview.exportedAt}, competências de ${preview.firstMonth} a ${preview.lastMonth}.`);
+    console.info(`Backup for ${preview.exportedAt}, reporting months from ${preview.firstMonth} to ${preview.lastMonth}.`);
     for (const { key } of BACKUP_TABLES) {
-      console.info(`  ${key}: ${preview.current[key]} hoje → ${preview.file[key]} no backup`);
+      console.info(`  ${key}: ${preview.current[key]} today → ${preview.file[key]} in backup`);
     }
     if (!apply) {
-      console.info("Simulação: nada foi gravado. Rode com --apply para restaurar.");
+      console.info("Dry run: nothing was saved. Run with --apply to restore.");
     } else {
       await restoreBackup(input);
-      console.info("Restaurado.");
+      console.info("Restored.");
     }
   } else {
-    console.error("Uso: backup:export --user <e-mail> [arquivo] | backup:restore --user <e-mail> <arquivo> [--apply]");
+    console.error("Usage: backup:export --user <email> [file] | backup:restore --user <email> <file> [--apply]");
     process.exitCode = 1;
   }
 }

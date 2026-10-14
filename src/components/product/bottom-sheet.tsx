@@ -1,14 +1,12 @@
 "use client";
 
+/** Shared mobile sheet with safe-area padding and optional confirm/clear footer controls. */
+
 import { Drawer } from "@base-ui/react/drawer";
 import { XIcon } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 import { tv } from "tailwind-variants";
 
-// A folha de baixo para cima do celular (spec 077), uma peça só: os filtros de
-// Posições e de Gastos familiares e a competência de Gastos familiares (spec 096)
-// abrem a mesma folha. O botão que a abre (`BottomSheetTrigger`) e o que a fecha
-// (`BottomSheetClose`) vêm daqui; as classes ficam em `tailwind-variants`.
 
 const sheet = tv({
   slots: {
@@ -27,7 +25,7 @@ const sheet = tv({
       "flex shrink-0 items-center gap-2 border-t border-border/70 px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]",
   },
   variants: {
-    // Sem rodapé, o conteúdo respeita sozinho a área segura de baixo.
+
     footed: {
       true: { content: "pb-4" },
       false: { content: "pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]" },
@@ -36,7 +34,7 @@ const sheet = tv({
   defaultVariants: { footed: true },
 });
 
-/** Botões do rodapé da folha: o principal fecha e confirma; o secundário limpa. */
+
 export const sheetButton = tv({
   base: "inline-flex h-11 items-center justify-center rounded-xl px-4 text-xs outline-none focus-visible:ring-2",
   variants: {
@@ -62,16 +60,14 @@ export function BottomSheet({
   onOpenChange,
   testId,
 }: {
-  /** O `BottomSheetTrigger` que abre a folha, com as classes do botão. */
+
   trigger: ReactNode;
   title: string;
-  /**
-   * Os botões do rodapé, com `sheetButton`; o que fecha é um `BottomSheetClose`.
-   * Sem rodapé, a folha serve a uma escolha que se resolve com um toque.
-   */
+
+
   footer?: ReactNode;
   children: ReactNode;
-  /** Sem `open`, a folha cuida do próprio estado. */
+
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   testId?: string;
@@ -88,7 +84,7 @@ export function BottomSheet({
             <div aria-hidden="true" className={slots.handle()} />
             <div className={slots.header()}>
               <Drawer.Title className={slots.title()}>{title}</Drawer.Title>
-              <Drawer.Close aria-label="Fechar" className={slots.close()}>
+              <Drawer.Close aria-label="Close" className={slots.close()}>
                 <XIcon aria-hidden="true" size={15} weight="bold" />
               </Drawer.Close>
             </div>

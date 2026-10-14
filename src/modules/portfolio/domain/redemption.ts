@@ -1,8 +1,7 @@
-// Prazo de resgate de uma classificação do rateio (spec 035). Na planilha, a
-// coluna de duração era o prazo de resgate para liquidez; o vencimento do título
-// é outro campo, opcional, do ativo (spec 026). Os valores aceitos daqui em
-// diante são fixos; "-" é o "Nenhum" já usado nos dados importados. Valores
-// antigos, como D+0 e D+1, continuam nos dados até o passo pré-produção.
+
+/** Redemption terms describe liquidity, independently of an asset's maturity date. Keep legacy keys for imported allocations. */
+import { englishLabel } from "@/lib/english-labels";
+
 
 export const NO_REDEMPTION = "-";
 
@@ -13,5 +12,5 @@ export function isRedemption(value: string) {
 }
 
 export function redemptionLabel(value: string) {
-  return value === NO_REDEMPTION ? "Nenhum" : value;
+  return value === NO_REDEMPTION ? "None" : englishLabel(value);
 }

@@ -16,19 +16,16 @@ export type EditToastState = {
 const AUTO_DISMISS_MS = 9000;
 const HANDOFF_KEY = "portfolio:edit-toast";
 
-/**
- * Guarda o aviso para a próxima página (spec 080): remover na página da
- * posição volta para a tabela, que mostra o aviso com o desfazer.
- */
+
 export function handOffToast(toast: Omit<EditToastState, "id">) {
   try {
     sessionStorage.setItem(HANDOFF_KEY, JSON.stringify(toast));
   } catch {
-    // Sem armazenamento da sessão, o aviso só não aparece.
+
   }
 }
 
-/** O aviso deixado pela página anterior, lido uma vez. */
+
 export function takeHandedOffToast(): Omit<EditToastState, "id"> | null {
   try {
     const raw = sessionStorage.getItem(HANDOFF_KEY);
@@ -91,12 +88,12 @@ export function EditToast({
                 onClick={() => onUndo(toast.undoToken!)}
                 className="ml-1 shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-primary outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
               >
-                {undoing ? "Desfazendo…" : "Desfazer"}
+                {undoing ? "Undoing…" : "Undo"}
               </button>
             ) : null}
             <button
               type="button"
-              aria-label="Fechar aviso"
+              aria-label="Dismiss notice"
               onClick={onDismiss}
               className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >

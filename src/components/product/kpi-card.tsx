@@ -1,17 +1,16 @@
+
+/** Shared metric card: label on the left, optional icon on the right, value and detail below. Tone conveys meaning; neutral values use foreground. */
+
+import { englishLabel } from "@/lib/english-labels";
 import type { ReactNode } from "react";
 import { tv } from "tailwind-variants";
 
-// O card de indicador do app, uma peça só para todas as áreas: rótulo à
-// esquerda, ícone à direita, valor em destaque e uma linha de detalhe, com o
-// hover central de `.metric-card` (specs 011, 024 e 090). Investimentos, a
-// página da posição, Recebimentos, Previdência e Gastos familiares usam este
-// componente; Gastos familiares, mais simples, não leva ícone. Se um card tiver
-// ícone, ele fica à direita, nunca ao lado do rótulo.
+
+// The shared metric-card class owns hover styling.
+
+
 //
-// Cor: o ícone segue o tom (menta, violeta nas saídas de Recebimentos e no que
-// passa do limite da Previdência, vermelho na queda de Investimentos) e o
-// valor só ganha cor quando o tom diz algo; neutro fica em `foreground`.
-// As variantes vivem em `tailwind-variants`, como em todo componente atômico.
+
 
 export type KpiTone = "up" | "down" | "spent" | "neutral";
 
@@ -30,7 +29,7 @@ const kpiCard = tv({
       down: { chip: "bg-destructive/10 text-destructive ring-destructive/15", value: "text-destructive" },
       spent: { chip: "bg-chart-spent/10 text-chart-spent ring-chart-spent/15", value: "text-chart-spent" },
     },
-    // Cards em duas colunas no celular: o valor diminui até caber (de 20 a 15 px).
+
     dense: {
       true: { value: "text-xl tracking-[-0.05em] min-[360px]:text-[15px] min-[400px]:text-base sm:text-xl xl:text-2xl xl:tracking-[-0.04em]" },
       false: { value: "text-2xl tracking-[-0.04em]" },
@@ -60,23 +59,23 @@ export function KpiCard({
   footer,
 }: {
   label: string;
-  /** Ícone do selo à direita; sem ele, o card fica só com rótulo, valor e detalhe. */
+
   icon?: ReactNode;
   value: ReactNode;
   detail: ReactNode;
   tone?: KpiTone;
   testId?: string;
-  /** Valor formatado, para leitura fora da animação. */
+
   valueText?: string;
-  /** Atributos `data-*` do valor, como `data-cents`, que os testes leem. */
+
   valueData?: Record<`data-${string}`, string | number | undefined>;
-  /** Cor do valor quando ela depende do número, como o saldo positivo ou negativo. */
+
   valueClassName?: string;
-  /** Cards em duas colunas no celular: o valor diminui até caber. */
+
   dense?: boolean;
-  /** Borda na cor do tom, para o indicador que resume a tela. */
+
   emphasis?: boolean;
-  /** Um complemento discreto abaixo do detalhe, como os destaques da posição. */
+
   footer?: ReactNode;
 }) {
   const slots = kpiCard({ tone, dense, emphasis });
@@ -84,7 +83,7 @@ export function KpiCard({
   return (
     <article className={slots.root()}>
       <div className="flex items-start justify-between gap-4">
-        <p className={slots.label()}>{label}</p>
+        <p className={slots.label()}>{englishLabel(label)}</p>
         {icon ? <span className={slots.chip()}>{icon}</span> : null}
       </div>
       <p data-testid={testId} data-value={valueText} {...valueData} className={slots.value({ class: valueClassName })}>

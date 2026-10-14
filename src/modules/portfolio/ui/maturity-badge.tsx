@@ -1,8 +1,9 @@
+
+import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import { maturityStatus } from "@/modules/portfolio/presentation/maturity";
 
-// Selo de vencimento de um ativo (spec 026), na tabela de Posições e na página
-// da posição (spec 016): neutro, "vencendo" a partir de 30 dias ou vencido.
+
 export function MaturityBadge({
   maturityDate,
   referenceDay,
@@ -30,8 +31,8 @@ export function MaturityBadge({
         className,
       )}
     >
-      {status.label}
-      <span className="sr-only">, {status.title.toLocaleLowerCase("pt-BR")}</span>
+      {englishLabel(status.label)}
+      <span className="sr-only">, {status.title.toLocaleLowerCase("en-GB")}</span>
     </span>
   );
 }

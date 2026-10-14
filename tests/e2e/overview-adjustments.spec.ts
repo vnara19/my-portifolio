@@ -2,8 +2,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// A checagem de abertura grava no banco e pode criar competências; os
-// cenários usam a resposta fixa para não alterar os dados reais.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
@@ -25,59 +24,58 @@ async function pageWidth(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth);
 }
 
-test("a variação em todo o período substitui o card fora da meta", async ({ page }) => {
+test("all-time change replaces the off-target metric", async ({ page }) => {
   await page.goto("/?mes=2026-09");
 
-  const kpis = page.getByRole("region", { name: "Indicadores da competência" });
-  const periodCard = kpis.locator("article").filter({ hasText: "Variação em todo o período" });
+  const kpis = page.getByRole("region", { name: "Reporting month metrics" });
+  const periodCard = kpis.locator("article").filter({ hasText: "All-time change" });
   await expect(periodCard).toBeVisible();
   await expect(kpis.getByText("Fora da meta")).toHaveCount(0);
 
-  // O período começa em outubro de 2023, a primeira competência minimamente
-  // completa (spec 030).
+
+  // Full allocation view (spec 030).
   await expect(page.getByTestId("period-change")).toHaveAttribute("data-value", /^\+[\d.]+(,\d{1,2})?%$/);
   await expect(page.getByTestId("period-change")).toHaveClass(/text-primary/);
   await expect(periodCard.locator("p").last()).toHaveText(/^R\$\s[\d.]+,\d{2} desde Out\/23$/);
 
   await page.goto("/?mes=2023-10");
   await expect(page.getByTestId("period-change")).toHaveText("—");
-  await expect(periodCard.locator("p").last()).toHaveText("Início do período");
+  await expect(periodCard.locator("p").last()).toHaveText("Period start");
 
   await page.goto("/?mes=2023-06");
   await expect(page.getByTestId("period-change")).toHaveText("—");
-  await expect(periodCard.locator("p").last()).toHaveText("O período começa em Out/23");
+  await expect(periodCard.locator("p").last()).toHaveText("The period starts in Oct/23");
 });
 
-test("as variações comparam com meses do calendário", async ({ page }) => {
-  const kpis = page.getByRole("region", { name: "Indicadores da competência" });
+test("changes compare calendar months", async ({ page }) => {
+  const kpis = page.getByRole("region", { name: "Reporting month metrics" });
   const detail = (title: string) => kpis.locator("article").filter({ hasText: title }).locator("p").last();
 
   await page.goto("/?mes=2026-09");
-  await expect(detail("Variação no mês")).toHaveText(/^R\$\s[\d.]+,\d{2}$/);
-  await expect(detail("Variação em 12 meses")).toHaveText(/ desde Set\/25$/);
+  await expect(detail("Monthly change")).toHaveText(/^R\$\s[\d.]+,\d{2}$/);
+  await expect(detail("12-month change")).toHaveText(/ desde Set\/25$/);
 
-  // O histórico preparado (spec 041) não tem lacunas: agosto de 2024 compara
-  // com julho de 2024 e com agosto de 2023, meses que antes faltavam.
+
   await page.goto("/?mes=2024-08");
-  await expect(detail("Variação no mês")).toHaveText(/R\$\s[\d.]+,\d{2}$/);
-  await expect(detail("Variação em 12 meses")).toHaveText(/ desde Ago\/23$/);
+  await expect(detail("Monthly change")).toHaveText(/R\$\s[\d.]+,\d{2}$/);
+  await expect(detail("12-month change")).toHaveText(/ desde Ago\/23$/);
 
-  // Antes de junho de 2024, doze meses antes fica antes da primeira competência.
+
   await page.goto("/?mes=2024-05");
   await expect(page.getByTestId("year-change")).toHaveText("—");
-  await expect(detail("Variação em 12 meses")).toHaveText("Histórico insuficiente");
+  await expect(detail("12-month change")).toHaveText("Insufficient history");
 
-  // Junho de 2024 compara com junho de 2023, exatamente doze meses antes.
+
   await page.goto("/?mes=2024-06");
-  await expect(detail("Variação em 12 meses")).toHaveText(/ desde Jun\/23$/);
+  await expect(detail("12-month change")).toHaveText(/ desde Jun\/23$/);
 
   await page.goto("/?mes=2023-06");
-  await expect(detail("Variação no mês")).toHaveText("Primeira competência do histórico");
+  await expect(detail("Monthly change")).toHaveText("First reporting month in history");
 });
 
-test("uma meta sem posição aparece para comprar", async ({ page }) => {
+test("a target without a position appears as a purchase opportunity", async ({ page }) => {
   await page.goto("/?mes=2024-03&corte=renda-fixa");
-  const panel = page.getByRole("region", { name: "Comprar e vender" });
+  const panel = page.getByRole("region", { name: "Buy and sell" });
   const row = panel.getByRole("row").filter({ hasText: "IPCA · Curto" });
   await expect(row).toContainText("0,0%");
   await expect(row).toContainText("10,0%");
@@ -85,11 +83,11 @@ test("uma meta sem posição aparece para comprar", async ({ page }) => {
   await expect(panel.getByText(/Comprar · \d+/)).toBeVisible();
 });
 
-test("a Visão Geral cabe na largura da tela", async ({ page }) => {
-  // O gráfico de renda fixa fica na aba Renda Fixa da alocação (spec 078).
+test("overview fits the viewport width", async ({ page }) => {
+
   await page.goto("/?mes=2026-09&corte=renda-fixa");
 
-  await expect(page.getByRole("region", { name: "Comprar e vender" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Buy and sell" })).toBeVisible();
   await expect(
     page.getByTestId("duration-current").locator(".recharts-bar-rectangle").first(),
   ).toBeVisible();
@@ -97,14 +95,14 @@ test("a Visão Geral cabe na largura da tela", async ({ page }) => {
   expect(await pageWidth(page)).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
 });
 
-test("renda fixa por resgate mostra o atual e o ideal na mesma escala", async ({ page }) => {
+test("fixed income by redemption term uses the same scale for current and target values", async ({ page }) => {
   await page.goto("/?mes=2026-09&corte=renda-fixa");
 
-  const card = page.getByRole("region", { name: "Renda fixa por resgate" });
+  const card = page.getByRole("region", { name: "Fixed income by redemption term" });
   await card.scrollIntoViewIfNeeded();
 
   const legend = card.getByRole("list", { name: "Prazos" });
-  for (const duration of ["Curto", "Médio", "Longo"]) {
+  for (const duration of ["Short-term", "Medium-term", "Long-term"]) {
     await expect(legend.getByText(duration, { exact: true })).toBeVisible();
   }
 
@@ -113,8 +111,8 @@ test("renda fixa por resgate mostra o atual e o ideal na mesma escala", async ({
   await expect(current.locator(".recharts-bar-rectangle").first()).toBeVisible();
   await expect(target.locator(".recharts-bar-rectangle").first()).toBeVisible();
 
-  // Na largura toda (spec 078), lado a lado a partir de 1024 px; abaixo, o
-  // atual em cima e o ideal embaixo.
+
+  // Current allocation above; target allocation below.
   const currentBox = (await current.boundingBox())!;
   const targetBox = (await target.boundingBox())!;
   const sideBySide = (page.viewportSize()?.width ?? 0) >= 1024;
@@ -130,26 +128,25 @@ test("renda fixa por resgate mostra o atual e o ideal na mesma escala", async ({
   expect(await categories(current)).toEqual(await categories(target));
   await expect(current.locator(".recharts-label-list text").first()).toBeVisible();
 
-  const table = card.getByRole("table", { name: "Renda fixa por resgate, atual e ideal" });
+  const table = card.getByRole("table", { name: "Fixed income by redemption term, current and target" });
   expect(Math.abs((await columnSum(table, 3)) - 100)).toBeLessThan(0.5);
   expect(Math.abs((await columnSum(table, 4)) - 100)).toBeLessThan(0.5);
 });
 
-test("um prazo fora do padrão ocupa a mesma posição nos dois gráficos", async ({ page }) => {
-  // Precisava do BTC classificado como renda fixa em outubro de 2025, que o
-  // histórico preparado (spec 041) corrigiu. O cenário só roda quando os dados
-  // reais voltarem a ter renda fixa sem prazo, por exemplo um rateio com
-  // resgate "Nenhum".
+test("nonstandard terms occupy the same location in both charts", async ({ page }) => {
+
+
+  // The legacy "Nenhum" key denotes no redemption term.
   await page.goto("/?mes=2025-10&corte=renda-fixa");
 
-  const card = page.getByRole("region", { name: "Renda fixa por resgate" });
+  const card = page.getByRole("region", { name: "Fixed income by redemption term" });
   await card.scrollIntoViewIfNeeded();
 
   const legend = card.getByRole("list", { name: "Prazos" });
-  await expect(legend.getByText("Curto", { exact: true })).toBeVisible();
+  await expect(legend.getByText("Short-term", { exact: true })).toBeVisible();
   test.skip(
-    (await legend.getByText("Sem prazo", { exact: true }).count()) === 0,
-    "Nenhuma renda fixa sem prazo em Out/25 nos dados reais.",
+    (await legend.getByText("No term", { exact: true }).count()) === 0,
+    "No fixed-income position without a term in Oct/25 fixture data.",
   );
 
   const current = card.getByTestId("duration-current");
@@ -158,7 +155,7 @@ test("um prazo fora do padrão ocupa a mesma posição nos dois gráficos", asyn
   await expect(current.locator(".recharts-bar")).toHaveCount(legendCount);
   await expect(target.locator(".recharts-bar")).toHaveCount(legendCount);
 
-  // Os rótulos só aparecem quando as barras terminam de entrar.
+
   await expect(current.locator(".recharts-label-list text").first()).toBeVisible();
   await expect(target.locator(".recharts-label-list text").first()).toBeVisible();
 
@@ -173,14 +170,14 @@ test("um prazo fora do padrão ocupa a mesma posição nos dois gráficos", asyn
   expect(await longBarsX(target)).toEqual(currentLongX);
 });
 
-test("num celular de 360 px, toda barra da renda fixa tem rótulo", async ({ page }) => {
+test("every fixed-income bar has a label at 360 px", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/?mes=2026-09&corte=renda-fixa");
 
-  const card = page.getByRole("region", { name: "Renda fixa por resgate" });
+  const card = page.getByRole("region", { name: "Fixed income by redemption term" });
   await card.scrollIntoViewIfNeeded();
 
-  const table = card.getByRole("table", { name: "Renda fixa por resgate, atual e ideal" });
+  const table = card.getByRole("table", { name: "Fixed income by redemption term, current and target" });
   const filled = async (column: number) =>
     (await columnShares(table, column)).filter((share) => share > 0).length;
   const labels = (mode: string) => card.getByTestId(`duration-${mode}`).locator(".recharts-label-list text");
@@ -190,11 +187,11 @@ test("num celular de 360 px, toda barra da renda fixa tem rótulo", async ({ pag
   expect(await pageWidth(page)).toBeLessThanOrEqual(360);
 });
 
-test("os cards respondem ao ponteiro como os indicadores", async ({ page }) => {
+test("cards respond to pointer movement like metric cards", async ({ page }) => {
   await page.goto("/?mes=2026-09");
 
   const hoverable = await page.evaluate(() => matchMedia("(hover: hover)").matches);
-  const kpi = page.getByRole("region", { name: "Indicadores da competência" }).locator("article").first();
+  const kpi = page.getByRole("region", { name: "Reporting month metrics" }).locator("article").first();
   const panel = page.locator("#evolucao");
   const style = (locator: Locator, property: "transform" | "borderTopColor") =>
     locator.evaluate((element, name) => getComputedStyle(element)[name], property);
@@ -205,9 +202,7 @@ test("os cards respondem ao ponteiro como os indicadores", async ({ page }) => {
   const documentTop = (locator: Locator) =>
     locator.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
 
-  // A entrada da aba e os números animados movem os cards; o cursor parado
-  // sobre um card que ainda se move pode sair dele. Espera as animações
-  // finitas da página antes do hover.
+
   await page.evaluate(() =>
     Promise.all(
       document
@@ -225,8 +220,7 @@ test("os cards respondem ao ponteiro como os indicadores", async ({ page }) => {
     return;
   }
 
-  // Repete o hover a cada tentativa: um card que ainda se movia pode ter saído
-  // de baixo do cursor.
+
   await expect
     .poll(async () => {
       await kpi.hover();
@@ -234,7 +228,7 @@ test("os cards respondem ao ponteiro como os indicadores", async ({ page }) => {
     })
     .toBe("matrix(1, 0, 0, 1, 0, -1)");
 
-  // O painel ganha a borda e o fundo do hover, mas não sobe.
+
   const panelTop = await documentTop(panel);
   await panel.hover();
   await expect.poll(() => style(panel, "borderTopColor")).not.toBe(panelBorder);
@@ -247,16 +241,16 @@ test("os cards respondem ao ponteiro como os indicadores", async ({ page }) => {
   await expect.poll(() => style(kpi, "transform")).toBe("none");
 });
 
-test("no celular, comprar e vender mostra só o item e a diferença", async ({ page }) => {
-  // Spec 080: as colunas de atual e ideal ficam para telas maiores.
+test("mobile buy/sell preview shows only the item and difference", async ({ page }) => {
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?mes=2026-09");
 
-  const panel = page.getByRole("region", { name: "Comprar e vender" });
+  const panel = page.getByRole("region", { name: "Buy and sell" });
   await panel.scrollIntoViewIfNeeded();
   await expect(panel.getByRole("columnheader", { name: "Item" })).toBeVisible();
-  await expect(panel.getByRole("columnheader", { name: "Diferença" })).toBeVisible();
-  for (const hidden of ["% atual", "% ideal", "R$ atual", "R$ ideal"]) {
+  await expect(panel.getByRole("columnheader", { name: "Difference" })).toBeVisible();
+  for (const hidden of ["Current %", "Target %", "Current BRL", "Target BRL"]) {
     await expect(panel.getByRole("columnheader", { name: hidden })).toBeHidden();
   }
   expect(await pageWidth(page)).toBeLessThanOrEqual(390);

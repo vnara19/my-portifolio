@@ -1,114 +1,88 @@
-# Meu portfólio
+# My portfolio
 
-Aplicação pessoal para substituir as funcionalidades de
-`raw_file/01-Investimentos.xlsm` de forma incremental e auditável.
+A personal investment workspace built with Next.js, React, Prisma and PostgreSQL.
+The application uses English for its interface, current documentation, code comments
+and new commit messages. Brazilian product names and benchmarks, including Tesouro
+Direto, Selic, CDI and IPCA, retain their official names.
 
-## Requisitos
+## Application
 
-- Node.js 24.20.0;
-- pnpm 11;
-- Docker com Docker Compose.
+- Overview: consolidated value, history, allocation and rebalancing projections.
+- Positions: assets, accounts, classifications, transactions and market quotes.
+- Settings: allocation targets, tolerance, account access and JSON backups.
 
-O repositório inclui `.mise.toml` e `.nvmrc` para selecionar a versão
-correta do Node.js. O Prisma 7 não oferece suporte ao Node.js 26.
+Family expenses, payroll/income and the separate pension dashboard are retired.
+Their database tables remain intact; this change does not delete financial data.
+Pension investments can still be held and classified within the portfolio.
 
-## Ambiente local
+## Development
 
-```bash
+Use Node 24.20.x and the pnpm version pinned in `package.json`.
+
+```sh
+pnpm install --frozen-lockfile
 cp .env.example .env
-pnpm install
-pnpm db:up
-pnpm db:migrate
+pnpm exec prisma generate
 pnpm dev
 ```
 
-A aplicação fica disponível em `http://localhost:3000`. O PostgreSQL é
-publicado somente em `127.0.0.1`.
+Configure `DATABASE_URL` with the Neon **development** branch, never production.
+Keep `.env`, authentication tokens and financial backups out of Git.
+Use a fresh `BETTER_AUTH_SECRET` for local development. `AUTH_ALLOWED_EMAILS`
+controls registration; an empty value disables signup. The application uses
+Better Auth directly rather than Neon Auth.
 
-O aplicativo pede login ([spec 050](.ai/specs/050-login-and-user-data.md)), e
-cada usuário vê só a própria carteira. Gere o segredo das sessões
-(`openssl rand -base64 32`) em `BETTER_AUTH_SECRET` e crie a conta pelo
-terminal; a senha vem de `AUTH_USER_PASSWORD` ou é gerada e mostrada uma vez:
+For local PostgreSQL instead of Neon, use `pnpm db:up` and the local connection
+from `.env.example`. Apply existing migrations with `pnpm exec prisma migrate deploy`.
+Create new migrations only in an isolated development database.
 
-```bash
-pnpm auth:user create voce@exemplo.com "Seu nome"
-pnpm auth:user list
-```
+## Verification
 
-Pela tela, **Criar conta** só aceita os e-mails de `AUTH_ALLOWED_EMAILS`,
-separados por vírgula. Vazio, ninguém cria conta por lá.
-
-Depois de aplicar uma migração, rode `pnpm db:generate`, porque o Prisma 7
-não regenera o cliente automaticamente, e reinicie o `pnpm dev`, que mantém o
-cliente anterior em memória.
-
-## Verificações
-
-```bash
-pnpm db:validate
-pnpm db:generate
+```sh
 pnpm check
+pnpm exec prisma validate
+node --import tsx --test tests/unit/*.test.ts
 pnpm build
-pnpm test:e2e
 ```
 
-O teste do Playwright usa o Google Chrome local em desktop e em viewport
-mobile. As specs e seu estado ficam em `.ai/specs/`.
+Browser tests require an isolated test database, `E2E_USER_EMAIL` and
+`E2E_USER_PASSWORD`. Do not run tests that write against production or personal
+investment records. The UI keeps legacy taxonomy keys and translates only their
+labels, preserving version-5 backups and existing allocations.
 
-Os testes de interface rodam sobre os dados do banco e não gravam dados da
-carteira. Eles entram com o usuário de `E2E_USER_EMAIL` e `E2E_USER_PASSWORD`
-(crie a conta com `pnpm auth:user create` e restaure um backup nela); o login é
-a única gravação. Para testar gravações, use um schema de teste no mesmo
-PostgreSQL:
+## Deployment workflow
 
-```bash
-pnpm db:test-schema create teste
-```
+Repository: `vnara19/my-portifolio`.
 
-`DATABASE_URL="$(pnpm --silent db:test-schema url teste)"` aponta qualquer
-comando para ele, e `E2E_BASE_URL` leva o Playwright a um servidor já rodando
-nesse schema.
+- `dev` deploys to Vercel Preview, connected to Neon `development`.
+- `main` deploys to Vercel Production, connected to Neon `production`.
+- Requested changes may be implemented, tested, committed and pushed to `dev`.
+- Publish to `main` only after explicit approval of the reviewed change.
 
-## Dados
+Production migration builds use `DATABASE_URL_UNPOOLED`. Preview migrations must
+use the development branch connection; never borrow the production connection.
+The current Vercel build command applies migrations only in Production. For any
+future schema change, migrate development explicitly before testing the Preview.
 
-A forma oficial de carregar, levar e guardar os dados é o backup em JSON:
-**Configuração → Backup dos dados** exporta e restaura a carteira do usuário
-que entrou, e os comandos abaixo fazem o mesmo pelo terminal, para o usuário
-indicado. Os arquivos ficam em `backups/`, fora do Git.
+## Market data
 
-```bash
-pnpm backup:export --user voce@exemplo.com
-pnpm backup:restore --user voce@exemplo.com backups/<arquivo>.json --apply
-```
+GitHub Actions runs the quote job hourly at minute 17 and supports manual runs.
+Only symbols due for refresh are fetched. Current quotes become due after 50
+minutes; history failures retry after 24 hours. The displayed update time is the
+last successful quote write, not the last idle job invocation.
 
-Sem `--apply`, a restauração só confere o arquivo e mostra o resumo.
+Providers include Yahoo Finance, CoinGecko, Coinbase, Banco Central and Tesouro
+Direto, with configurable alternatives. See [quote sync](docs/quote-sync-job.md).
 
-O formato do arquivo, as versões e como mudá-lo quando o modelo de dados
-mudar estão em [docs/backup-format.md](docs/backup-format.md).
+## Documentation
 
-## Atualização de cotações
+- [Architecture](docs/architecture.md)
+- [Style guide](docs/style-guide.md)
+- [Git workflow](docs/git-workflow.md)
+- [Backup format](docs/backup-format.md)
+- [Agent instructions](AGENTS.md)
 
-Preencha no `.env` apenas as chaves dos provedores usados pela carteira:
-
-```dotenv
-AWESOME_API_KEY=
-COINGECKO_API_KEY=
-FINNHUB_API_KEY=
-ALPHA_VANTAGE_API_KEY=
-```
-
-As chaves são lidas somente no servidor. Ao abrir, o aplicativo cria as
-competências que faltarem até o mês corrente. As cotações são atualizadas só
-pelo job agendado, fora da navegação: `pnpm quotes:sync` localmente, e a função
-do Neon ou o GitHub Actions quando publicados
-([spec 053](.ai/specs/053-scheduled-quote-sync.md), [operação](docs/quote-sync-job.md)).
-Não há atualização manual ([spec 051](.ai/specs/051-shared-automatic-quotes.md)).
-As cotações automáticas são de todos os usuários: cada execução busca os
-símbolos devidos de todas as carteiras, grava no histórico diário e recalcula a
-competência do mês corrente de cada usuário; as que falharem mantêm o valor
-anterior e são avisadas, a cada usuário, pelo nome dos ativos dele. O mesmo job
-busca o CDI diário do Banco Central e recalcula a renda fixa configurada a
-percentual do CDI ([spec 060](.ai/specs/060-cdi-fixed-income.md)). Na página **Cotações**, em
-Posições, uma cotação não encontrada ou com falha pode ser digitada à mão; ela
-vale só para quem a digitou, até a próxima atualização bem-sucedida. A página
-também mostra o histórico das execuções do mês.
+Earlier specifications and discovery notes under `.ai/` are historical reference
+material in their original language. Legacy spreadsheet/VBA files and applied SQL
+migrations are historical artifacts, not current product instructions. Preserve
+applied migration contents and commit authorship.

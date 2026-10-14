@@ -10,31 +10,29 @@ import { runAsUser } from "@/lib/user-db";
 import { addPosition } from "@/modules/portfolio/application/month-editing";
 import { currentReferenceMonth } from "@/modules/quotes/domain/calendar";
 
-// Só grava no schema separado desta revisão. A execução normal em public é
-// ignorada, sem criar usuário nem consultar provedores externos.
+
 const isolated = databaseSchema(process.env.DATABASE_URL ?? "") === "tx_adjustments_063";
 
-test("XRP conferido em outra função salva preço atual e deixa o histórico para o cron", { skip: !isolated }, async () => {
+test("XRP verification across processes saves the current price and defers history to the job", { skip: !isolated }, async () => {
   const prisma = getPrismaClient()!;
   const userId = randomUUID();
   const otherUserId = randomUUID();
   const referenceDate = currentReferenceMonth();
   let createdSymbol = false;
   try {
-    // Não sobrescrever um símbolo que outra suíte já tenha colocado neste schema.
+
     assert.equal(await prisma.quoteSymbol.count({ where: { symbol: "XRP" } }), 0);
     await prisma.user.create({ data: { id: userId, name: "Ticker integration", email: `ticker-${userId}@example.test` } });
     await prisma.user.create({ data: { id: otherUserId, name: "Ticker isolation", email: `ticker-${otherUserId}@example.test` } });
     const month = await prisma.portfolioMonth.create({ data: { userId, referenceDate, status: "DRAFT" } });
     const institution = await prisma.institution.create({ data: { userId, name: "Ticker test", normalizedName: "ticker test" } });
-    const account = await prisma.account.create({ data: { userId, institutionId: institution.id, name: "Principal" } });
+    const account = await prisma.account.create({ data: { userId, institutionId: institution.id, name: "Main" } });
     const plan = await prisma.targetPlan.create({ data: { userId, name: "Ticker test" } });
     await prisma.allocationTarget.create({ data: {
       userId, planId: plan.id, key: "crypto", scope: "ASSET_CLASS", primaryLabel: "Criptomoedas", percentage: 1,
     } });
 
-    // Simula o Route Handler em outro processo. Qualquer busca de histórico ou
-    // fonte não prevista falha, em vez de passar despercebida na inclusão.
+
     const script = `
       import 'dotenv/config';
       import { readFileSync } from 'node:fs';

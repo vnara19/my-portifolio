@@ -5,73 +5,72 @@ import { chooseFilter, usesFilterSheet } from "./support/position-filters";
 import { stubQuoteChecks } from "./support/quote-checks";
 import { expectCompetence } from "./support/competence";
 
-// A checagem de abertura grava no banco; aqui ela é substituída por uma
-// resposta fixa para que os cenários não alterem os dados nem mudem de mês.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
 
-test("apresenta a carteira normalizada", async ({ page }) => {
+test("displays the normalized portfolio", async ({ page }) => {
   await page.goto("/");
 
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Patrimônio consolidado",
+      name: "Portfolio overview",
     }),
   ).toBeVisible();
   await expect(page.getByTestId("portfolio-total")).toContainText("R$");
-  await expect(page.getByRole("heading", { name: "Evolução do patrimônio" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Classe de ativos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Portfolio value over time" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Asset class" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Configuração da carteira" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Metas da carteira" })).toBeVisible();
+  await page.getByRole("link", { name: "Portfolio settings" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio targets" })).toBeVisible();
 });
 
-test("o seletor global de mês governa as telas", async ({ page }) => {
+test("the global month selector controls all screens", async ({ page }) => {
   await page.goto("/?mes=2026-02");
 
-  await expectCompetence(page, "Fevereiro de 2026");
+  await expectCompetence(page, "February 2026");
 
-  await page.getByRole("link", { name: "Posições" }).click();
+  await page.getByRole("link", { name: "Positions" }).click();
   await expect(page).toHaveURL(/\/posicoes\?mes=2026-02/);
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 });
 
-test("um mês inexistente cai para a competência mais recente", async ({ page }) => {
+test("an unknown month falls back to the latest reporting month", async ({ page }) => {
   await page.goto("/?mes=1999-01");
 
-  await expect(page.getByRole("heading", { level: 1, name: "Patrimônio consolidado" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio overview" })).toBeVisible();
   await expect(page.getByTestId("portfolio-total")).toContainText("R$");
 });
 
-test("a visão geral alterna o empilhamento do gráfico", async ({ page }) => {
+test("overview toggles chart stacking", async ({ page }) => {
   await page.goto("/?mes=2026-05");
   await waitForHydration(page);
 
   await expect(page.getByTestId("portfolio-total")).toContainText("R$");
 
   const chart = page.locator("#evolucao");
-  await chart.getByRole("button", { name: "Classe", exact: true }).click();
-  await expect(chart.getByRole("button", { name: "Classe", exact: true })).toHaveAttribute(
+  await chart.getByRole("button", { name: "Class", exact: true }).click();
+  await expect(chart.getByRole("button", { name: "Class", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
 });
 
-test("os filtros de posições combinam e somam o recorte", async ({ page }) => {
+test("position filters combine and total the selected view", async ({ page }) => {
   await page.goto("/posicoes?mes=2026-09");
 
-  await expect(page.getByText("21 de 21 posições")).toBeVisible();
+  await expect(page.getByText("21 of 21 positions")).toBeVisible();
 
-  await chooseFilter(page, "Instituição", "Inter", /inst=Inter/);
-  await expect(page.getByText(/^\d+ de 21 posições$/)).not.toHaveText("21 de 21 posições");
+  await chooseFilter(page, "Institution", "Inter", /inst=Inter/);
+  await expect(page.getByText(/^\d+ of 21 positions$/)).not.toHaveText("21 of 21 positions");
 
   await page.goto("/posicoes?mes=2026-09&classe=Renda%20Vari%C3%A1vel&agrupar=classe");
-  await expect(page.getByText("Parcela nas classes selecionadas")).toBeVisible();
+  await expect(page.getByText("Share in selected classes")).toBeVisible();
 
   await page.reload();
-  // No celular, a contagem fica no botão Filtros (spec 077).
+
   await expect(
     (await usesFilterSheet(page))
       ? page.getByRole("button", { name: "Filtros, 1 ativo" })
@@ -79,123 +78,122 @@ test("os filtros de posições combinam e somam o recorte", async ({ page }) => 
   ).toBeVisible();
 });
 
-test("a tabela mostra classe, subclasse e resgate e a seta expande a linha", async ({ page }) => {
+test("the table shows class, subclass and redemption term and expands its rows", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/posicoes?mes=2026-09");
 
-  // Cotação, moeda e liquidez saíram das colunas e ficaram nos filtros (spec 044).
+
   const headers = page.getByRole("columnheader");
   await expect(headers.filter({ hasText: /^Classes$/ })).toHaveCount(1);
-  for (const removed of [/Cotação/, /^Moeda$/, /^Liquidez$/]) {
+  for (const removed of [/Quote/, /^Currency$/, /^Liquidity$/]) {
     await expect(headers.filter({ hasText: removed })).toHaveCount(0);
   }
-  await expect(page.getByRole("combobox", { name: "Moeda", exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Liquidez", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Currency", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Liquidity", exact: true })).toBeVisible();
 
   const row = (asset: string) => page.getByTestId("position-row").filter({ hasText: asset }).first();
-  await expect(row("LCD BNDES LIQUIDEZ").getByTestId("position-classes")).toHaveText("Caixa · Pós-fixado · Curto");
+  await expect(row("LCD BNDES LIQUIDEZ").getByTestId("position-classes")).toHaveText("Cash · Floating-rate · Short-term");
   await expect(row("Bitcoin 01").getByTestId("position-classes")).toHaveText("Cripto · BTC");
 
-  // A previdência tem seis classificações: a linha mostra a maior e "…+5".
+
   const pension = row("Previdência - Grão FIM");
   await expect(pension.getByTestId("position-classes")).toContainText("…+5");
-  await pension.getByRole("button", { name: "Expandir Previdência - Grão FIM" }).click();
+  await pension.getByRole("button", { name: "Expand Previdência - Grão FIM" }).click();
   const details = page.getByTestId("position-details");
   await expect(details).toBeVisible();
   await expect(details.getByTestId("position-details-allocations").getByRole("listitem")).toHaveCount(6);
-  await expect(details).toContainText("Saldo, sem cotação");
+  await expect(details).toContainText("Balance, without a quote");
   await expect(details).toContainText("BRL");
-  await pension.getByRole("button", { name: "Recolher Previdência - Grão FIM" }).click();
+  await pension.getByRole("button", { name: "Collapse Previdência - Grão FIM" }).click();
   await expect(details).toHaveCount(0);
 });
 
-test("um mês fechado não oferece edição", async ({ page }) => {
+test("a closed month does not offer editing", async ({ page }) => {
   await page.goto("/posicoes?mes=2026-08");
 
-  await expect(page.getByTestId("month-locked")).toContainText("Ago/26 está fechado");
-  await expect(page.getByRole("button", { name: "Adicionar posição" })).toHaveCount(0);
+  await expect(page.getByTestId("month-locked")).toContainText("Aug/26 is closed");
+  await expect(page.getByRole("button", { name: "Add position" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Editar / })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Remover / })).toHaveCount(0);
 });
 
-test("a configuração simula metas antes de salvar", async ({ page }) => {
+test("settings simulate targets before saving", async ({ page }) => {
   await page.goto("/configuracao?mes=2026-09");
   await waitForHydration(page);
 
-  await expect(page.getByRole("heading", { level: 1, name: "Metas da carteira" })).toBeVisible();
-  const preview = page.getByRole("complementary", { name: "Prévia do rebalanceamento" });
-  // No celular, a prévia sai (spec 080).
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio targets" })).toBeVisible();
+  const preview = page.getByRole("complementary", { name: "Rebalancing preview" });
+
   if ((page.viewportSize()?.width ?? 0) >= 768) {
     await expect(preview).toContainText("Set/26");
   } else {
     await expect(preview).toBeHidden();
   }
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
   const original = await caixa.inputValue();
   await caixa.fill(String(Number(original.replace(",", ".")) + 5).replace(".", ","));
 
-  await expect(page.getByText("1 grupo não soma 100%")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Salvar metas" })).toBeDisabled();
+  await expect(page.getByText("1 group does not total 100%")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save targets" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Descartar" }).click();
+  await page.getByRole("button", { name: "Discard" }).click();
   await expect(caixa).toHaveValue(original);
 });
 
-test("a tolerância muda a prévia antes de salvar", async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) < 768, "No celular, a prévia sai (spec 080).");
+test("tolerance changes the preview before saving", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 768, "The preview is hidden on mobile (spec 080).");
   await page.goto("/configuracao?mes=2026-09");
   await waitForHydration(page);
 
-  const tolerance = page.getByRole("textbox", { name: "Tolerância em pontos percentuais" });
+  const tolerance = page.getByRole("textbox", { name: "Tolerance in percentage points" });
   await expect(tolerance).toHaveValue("2");
-  // Com a faixa mais larga, menos linhas da prévia pedem comprar ou vender.
+
   const actions = page
-    .getByRole("complementary", { name: "Prévia do rebalanceamento" })
+    .getByRole("complementary", { name: "Rebalancing preview" })
     .getByText(/^(Comprar|Vender)$/);
   const before = await actions.count();
 
   await tolerance.fill("20");
-  await expect(page.getByText("1 alteração")).toBeVisible();
+  await expect(page.getByText("1 change")).toBeVisible();
   await expect.poll(() => actions.count()).toBeLessThan(before);
-  await expect(page.getByRole("button", { name: "Salvar metas" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save targets" })).toBeEnabled();
 
   await tolerance.fill("25");
-  await expect(page.getByText("Use uma tolerância entre 0 e 20")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Salvar metas" })).toBeDisabled();
+  await expect(page.getByText("Use a tolerance between 0 and 20")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save targets" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Descartar" }).click();
+  await page.getByRole("button", { name: "Discard" }).click();
   await expect(tolerance).toHaveValue("2");
   await expect.poll(() => actions.count()).toBe(before);
 });
 
-test("as abas da alocação trocam o gráfico e o comprar e vender juntos", async ({ page }) => {
+test("allocation tabs update both the chart and buy/sell preview", async ({ page }) => {
   await page.goto("/?mes=2026-09");
 
-  // Spec 078: as abas ficam fora de comprar e vender e escolhem o gráfico de
-  // cima. Evolução e tipo de ativo ficam sempre à vista.
-  const tabs = page.getByRole("group", { name: "Recorte da alocação" });
-  const division = page.getByRole("group", { name: "Divisão do recorte" });
+
+  const tabs = page.getByRole("group", { name: "Allocation view" });
+  const division = page.getByRole("group", { name: "View breakdown" });
   const chart = page.getByTestId("composition-chart");
-  await expect(page.getByRole("heading", { name: "Comprar e vender" })).toBeVisible();
-  await expect(chart.getByRole("heading", { name: "Classe de ativos" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tipo de ativo" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Moeda", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Buy and sell" })).toBeVisible();
+  await expect(chart.getByRole("heading", { name: "Asset class" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Asset type" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Currency", exact: true })).toHaveCount(0);
 
-  await division.getByRole("button", { name: "Moeda", exact: true }).click();
+  await division.getByRole("button", { name: "Currency", exact: true }).click();
   await expect(page).toHaveURL(/sub=moeda/);
-  await expect(chart.getByRole("heading", { name: "Moeda", exact: true })).toBeVisible();
+  await expect(chart.getByRole("heading", { name: "Currency", exact: true })).toBeVisible();
 
-  await tabs.getByRole("button", { name: "Renda Fixa", exact: true }).click();
+  await tabs.getByRole("button", { name: "Fixed income", exact: true }).click();
   await expect(page).toHaveURL(/corte=renda-fixa/);
-  // A divisão fica sempre embaixo do recorte, mesmo com uma opção só.
-  await expect(division.getByRole("button", { name: "Subclasse", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("region", { name: "Renda fixa por resgate" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Comprar e vender" }).getByRole("row").filter({ hasText: "IPCA ·" }).first()).toBeVisible();
 
-  await tabs.getByRole("button", { name: "Caixa", exact: true }).click();
-  await expect(chart.getByRole("heading", { name: "Caixa por moeda" })).toBeVisible();
-  await tabs.getByRole("button", { name: "Renda Variável", exact: true }).click();
-  await expect(chart.getByRole("heading", { name: "Renda variável por subclasse" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Evolução do patrimônio" })).toBeVisible();
+  await expect(division.getByRole("button", { name: "Subclass", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "Fixed income by redemption term" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Buy and sell" }).getByRole("row").filter({ hasText: "IPCA ·" }).first()).toBeVisible();
+
+  await tabs.getByRole("button", { name: "Cash", exact: true }).click();
+  await expect(chart.getByRole("heading", { name: "Cash by currency" })).toBeVisible();
+  await tabs.getByRole("button", { name: "Equities", exact: true }).click();
+  await expect(chart.getByRole("heading", { name: "Equities by subclass" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Portfolio value over time" })).toBeVisible();
 });

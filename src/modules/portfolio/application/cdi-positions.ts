@@ -1,3 +1,5 @@
+
+/** Recalculate eligible positions from covered rates and dated transactions. Missing data must not silently replace the known balance. */
 import { PortfolioMonthStatus, Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { addDays as addCalendarDays, isBusinessDay } from "@/modules/portfolio/domain/business-days";
 import { calculateIncomeMonth, type CdiMovement } from "@/modules/portfolio/domain/cdi-valuation";
@@ -6,16 +8,6 @@ import { calendarDay, toDateKey } from "@/modules/quotes/domain/calendar";
 import { fetchCdiDaily } from "@/modules/quotes/infrastructure/bcb";
 import { describeProviderError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
 
-// Rendimento automático (specs 060 e 079): o saldo bruto de cada posição com o
-// cálculo ligado é a base do mês, no dia do início do cálculo, mais as
-// movimentações do mês, cada uma rendendo a partir do próprio dia, como nos
-// bancos. Cada classificação rende pela própria taxa, na proporção do peso.
-// Pós-fixado: pelo CDI diário observado (série 12 do Banco Central) × o
-// percentual. Prefixado: (1 + taxa ao ano)^(1/252) por dia útil. Sem IR nem
-// IOF. O rendimento calculado fica na posição (`calculated_income_brl`), sem
-// virar transação, e a data do último dia que rendeu fica em
-// `income_calculated_through`. Quando falta taxa conferida, o saldo conhecido
-// é preservado e o motivo fica registrado.
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
@@ -28,9 +20,9 @@ export type CdiReport = {
 };
 
 const INDEXER = "CDI";
-/** Uma nova consulta ao Banco Central só depois de algumas horas. */
+
 const RATES_REFRESH_MS = 3 * 60 * 60 * 1000;
-/** O SGS aceita até dez anos por consulta; cinco deixam folga. */
+
 const MAX_WINDOW_DAYS = 5 * 365;
 
 const CDI_POSITION_SELECT = {
@@ -49,28 +41,19 @@ const CDI_POSITION_SELECT = {
 
 type CdiPosition = Prisma.PositionGetPayload<{ select: typeof CDI_POSITION_SELECT }>;
 
-/**
- * Posição com o rendimento automático ligado (spec 079): o ativo tem a flag, e
- * a posição, o início do cálculo no mês. A taxa de cada classificação é
- * conferida no cálculo.
- */
+
 export const CDI_POSITION_WHERE = {
   calculationStartDate: { not: null },
   asset: { autoIncome: true, quoteSymbol: null },
 } satisfies Prisma.PositionWhereInput;
 
-/** As que têm alguma parte pelo CDI, que precisa das taxas do Banco Central. */
+
 const CDI_ONLY_WHERE = {
   ...CDI_POSITION_WHERE,
   allocations: { some: { subclass: "Pós-fixado" } },
 } satisfies Prisma.PositionWhereInput;
 
-/**
- * Busca no Banco Central o CDI que falta para as posições em uso: do início do
- * cálculo mais antigo (ou do dia seguinte ao último conferido) até hoje. A
- * janela conferida vai até a última taxa publicada; dias sem taxa dentro dela
- * são dias sem CDI (feriados).
- */
+
 export async function syncCdiRates(
   prisma: PrismaClient,
   { now = new Date(), fetchRates = fetchCdiDaily, monthIds }: { now?: Date; fetchRates?: CdiRatesFetcher; monthIds: string[] },
@@ -95,8 +78,7 @@ export async function syncCdiRates(
     return { state: "fresh", inserted: 0, through: toDateKey(latest.throughDate) };
   }
 
-  // Sem janela que comece antes do início mais antigo, a busca recomeça dele;
-  // com ela, continua do dia seguinte ao último dia conferido.
+
   const from = covered ? nextDay(toDateKey(covered.throughDate)) : start;
 
   if (from > today) {
@@ -112,8 +94,8 @@ export async function syncCdiRates(
       try {
         rates.push(...(await fetchRates(windowStart, windowEnd)));
       } catch (error) {
-        // O SGS responde 404 quando não há nenhum valor no período, como num
-        // fim de semana: é uma resposta, não uma falha.
+
+
         if (!(error instanceof QuoteHttpError && error.statusCode === 404)) {
           throw error;
         }
@@ -138,7 +120,7 @@ export async function syncCdiRates(
 
     if (lastPublished) {
       const fromDate = covered ? covered.fromDate : new Date(`${from}T00:00:00.000Z`);
-      // Uma janela só, que cresce: do início até a última taxa publicada.
+
       await prisma.rateCoverage.deleteMany({ where: { indexer: INDEXER, fromDate } });
       await prisma.rateCoverage.create({
         data: {
@@ -159,13 +141,7 @@ export async function syncCdiRates(
   }
 }
 
-/**
- * Calcula o saldo bruto das posições pelo CDI e grava o resultado. `asOf` é o
- * dia da avaliação (exclusivo, convenção da B3), como o primeiro dia do mês
- * seguinte para fechar uma competência; por padrão, hoje. A avaliação nunca
- * passa do fim da competência da posição (um mês passado fecha no primeiro dia
- * do mês seguinte) nem do dia seguinte à última taxa conferida.
- */
+
 export async function valueCdiPositions(
   client: Client,
   { where, now = new Date(), asOf }: { where: Prisma.PositionWhereInput; now?: Date; asOf?: string },
@@ -182,7 +158,7 @@ export async function valueCdiPositions(
     (min, position) => (!min || position.calculationStartDate! < min ? position.calculationStartDate! : min),
     null,
   );
-  // O prefixado não depende de taxa publicada: só o CDI busca as taxas.
+
   const [rates, coverage] = earliest
     ? await Promise.all([
         client.rateObservation.findMany({
@@ -195,15 +171,15 @@ export async function valueCdiPositions(
   const rateList = rates.map((rate) => ({ date: toDateKey(rate.date), dailyPercent: rate.dailyPercent.toString() }));
   const windows = coverage.map((window) => ({ from: toDateKey(window.fromDate), through: toDateKey(window.throughDate) }));
   const lastVerified = windows.reduce<string | null>((max, window) => (!max || window.through > max ? window.through : max), null);
-  // A avaliação vai até `asOf` (por padrão, hoje), sem passar do dia seguinte
-  // à última taxa conferida.
+
+
   const until = asOf ?? toDateKey(calendarDay(now));
   const verifiedUntil = lastVerified ? minDay(until, nextDay(lastVerified)) : until;
 
   for (const position of positions) {
     const prefixed = !cdiPositions.includes(position);
-    // O prefixado rende até hoje (exclusivo); com alguma parte pelo CDI, até o
-    // dia seguinte à última taxa conferida. Os dois param no fim da competência.
+
+
     const evaluation = minDay(prefixed ? until : verifiedUntil, nextMonthStart(position.portfolioMonth.referenceDate));
     const result = valueOne(position, { rates: rateList, windows, asOf: evaluation });
 
@@ -239,11 +215,11 @@ function valueOne(
   const parts = autoIncomeParts(position.asset, position.allocations);
 
   if (!parts) {
-    return { state: "unavailable" as const, message: "Informe a rentabilidade de cada classificação pós-fixada ou prefixada." };
+    return { state: "unavailable" as const, message: "Enter the rate of return for every floating-rate or fixed-rate classification." };
   }
 
   if (parts.some((part) => part.indexer === "CDI") && windows.length === 0) {
-    return { state: "unavailable" as const, message: "O CDI do Banco Central ainda não foi carregado. O saldo conhecido foi preservado." };
+    return { state: "unavailable" as const, message: "Banco Central CDI data has not loaded yet. The known balance was preserved." };
   }
 
   return calculateIncomeMonth({
@@ -266,7 +242,7 @@ function nextDay(day: string) {
   return addDays(day, 1);
 }
 
-/** Primeiro dia do mês seguinte ao da competência (AAAA-MM-DD). */
+
 function nextMonthStart(referenceDate: Date) {
   return toDateKey(new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 1)));
 }
@@ -281,12 +257,7 @@ function minDay(left: string, right: string) {
   return left < right ? left : right;
 }
 
-/**
- * Passo do job agendado (spec 053): busca o CDI que falta e recalcula as
- * posições configuradas no mês corrente e nos meses abertos de cada usuário. Um
- * mês passado aberto fecha no fim da competência, então recalculá-lo só
- * completa os dias que ainda não tinham taxa; um mês revisado não muda.
- */
+
 export async function syncCdi(
   prisma: PrismaClient,
   { now = new Date(), fetchRates = fetchCdiDaily }: { now?: Date; fetchRates?: CdiRatesFetcher } = {},
@@ -304,7 +275,7 @@ export async function syncCdi(
 
   const rates = await syncCdiRates(prisma, { now, fetchRates, monthIds });
   await completePreviousCloses(prisma, monthIds);
-  // O prefixado é recalculado mesmo sem CDI para buscar (spec 079).
+
   const results = await valueCdiPositions(prisma, { where: { portfolioMonthId: { in: monthIds } }, now });
 
   return {
@@ -314,13 +285,7 @@ export async function syncCdi(
   };
 }
 
-/**
- * A virada fecha o mês anterior pelo CDI até o dia 1 do novo, mas a taxa do
- * último dia útil só sai no dia seguinte. Quando esse fechamento automático
- * ficou sem os últimos dias, o job o completa e leva o saldo à base do mês
- * novo, como no extrato do banco (spec 079). Um fechamento completo nunca é
- * mexido: correções seguem sem cascata (spec 057).
- */
+
 async function completePreviousCloses(prisma: PrismaClient, monthIds: string[]) {
   const successors = await prisma.position.findMany({
     where: { ...CDI_ONLY_WHERE, portfolioMonthId: { in: monthIds } },
@@ -338,7 +303,7 @@ async function completePreviousCloses(prisma: PrismaClient, monthIds: string[]) 
   for (const successor of successors) {
     const monthStart = successor.portfolioMonth.referenceDate;
 
-    // Só a posição que herdou o cálculo da virada, que começa no dia 1.
+
     if (successor.calculationStartDate?.getTime() !== monthStart.getTime()) {
       continue;
     }
@@ -379,7 +344,7 @@ async function completePreviousCloses(prisma: PrismaClient, monthIds: string[]) 
   }
 }
 
-/** Último dia útil antes do dia informado (AAAA-MM-DD). */
+
 function lastBusinessDayBefore(day: string) {
   let cursor = addCalendarDays(day, -1);
 

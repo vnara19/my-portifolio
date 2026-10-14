@@ -3,23 +3,20 @@ import { expect, test, type Page } from "@playwright/test";
 import { waitForHydration } from "./support/position-form";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// A checagem de abertura grava no banco e pode criar competências; os
-// cenários usam a resposta fixa para não alterar os dados reais.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
 
-// Cenários da spec 027. Nenhum grava: cada um altera o rascunho e descarta.
 
 async function openSettings(page: Page) {
   await page.goto("/configuracao?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Metas da carteira" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Percentual de Caixa" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio targets" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Cash percentage" })).toBeVisible();
   await waitForHydration(page);
 }
 
-// Gesto de toque real, pelo protocolo do Chrome: `page.mouse` não passa pela rolagem por toque nem pelo
-// `touch-action`, e `page.touchscreen` só sabe tocar.
+
 async function touchGesture(page: Page, from: { x: number; y: number }, moves: { x: number; y: number }[]) {
   const client = await page.context().newCDPSession(page);
   await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
@@ -38,23 +35,23 @@ function path(from: { x: number; y: number }, dx: number, dy: number, steps: num
 }
 
 async function discardIfPending(page: Page) {
-  const discard = page.getByRole("button", { name: "Descartar" });
+  const discard = page.getByRole("button", { name: "Discard" });
   if (await discard.isVisible()) {
     await discard.click();
   }
   await expect(discard).toHaveCount(0);
 }
 
-test("o deslizante de meta anda de 1 em 1 ponto", async ({ page }) => {
+test("target sliders move in one-percentage-point increments", async ({ page }) => {
   await openSettings(page);
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
   const original = await caixa.inputValue();
-  const slider = page.getByRole("slider", { name: "Meta de Caixa" });
+  const slider = page.getByRole("slider", { name: "Cash target" });
   await slider.scrollIntoViewIfNeeded();
   const thumb = await slider.boundingBox();
   if (!thumb) {
-    throw new Error("Deslizante de Caixa sem posição na tela.");
+    throw new Error("Cash slider without a position on screen.");
   }
 
   const y = thumb.y + thumb.height / 2;
@@ -83,11 +80,11 @@ test("o deslizante de meta anda de 1 em 1 ponto", async ({ page }) => {
   await expect(caixa).toHaveValue(original);
 });
 
-test("o valor quebrado digitado fica no deslizante até ele ser movido", async ({ page }) => {
+test("fractional typed targets persist until the slider moves", async ({ page }) => {
   await openSettings(page);
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
-  const slider = page.getByRole("slider", { name: "Meta de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
+  const slider = page.getByRole("slider", { name: "Cash target" });
 
   await caixa.fill("15,5");
   await expect(slider).toHaveAttribute("aria-valuenow", "15.5");
@@ -105,7 +102,7 @@ test("o valor quebrado digitado fica no deslizante até ele ser movido", async (
   await page.keyboard.press("ArrowLeft");
   await expect(caixa).toHaveValue("15");
 
-  // O passo largo segue a mesma regra: do valor quebrado, até o inteiro mais distante dentro de 10 pontos.
+
   for (const [key, expected] of [
     ["Shift+ArrowRight", "25"],
     ["PageUp", "25"],
@@ -118,8 +115,7 @@ test("o valor quebrado digitado fica no deslizante até ele ser movido", async (
     await expect(caixa, key).toHaveValue(expected);
   }
 
-  // O `input type="range"` oculto guarda 16 para 15,5; um ajuste por ele, como o de leitores de tela,
-  // também parte do valor exibido e vai a 16, não a 17.
+
   await caixa.fill("15,5");
   await slider.evaluate((input: HTMLInputElement) => {
     input.stepUp();
@@ -128,8 +124,8 @@ test("o valor quebrado digitado fica no deslizante até ele ser movido", async (
   });
   await expect(caixa).toHaveValue("16");
 
-  const tolerance = page.getByRole("textbox", { name: "Tolerância em pontos percentuais" });
-  const toleranceSlider = page.getByRole("slider", { name: "Faixa de tolerância" });
+  const tolerance = page.getByRole("textbox", { name: "Tolerance in percentage points" });
+  const toleranceSlider = page.getByRole("slider", { name: "Tolerance band" });
   await tolerance.fill("2,25");
   await expect(toleranceSlider).toHaveAttribute("aria-valuenow", "2.25");
   await expect(tolerance).toHaveValue("2,25");
@@ -142,64 +138,62 @@ test("o valor quebrado digitado fica no deslizante até ele ser movido", async (
   await discardIfPending(page);
 });
 
-test("editar uma meta não troca a aba da prévia", async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) < 768, "No celular, a prévia sai (spec 080).");
+test("editing a target does not switch the preview tab", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 768, "The preview is hidden on mobile (spec 080).");
   await openSettings(page);
 
-  const preview = page.getByRole("complementary", { name: "Prévia do rebalanceamento" });
-  const moeda = preview.getByRole("button", { name: "Moeda", exact: true });
+  const preview = page.getByRole("complementary", { name: "Rebalancing preview" });
+  const moeda = preview.getByRole("button", { name: "Currency", exact: true });
   await moeda.scrollIntoViewIfNeeded();
   await moeda.click();
   await expect(moeda).toHaveAttribute("aria-pressed", "true");
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
   await caixa.fill("20");
-  await expect(page.getByText("1 grupo não soma 100%")).toBeVisible();
+  await expect(page.getByText("1 group does not total 100%")).toBeVisible();
   await expect(moeda).toHaveAttribute("aria-pressed", "true");
 
-  const estrategia = page.getByRole("slider", { name: "Meta de Core", exact: true });
+  const estrategia = page.getByRole("slider", { name: "Core target", exact: true });
   await estrategia.focus();
   await page.keyboard.press("ArrowLeft");
   await expect(moeda).toHaveAttribute("aria-pressed", "true");
 
-  await page.getByRole("slider", { name: "Faixa de tolerância" }).focus();
+  await page.getByRole("slider", { name: "Tolerance band" }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(moeda).toHaveAttribute("aria-pressed", "true");
-  await expect(preview.getByRole("button", { name: "Classe", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(preview.getByRole("button", { name: "Class", exact: true })).toHaveAttribute("aria-pressed", "false");
 
   await discardIfPending(page);
   await expect(moeda).toHaveAttribute("aria-pressed", "true");
 });
 
-test("sem Excel: nada de restaurar o padrão da planilha nem de contar o que está fora da meta", async ({ page }) => {
+test("no spreadsheet reset or off-target count is exposed", async ({ page }) => {
   await openSettings(page);
 
-  // A importação do Excel saiu (spec 047) e a prévia não conta mais o que está
-  // fora da meta. As versões listam só os backups importados (spec 054).
-  await expect(page.getByRole("button", { name: "Restaurar padrão do Excel" })).toHaveCount(0);
+
+  await expect(page.getByRole("button", { name: "Restore spreadsheet defaults" })).toHaveCount(0);
   await expect(page.getByText("Fora da meta")).toHaveCount(0);
   await expect(page.getByText("origem: Excel")).toHaveCount(0);
-  const versions = page.getByRole("region", { name: "Versões", exact: true });
+  const versions = page.getByRole("region", { name: "Versions", exact: true });
   await expect(versions.locator("[data-version-kind]").first()).toBeVisible();
   await expect(versions.locator('[data-version-kind]:not([data-version-kind="import"])')).toHaveCount(0);
   await expect(versions.getByText("vigente", { exact: true })).toHaveCount(0);
-  await expect(versions.locator("li").filter({ hasNotText: "Backup importado" })).toHaveCount(0);
+  await expect(versions.locator("li").filter({ hasNotText: "Backup imported" })).toHaveCount(0);
 });
 
-// A moeda sobre o patrimônio total não é editada (spec 054): ela sai da moeda
-// dentro de cada classe, ponderada pela meta da classe, e acompanha o rascunho.
-test("a moeda sobre o patrimônio total é calculada, sem campo", async ({ page }) => {
+
+test("portfolio-wide currency targets are derived rather than editable", async ({ page }) => {
   await openSettings(page);
 
-  const currency = page.getByRole("region", { name: "Moeda", exact: true });
+  const currency = page.getByRole("region", { name: "Currency", exact: true });
   await expect(currency.getByRole("textbox")).toHaveCount(0);
   await expect(currency.getByRole("slider")).toHaveCount(0);
-  // Sem a descrição do quadro (spec 075): o rótulo de cada meta diz que é calculada.
-  await expect(currency).not.toContainText("calculada pela moeda dentro de cada classe");
 
-  const brl = currency.getByLabel("Meta calculada de BRL");
+  await expect(currency).not.toContainText("calculated by currency within each class");
+
+  const brl = currency.getByLabel("Calculated BRL target");
   const before = await brl.textContent();
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
   const current = Number((await caixa.inputValue()).replace(",", "."));
   await caixa.fill(String(current + 10).replace(".", ","));
   await expect(brl).not.toHaveText(before ?? "");
@@ -208,12 +202,12 @@ test("a moeda sobre o patrimônio total é calculada, sem campo", async ({ page 
   await expect(brl).toHaveText(before ?? "");
 });
 
-test("no toque, rolar sobre o deslizante rola a página e não muda a meta", async ({ page, isMobile, browserName }) => {
-  test.skip(!isMobile || browserName !== "chromium", "Gesto nativo via CDP: somente Chrome mobile; Safari exige aparelho real.");
+test("vertical touch scrolling over a slider scrolls the page without changing the target", async ({ page, isMobile, browserName }) => {
+  test.skip(!isMobile || browserName !== "chromium", "Native CDP gesture: Chrome mobile only; Safari requires a real device.");
   await openSettings(page);
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
-  const slider = page.getByRole("slider", { name: "Meta de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
+  const slider = page.getByRole("slider", { name: "Cash target" });
   const control = page.locator("[data-base-ui-slider-control]").filter({ has: slider });
   await caixa.fill("15,5");
   await slider.scrollIntoViewIfNeeded();
@@ -221,7 +215,7 @@ test("no toque, rolar sobre o deslizante rola a página e não muda a meta", asy
   for (const fraction of [0.15, 0.75]) {
     const box = await control.boundingBox();
     if (!box) {
-      throw new Error("Deslizante de Caixa sem posição na tela.");
+      throw new Error("Cash slider without a position on screen.");
     }
     const before = await page.evaluate(() => window.scrollY);
     const from = { x: box.x + box.width * fraction, y: box.y + box.height / 2 };
@@ -235,7 +229,7 @@ test("no toque, rolar sobre o deslizante rola a página e não muda a meta", asy
   const thumb = await slider.boundingBox();
   const track = await control.boundingBox();
   if (!thumb || !track) {
-    throw new Error("Deslizante de Caixa sem posição na tela.");
+    throw new Error("Cash slider without a position on screen.");
   }
   await page.touchscreen.tap(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
   await page.touchscreen.tap(track.x + track.width * 0.85, track.y + track.height / 2);
@@ -244,17 +238,17 @@ test("no toque, rolar sobre o deslizante rola a página e não muda a meta", asy
   await discardIfPending(page);
 });
 
-test("no toque, o arraste horizontal anda de 1 em 1 ponto", async ({ page, isMobile, browserName }) => {
-  test.skip(!isMobile || browserName !== "chromium", "Gesto nativo via CDP: somente Chrome mobile; Safari exige aparelho real.");
+test("horizontal touch dragging changes targets in one-point increments", async ({ page, isMobile, browserName }) => {
+  test.skip(!isMobile || browserName !== "chromium", "Native CDP gesture: Chrome mobile only; Safari requires a real device.");
   await openSettings(page);
 
-  const caixa = page.getByRole("textbox", { name: "Percentual de Caixa" });
-  const slider = page.getByRole("slider", { name: "Meta de Caixa" });
+  const caixa = page.getByRole("textbox", { name: "Cash percentage" });
+  const slider = page.getByRole("slider", { name: "Cash target" });
   await caixa.fill("15,5");
   await slider.scrollIntoViewIfNeeded();
   const thumb = await slider.boundingBox();
   if (!thumb) {
-    throw new Error("Deslizante de Caixa sem posição na tela.");
+    throw new Error("Cash slider without a position on screen.");
   }
 
   const from = { x: thumb.x + thumb.width / 2, y: thumb.y + thumb.height / 2 };

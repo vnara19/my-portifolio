@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireSessionUser } from "@/modules/auth/session";
 import { getRunHistory, type QuoteRunHistoryPage } from "@/modules/quotes/application/get-run-history";
 
-/** Próxima página do histórico de execuções da competência (spec 046). */
+
 export async function loadRunHistoryAction(month: unknown, before: unknown): Promise<QuoteRunHistoryPage | null> {
   await requireSessionUser();
   const parsed = z

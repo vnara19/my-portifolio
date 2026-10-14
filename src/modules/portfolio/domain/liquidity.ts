@@ -1,14 +1,13 @@
-// Prazo de liquidez de um ativo (spec 039): em quanto tempo o dinheiro fica
-// disponível ao resgatar. Opcional e informativo, mais usado na renda fixa.
-// As sugestões cobrem os casos comuns; outro valor pode ser digitado.
+// Asset liquidity period: how long until the funds become available (spec 039).
+
 
 export const LIQUIDITY_SUGGESTIONS = ["Imediata", "D+0", "D+1", "D+2", "D+30", "D+90", "No vencimento"];
 
-export const NO_LIQUIDITY = "Sem liquidez informada";
+export const NO_LIQUIDITY = "Liquidity not specified";
 
 export const MAX_LIQUIDITY_LENGTH = 30;
 
-/** Texto limpo; "d+1" vira "D+1". Vazio vira nulo. */
+/** Normalize text: "d+1" becomes "D+1"; empty input becomes null. */
 export function normalizeLiquidity(value: string | null | undefined) {
   const text = (value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
 

@@ -5,10 +5,7 @@ import { readQuoteViewer, runViewFor } from "@/modules/quotes/application/run-vi
 import { addMonths } from "@/modules/quotes/domain/calendar";
 import { type QuoteFailureView, type QuoteRefreshRunStatus } from "@/modules/quotes/domain/quote-refresh";
 
-// Histórico das execuções de cotações da competência (spec 046, que trocou o
-// histórico de todos os meses da spec 028): as execuções que consultaram
-// cotações num dia do mês, da mais recente para a mais antiga, em páginas. As
-// execuções são de todos os usuários; cada um vê só os próprios símbolos
+
 // (spec 051).
 
 export type QuoteRunHistoryStatus = QuoteRefreshRunStatus;
@@ -16,7 +13,7 @@ export type QuoteRunHistoryStatus = QuoteRefreshRunStatus;
 export type QuoteRunHistoryEntry = {
   id: string;
   status: QuoteRunHistoryStatus;
-  /** Início da execução. */
+
   at: string;
   succeeded: number;
   failures: QuoteFailureView[];
@@ -26,7 +23,7 @@ export type QuoteRunHistoryEntry = {
 export type QuoteRunHistoryPage = {
   runs: QuoteRunHistoryEntry[];
   total: number;
-  /** Instante da última execução da página, para pedir a seguinte. */
+
   nextCursor: string | null;
 };
 
@@ -48,7 +45,7 @@ export async function getRunHistory(referenceDate: Date, before?: string): Promi
   }
 
   try {
-    // Só as execuções com algum símbolo do usuário (spec 053).
+
     const viewer = await readQuoteViewer(userDb);
     const visible = visibleRunsFor(viewer);
     const [runs, total] = await Promise.all([
@@ -94,7 +91,7 @@ export async function getRunHistory(referenceDate: Date, before?: string): Promi
       nextCursor: entries.length > RUN_HISTORY_PAGE_SIZE ? page.at(-1)!.at : null,
     };
   } catch (error) {
-    console.error("Não foi possível ler o histórico de execuções.", error);
+    console.error("Could not load the execution history.", error);
     return null;
   }
 }

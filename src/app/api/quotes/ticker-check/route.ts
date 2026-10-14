@@ -1,3 +1,5 @@
+
+
 import { z } from "zod";
 
 import { rejectForeignRequest } from "@/lib/same-origin-request";
@@ -15,11 +17,8 @@ const requestSchema: z.ZodType<TickerCheckRequest> = z.object({
   coinId: z.string().trim().min(1).max(120).optional(),
 });
 
-// Checagem do ticker de um ativo novo (spec 026). Rota em vez de Server Action
-// pelo mesmo motivo da open-check: o cliente despacha Server Actions uma por
-// vez, e a consulta ao provedor, que pode levar segundos, seguraria o
-// salvamento. Como rota, o diálogo também cancela a checagem de um texto que já
-// mudou.
+
+// Recheck when the asset identity changes.
 export async function POST(request: Request) {
   const rejection = rejectForeignRequest(request);
 
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
-    const body: TickerCheckResponse = { status: "invalid", message: "Digite um ticker válido para este tipo de ativo." };
+    const body: TickerCheckResponse = { status: "invalid", message: "Enter a valid ticker for this asset type." };
     return Response.json(body, { status: 400 });
   }
 
@@ -44,6 +43,6 @@ export async function POST(request: Request) {
     const body: TickerCheckResponse = await checkTicker(parsed.data);
     return Response.json(body);
   } catch {
-    return Response.json({ message: "Não foi possível conferir o ticker agora." }, { status: 500 });
+    return Response.json({ message: "Could not verify the ticker right now." }, { status: 500 });
   }
 }

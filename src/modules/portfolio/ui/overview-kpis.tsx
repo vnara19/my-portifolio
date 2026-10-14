@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import NumberFlow from "@number-flow/react";
 import { BankIcon, CurrencyBtcIcon, CurrencyDollarIcon, TrendUpIcon } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
@@ -13,60 +15,60 @@ import { describeSelic, formatSelic } from "@/modules/quotes/presentation/selic-
 
 export function OverviewKpis({ overview, selic }: { overview: OverviewData; selic: SelicMonthView | null }) {
   return (
-    <section aria-label="Indicadores da competência" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Reporting month metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <KpiCard
-        label="Patrimônio total"
+        label="Total portfolio value"
         testId="portfolio-total"
         icon={<TrendUpIcon aria-hidden="true" size={18} weight="duotone" />}
         value={
           <NumberFlow
             value={overview.totalBrl}
             format={{ style: "currency", currency: "BRL", maximumFractionDigits: 0 }}
-            locales="pt-BR"
+            locales="en-GB"
           />
         }
         detail={
           overview.totalUsd === null
-            ? "Câmbio do mês indisponível"
-            : `US$ ${overview.totalUsd.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+            ? "Monthly exchange rate unavailable"
+            : `US$ ${overview.totalUsd.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
         }
       />
 
       <ChangeKpiCard
-        label="Variação no mês"
+        label="Monthly change"
         testId="month-change"
         changeBrl={overview.changeBrl}
         changePercent={overview.changePercent}
         emptyDetail={
           overview.previousMonth === null
-            ? "Primeira competência do histórico"
-            : `Histórico insuficiente: sem ${formatMonthCompact(overview.previousMonth)}`
+            ? "First reporting month in history"
+            : `Insufficient history: no ${formatMonthCompact(overview.previousMonth)}`
         }
       />
 
       <ChangeKpiCard
-        label="Variação em 12 meses"
+        label="12-month change"
         testId="year-change"
         changeBrl={overview.change12mBrl}
         changePercent={overview.change12mPercent}
-        detailSuffix={`desde ${formatMonthCompact(overview.yearAgoMonth)}`}
+        detailSuffix={`since ${formatMonthCompact(overview.yearAgoMonth)}`}
         emptyDetail={
           overview.yearAgoMissing
-            ? `Histórico insuficiente: sem ${formatMonthCompact(overview.yearAgoMonth)}`
-            : "Histórico insuficiente"
+            ? `Insufficient history: no ${formatMonthCompact(overview.yearAgoMonth)}`
+            : "Insufficient history"
         }
       />
 
       <ChangeKpiCard
-        label="Variação em todo o período"
+        label="All-time change"
         testId="period-change"
         changeBrl={overview.changeSinceStartBrl}
         changePercent={overview.changeSinceStartPercent}
-        detailSuffix={`desde ${formatMonthCompact(overview.periodStart)}`}
+        detailSuffix={`since ${formatMonthCompact(overview.periodStart)}`}
         emptyDetail={
           overview.beforePeriodStart
-            ? `O período começa em ${formatMonthCompact(overview.periodStart)}`
-            : "Início do período"
+            ? `The period starts on ${formatMonthCompact(overview.periodStart)}`
+            : "Period start"
         }
       />
 
@@ -74,24 +76,24 @@ export function OverviewKpis({ overview, selic }: { overview: OverviewData; seli
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
           <QuoteBadge
             icon={<CurrencyDollarIcon aria-hidden="true" size={16} weight="duotone" />}
-            label="Dólar no mês"
+            label="USD this month"
             value={overview.usdRate === null ? "—" : formatBrl(overview.usdRate)}
           />
           <QuoteBadge
             icon={<CurrencyBtcIcon aria-hidden="true" size={16} weight="duotone" />}
-            label="Bitcoin no mês"
+            label="Bitcoin this month"
             value={overview.btcRate === null ? "—" : formatBrl(overview.btcRate)}
           />
-          {/* Meta Selic da competência (spec 067): informativa, não remunera posições. */}
+
           <QuoteBadge
             icon={<BankIcon aria-hidden="true" size={16} weight="duotone" />}
-            label="Selic no mês"
+            label="Selic rate this month"
             value={formatSelic(selic)}
             detail={describeSelic(selic)}
             testId="selic-month"
           />
-          <QuoteBadge label="Posições" value={overview.positionCount.toLocaleString("pt-BR")} />
-          <QuoteBadge label="Instituições" value={overview.institutionCount.toLocaleString("pt-BR")} />
+          <QuoteBadge label="Positions" value={overview.positionCount.toLocaleString("en-GB")} />
+          <QuoteBadge label="Institutions" value={overview.institutionCount.toLocaleString("en-GB")} />
         </div>
       </div>
     </section>
@@ -108,7 +110,7 @@ function QuoteBadge({
   icon?: ReactNode;
   label: string;
   value: string;
-  /** Origem do valor, no toque prolongado e para leitores de tela. */
+
   detail?: string;
   testId?: string;
 }) {
@@ -120,7 +122,7 @@ function QuoteBadge({
         </span>
       ) : null}
       <div>
-        <p className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">{label}</p>
+        <p className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">{englishLabel(label)}</p>
         <p className="mt-0.5 font-mono text-sm text-foreground">{value}</p>
         {detail ? <p className="sr-only">{detail}</p> : null}
       </div>

@@ -2,10 +2,8 @@ export type QuoteRequest = {
   symbol: string;
   instrumentType: string;
   baseCurrency: string;
-  /**
-   * Identificador do símbolo no provedor, quando é outro: a moeda da CoinGecko
-   * guardada para um cripto novo (spec 026).
-   */
+
+
   providerId?: string;
 };
 
@@ -14,7 +12,7 @@ export type QuoteSuccess = {
   provider: string;
   status: "SUCCESS";
   valueBrl: number;
-  /** Data oficial do preço (AAAA-MM-DD), quando o provedor publica com atraso. */
+
   quoteDate?: string;
 };
 
@@ -33,7 +31,7 @@ export type QuoteProviderConfiguration = {
   coinGeckoApiKey?: string;
   finnhubApiKey?: string;
   alphaVantageApiKey?: string;
-  /** Chave gratuita da brapi.dev, opcional (spec 037). */
+
   brapiToken?: string;
 };
 

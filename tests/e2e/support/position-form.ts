@@ -2,31 +2,21 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 import { waitForCompetenceHydration } from "./competence";
 
-// Formulário único da posição (spec 043). Só um mês aberto aceita edição
-// (spec 034): sem ele, "Adicionar posição" e o lápis das linhas não aparecem,
-// e os cenários que editam ficam pulados. Os testes rodam sobre os dados reais
-// e nunca salvam: preenchem, conferem e cancelam.
 
-/**
- * Espera a página hidratar: no WebKit, mais lento, um campo preenchido antes
- * disso mostra o texto sem o React receber a mudança. A faixa de competências
- * marca `data-hydrated` quando monta no navegador.
- */
+// Fill, inspect and cancel; do not save changes.
+
+
 export async function waitForHydration(page: Page) {
   await waitForCompetenceHydration(page);
 }
 
 export async function hasOpenMonth(page: Page) {
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
   await waitForHydration(page);
-  return (await page.getByRole("button", { name: "Adicionar posição" }).count()) > 0;
+  return (await page.getByRole("button", { name: "Add position" }).count()) > 0;
 }
 
-/**
- * Abre Posições num mês aberto: o mais recente ou, fechado ele, o anterior,
- * como quando o usuário reabre o mês passado para acertar algo. Devolve falso
- * quando os dois estão fechados, para o cenário ser pulado.
- */
+
 export async function openEditableMonth(page: Page) {
   await page.goto("/posicoes");
 
@@ -44,8 +34,8 @@ export async function openEditableMonth(page: Page) {
 }
 
 export async function openAddForm(page: Page) {
-  await page.getByRole("button", { name: "Adicionar posição" }).click();
-  const dialog = page.getByRole("dialog", { name: "Adicionar posição" });
+  await page.getByRole("button", { name: "Add position" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add position" });
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -55,10 +45,7 @@ export function positionRow(page: Page, asset: string, institution?: string) {
   return (institution ? rows.filter({ hasText: institution }) : rows).first();
 }
 
-/**
- * Abre a página da posição pela linha da tabela. As ações (movimentar,
- * liquidar, editar e remover) ficam só nela (spec 080).
- */
+
 export async function openPositionPage(page: Page, asset: string, institution?: string) {
   await waitForHydration(page);
   await positionRow(page, asset, institution).getByRole("link", { name: asset, exact: true }).click();
@@ -68,32 +55,32 @@ export async function openPositionPage(page: Page, asset: string, institution?: 
 
 export async function openEditForm(page: Page, asset: string, institution?: string) {
   await openPositionPage(page, asset, institution);
-  await page.getByRole("button", { name: "Editar posição" }).click();
-  const dialog = page.getByRole("dialog", { name: `Editar ${asset}` });
+  await page.getByRole("button", { name: "Edit position" }).click();
+  const dialog = page.getByRole("dialog", { name: `Edit ${asset}` });
   await expect(dialog).toBeVisible();
   return dialog;
 }
 
-export function formTab(dialog: Locator, name: "Geral" | "Ativo" | "Rateio") {
+export function formTab(dialog: Locator, name: "Overall" | "Asset" | "Allocation") {
   return dialog.getByRole("tab", { name: new RegExp(`^${name}`) });
 }
 
-/** Inclusão guiada (spec 066): as etapas são informativas, sem atalhos. */
+
 export async function expectFormStep(dialog: Locator, label: string) {
-  await expect(dialog.getByRole("list", { name: "Etapas do formulário" }).locator('li[aria-current="step"]')).toContainText(label);
+  await expect(dialog.getByRole("list", { name: "Form steps" }).locator('li[aria-current="step"]')).toContainText(label);
 }
 
-export async function continueForm(dialog: Locator, next: "Ativo" | "Rateio" | "Conferir") {
-  await dialog.getByRole("button", { name: "Continuar", exact: true }).click();
+export async function continueForm(dialog: Locator, next: "Asset" | "Allocation" | "Review") {
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
   await expectFormStep(dialog, next);
 }
 
 export async function closeForm(dialog: Locator) {
-  await dialog.getByRole("button", { name: "Fechar", exact: true }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 }
 
-/** Pendências que impedem salvar; zero quer dizer pronto, sem precisar salvar. */
+
 export function issueCount(dialog: Locator) {
   return dialog.locator("footer[data-issue-count]");
 }
@@ -105,6 +92,6 @@ export async function pick(page: Page, field: Locator, text: string, option: str
 }
 
 export async function chooseKind(page: Page, dialog: Locator, kind: RegExp) {
-  await dialog.getByRole("combobox", { name: "Tipo do ativo" }).click();
+  await dialog.getByRole("combobox", { name: "Asset type" }).click();
   await page.getByRole("option", { name: kind }).click();
 }

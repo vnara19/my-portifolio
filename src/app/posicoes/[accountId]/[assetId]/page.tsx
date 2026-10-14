@@ -23,13 +23,10 @@ export async function generateMetadata({ params }: PositionPageProps): Promise<M
     ?.asset.findUnique({ where: { id: assetId }, select: { name: true } })
     .catch(() => null);
 
-  return { title: asset?.name ?? "Posição" };
+  return { title: asset?.name ?? "Position" };
 }
 
-// Página da posição (spec 016): a conta e o ativo identificam a posição em
-// todas as competências; o seletor global de mês continua valendo. O botão
-// "Editar posição" abre o mesmo formulário da tabela (spec 043) para a posição
-// da competência selecionada.
+
 export default async function PositionPage({ params, searchParams }: PositionPageProps) {
   const [{ accountId, assetId }, query] = await Promise.all([params, searchParams]);
   const mes = typeof query.mes === "string" ? query.mes : undefined;
@@ -39,8 +36,8 @@ export default async function PositionPage({ params, searchParams }: PositionPag
     selected ? getMonthPositions(selected.referenceDate) : Promise.resolve(null),
     getEditingCatalog(),
   ]);
-  // A faixa de competências mostra só os meses com a posição no recorte (spec
-  // 075); um mês sem ela leva ao mais próximo que tem.
+
+
   const positionMonths = history ? monthsWithPosition(history, query.contas === "todas") : null;
 
   if (history && positionMonths && positionMonths.size > 0 && !positionMonths.has(history.selectedMonth)) {
@@ -87,7 +84,7 @@ export default async function PositionPage({ params, searchParams }: PositionPag
   );
 }
 
-/** Competências em que a posição existe, na conta ou em todas as contas, em ordem. */
+
 function monthsWithPosition(history: PositionHistoryView, allAccounts: boolean) {
   const view = allAccounts && history.all ? history.all : history.account;
   return new Set(view.slots.filter((slot) => slot.kind === "present").map((slot) => slot.month));

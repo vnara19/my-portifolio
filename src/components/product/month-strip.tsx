@@ -1,5 +1,7 @@
 "use client";
 
+/** Responsive month timeline with keyboard navigation, safe touch targets and reduced-motion support. */
+
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
 import {
   useCallback,
@@ -16,30 +18,30 @@ import { tv } from "tailwind-variants";
 import { MonthSheet, monthMarker } from "@/components/product/month-sheet";
 import { cn } from "@/lib/utils";
 
-// A faixa de competências da carteira: cápsulas de ano e, no ano aberto, os
-// meses (specs 030, 034 e 075). Um mês por vez. O componente só desenha e
-// responde ao toque; quem decide o que a seleção significa (URL, travas de
-// mês) é a página que o usa. As áreas pessoais escolhem a competência no
-// `YearMonthPicker`, que aceita vários meses. Os átomos usam `tailwind-variants`.
-//
-// Toque (spec 096): alvos de 44 px e espaço entre os meses em telas de toque,
-// `touch-manipulation` (sem atraso nem zoom no toque duplo) e retorno ao
-// pressionar; no computador nada muda. No celular (abaixo de `sm`) a faixa nem
-// aparece: um botão com o mês escolhido abre a competência numa folha de baixo
-// (`MonthSheet`), como os filtros.
+
+
+
+
+
+
+
+
+
+
+
 
 export type MonthStripMarker = "up" | "down" | "none";
 
 export type MonthStripItem = {
-  /** "AAAA-MM". */
+
   month: string;
-  /** "Fevereiro de 2026". */
+
   name: string;
-  /** Rótulo curto do botão: "Fev". */
+
   short: string;
-  /** Complemento do nome acessível, como "+1,20% no mês". */
+
   description?: string;
-  /** Marca sob o mês: alta, queda ou nenhuma. */
+
   marker: MonthStripMarker;
 };
 
@@ -118,16 +120,16 @@ const yearTick = tv({
 });
 
 type MonthStripProps = {
-  /** Do mais antigo ao mais recente. */
+
   items: readonly MonthStripItem[];
-  /** O mês selecionado, "AAAA-MM". */
+
   selected: string;
   onSelect: (month: string) => void;
-  /** Mostra a barra de progresso enquanto a página carrega a competência. */
+
   pending?: boolean;
-  /** Faixa restrita aos meses de uma posição (specs 075 e 077): destaque da trilha e entrada animada. */
+
   scoped?: boolean;
-  /** À direita da faixa: a situação do mês selecionado. */
+
   trailing?: ReactNode;
 };
 
@@ -136,8 +138,8 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
   const stripRef = useRef<HTMLElement>(null);
   const [browsing, setBrowsing] = useState<{ year: number; from: string } | null>(null);
   const [edges, setEdges] = useState({ start: false, end: false });
-  // A entrada animada vale só para a primeira montagem da faixa restrita, não
-  // para cada ano aberto depois.
+
+
   const [intro, setIntro] = useState(scoped);
 
   useEffect(() => {
@@ -151,10 +153,10 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
 
   const selectedYear = Number(selected.slice(0, 4));
 
-  // O ano aberto para consulta só vale para a competência em que foi aberto.
-  // Qualquer troca de competência, pelo mês, pelo teclado ou pela URL, devolve
-  // a faixa ao ano dela; sem limpar aqui, o ano consultado reabriria sozinho se
-  // a competência voltasse à de antes.
+
+
+
+
   if (browsing !== null && browsing.from !== selected) {
     setBrowsing(null);
   }
@@ -165,8 +167,8 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
 
   const reveal = useCallback((behavior: ScrollBehavior) => {
     const element = stripRef.current;
-    // O painel do ano que está fechando continua no DOM até a saída terminar;
-    // por isso a busca parte do ano aberto, e não da faixa inteira.
+
+
     const expanded = element?.querySelector<HTMLElement>("[data-expanded]");
     const target = expanded?.querySelector<HTMLElement>("[aria-current='date']") ?? expanded;
 
@@ -179,9 +181,9 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
     const offset = targetBox.left - stripBox.left + element.scrollLeft;
     const left = targetBox.width >= element.clientWidth ? offset : offset - (element.clientWidth - targetBox.width) / 2;
 
-    // Rola só a faixa: scrollIntoView também deslocava a página no celular. A
-    // faixa é invertida, então o deslocamento vai de zero, no fim, a negativo;
-    // o navegador limita o valor ao intervalo válido.
+
+
+
     element.scrollTo({ left, behavior });
   }, []);
 
@@ -192,11 +194,11 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
     reveal(reduceMotion ? "auto" : "smooth");
   };
 
-  // Se o ano muda com o foco num mês do ano que está fechando, o foco passa ao
-  // mês selecionado do ano que abriu assim que o painel dele entra no DOM, ainda
-  // sem largura. Esperar o fim da animação não basta: um segundo toque nas setas
-  // antes disso já é uma troca dentro do ano novo, e o foco cairia no documento
-  // quando o painel que sai fosse desmontado.
+
+
+
+
+
   useLayoutEffect(() => {
     const element = stripRef.current;
     const focused = document.activeElement;
@@ -221,8 +223,8 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
     const yearChanged = lastExpandedYear.current !== expandedYear;
     lastExpandedYear.current = expandedYear;
 
-    // Ao trocar de ano, a posição final só existe depois da animação; quem
-    // centraliza é o painel do ano, quando termina de abrir.
+
+
     if (yearChanged) {
       return;
     }
@@ -277,25 +279,23 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
   const fade = `linear-gradient(to right, ${edges.start ? "transparent" : "black"}, black 20px, black calc(100% - 20px), ${edges.end ? "transparent" : "black"})`;
 
   return (
-    // Na tela larga a faixa fica centralizada (spec 030): a coluna do meio
-    // encolhe e rola quando falta espaço. À direita, o que a página põe em
-    // `trailing`: a situação do mês, aberto ou fechado (spec 034).
+
+
+
     <div className={slots.band()}>
       <span aria-hidden="true" className={slots.progress()}>
         <span className="month-progress block h-full w-1/3 bg-primary" />
       </span>
       <span aria-live="polite" className="sr-only">
-        {pending ? "Carregando competência" : ""}
+        {pending ? "Loading reporting month" : ""}
       </span>
 
       <MonthSheet items={items} selected={selected} onSelect={onSelect} scoped={scoped} />
 
-      {/* Invertida para que, sem rolagem, a faixa mostre o fim, onde fica a
-          competência mais recente; assim o celular já abre no lugar certo antes
-          de o JavaScript carregar. A ordem dos anos dentro dela não muda. */}
+      {}
       <nav
         ref={stripRef}
-        aria-label="Competências"
+        aria-label="Reporting months"
         data-hydrated={hydrated || undefined}
         data-scoped={scoped || undefined}
         onScroll={updateEdges}
@@ -350,9 +350,9 @@ function YearCapsule({
   const holdsSelected = chosen !== undefined;
   const panelId = `competencias-${group.year}`;
   const hintId = `${panelId}-selecionada`;
-  // Com outro ano aberto para consulta, o mês selecionado sai da árvore de
-  // acessibilidade; a cápsula do ano dele avisa qual é, além da cor.
-  const hint = chosen && !expanded ? `Competência selecionada: ${chosen.name}` : null;
+
+
+  const hint = chosen && !expanded ? `Selected reporting month: ${chosen.name}` : null;
   const slots = yearCapsule({ expanded, holdsSelected, scoped });
 
   return (
@@ -381,7 +381,7 @@ function YearCapsule({
             key="months"
             id={panelId}
             role="group"
-            aria-label={`Meses de ${group.year}`}
+            aria-label={`Months in ${group.year}`}
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: "auto", opacity: 1, transition: panelMotion.enter }}
             exit={{ width: 0, opacity: 0, transition: panelMotion.exit }}
@@ -421,7 +421,7 @@ function MonthButton({
   item: MonthStripItem;
   selected: boolean;
   onSelect: (month: string) => void;
-  /** Atraso da entrada animada, na faixa restrita a uma posição; nulo sem animação. */
+
   intro: number | null;
 }) {
   return (
@@ -444,8 +444,8 @@ function MonthButton({
 function YearTicks({ group, selected, hidden }: { group: YearGroup; selected: string; hidden: boolean }) {
   const byMonth = new Map(group.months.map((month) => [Number(month.month.slice(5, 7)) - 1, month]));
 
-  // Marcas de 3 px em cor cheia: com 2 px e a opacidade das barras dos meses,
-  // verde e vermelho mal se distinguiam numa tela de densidade comum.
+
+
   return (
     <span aria-hidden="true" className={cn("mt-1 flex gap-px transition-opacity duration-150", hidden ? "opacity-0" : "opacity-100")}>
       {Array.from({ length: 12 }, (_, index) => {
@@ -457,8 +457,8 @@ function YearTicks({ group, selected, hidden }: { group: YearGroup; selected: st
   );
 }
 
-// Antes da hidratação os botões da faixa não respondem. `data-hydrated` marca
-// o momento em que passam a responder; os testes de interface esperam por ele.
+
+
 function subscribeNothing() {
   return () => {};
 }

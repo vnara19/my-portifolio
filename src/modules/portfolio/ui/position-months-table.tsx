@@ -25,11 +25,7 @@ type TableRow =
   | { kind: "absent"; from: string; to: string; count: number; elsewhere: string[]; exitBrl: number | null }
   | { kind: "missing"; from: string; to: string; count: number };
 
-/**
- * Mês a mês, do mais recente para o mais antigo. Meses sem a posição e meses
- * sem competência aparecem como lacunas agrupadas, nunca como zero. Começa
- * recolhido (spec 075).
- */
+
 export function PositionMonthsTable({
   slots,
   selectedMonth,
@@ -45,9 +41,8 @@ export function PositionMonthsTable({
   quoteSymbol: string | null;
   ticker: string | null;
   scope: "account" | "all";
-  /**
-   * Movimentações registradas por mês, na conta ou em todas as contas (spec 058).
-   */
+
+
   recorded: Map<string, RecordedMonth> | null;
 }) {
   const rows = buildTableRows(slots).reverse();
@@ -57,22 +52,22 @@ export function PositionMonthsTable({
   return (
     <CollapsibleSection
       id="months"
-      title="Mês a mês"
-      summary={`${presentCount} ${presentCount === 1 ? "competência" : "competências"}`}
+      title="Month by month"
+      summary={`${presentCount} ${presentCount === 1 ? "reporting month" : "reporting months"}`}
       testId="position-months-section"
     >
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left" data-testid="position-months">
           <thead>
             <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
-              <th className="px-4 py-3 pl-5 sm:pl-6">Competência</th>
-              {quoted ? <th className="hidden px-4 py-3 text-right md:table-cell">Quantidade</th> : null}
-              {quoted ? <th className="hidden px-4 py-3 text-right lg:table-cell">Cotação</th> : null}
-              <th className="px-4 py-3 text-right">Valor</th>
-              <th className="px-4 py-3 text-right">Variação</th>
-              {quoted ? <th className="hidden px-4 py-3 text-right lg:table-cell">Preço</th> : null}
-              <th className="hidden px-4 py-3 text-right whitespace-nowrap lg:table-cell">Aportes e resgates</th>
-              <th className="hidden px-4 py-3 pr-5 text-right sm:table-cell sm:pr-6">Da carteira</th>
+              <th className="px-4 py-3 pl-5 sm:pl-6">Reporting month</th>
+              {quoted ? <th className="hidden px-4 py-3 text-right md:table-cell">Quantity</th> : null}
+              {quoted ? <th className="hidden px-4 py-3 text-right lg:table-cell">Quote</th> : null}
+              <th className="px-4 py-3 text-right">Value</th>
+              <th className="px-4 py-3 text-right">Change</th>
+              {quoted ? <th className="hidden px-4 py-3 text-right lg:table-cell">Price</th> : null}
+              <th className="hidden px-4 py-3 text-right whitespace-nowrap lg:table-cell">Contributions and redemptions</th>
+              <th className="hidden px-4 py-3 pr-5 text-right sm:table-cell sm:pr-6">Portfolio share</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/55">
@@ -97,15 +92,14 @@ export function PositionMonthsTable({
                       <span className="text-[11px] text-muted-foreground/90">
                         {row.kind === "missing"
                           ? row.count === 1
-                            ? "Sem competência no histórico"
-                            : `${row.count} meses sem competência no histórico`
-                          : `${scope === "account" ? "Fora desta conta" : "Fora da carteira"}${
-                              row.elsewhere.length > 0 ? ` · em ${row.elsewhere.join(", ")}` : ""
+                            ? "No reporting month in history"
+                            : `${row.count} months missing from the history`
+                          : `${scope === "account" ? "Outside this account" : "Outside the portfolio"}${
+                              row.elsewhere.length > 0 ? ` · in ${row.elsewhere.join(", ")}` : ""
                             }`}
                       </span>
                       {row.kind === "absent" && row.exitBrl !== null ? (
-                        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                          saída {formatSignedBrl(row.exitBrl)}
+                        <span className="ml-auto font-mono text-[11px] text-muted-foreground">withdrawal {formatSignedBrl(row.exitBrl)}
                         </span>
                       ) : null}
                     </div>
@@ -137,11 +131,11 @@ function PresentRow({
 }) {
   const { slot } = row;
   const step = slot.step;
-  // A volta depois de uma lacuna vale também quando o mês tem movimentações
-  // registradas, em que a entrada não é estimada (spec 071).
+
+
   const entry = row.first || row.returned || slot.entryBrl !== null;
-  // Cada linha abre a posição naquela competência (spec 073), como o clique no
-  // gráfico de evolução.
+
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -179,20 +173,19 @@ function PresentRow({
         </p>
         {entry ? (
           <p className="mt-0.5 text-[10px] text-muted-foreground">
-            {row.first ? "Entrada" : "Volta"}
-            {row.cameFrom.length > 0 ? ` · de ${row.cameFrom.join(", ")}` : ""}
+            {row.first ? "Opening" : "Back"}
+            {row.cameFrom.length > 0 ? ` · from ${row.cameFrom.join(", ")}` : ""}
           </p>
         ) : step?.acrossMissing ? (
-          <p className="mt-0.5 text-[10px] text-muted-foreground">desde {monthLabel(step.fromMonth)}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">since {monthLabel(step.fromMonth)}</p>
         ) : null}
         {slot.liquidated ? (
-          <p className="mt-0.5 text-[10px] text-muted-foreground" data-testid="month-liquidated">
-            Liquidada
+          <p className="mt-0.5 text-[10px] text-muted-foreground" data-testid="month-liquidated">Liquidated
           </p>
         ) : null}
-        {slot.source === "mixed" || step?.source === "mixed" ? <p className="mt-0.5 text-[10px] text-muted-foreground">origem mista</p> : null}
-        {/* Diferenças de centavos são arredondamento, não falta de registro. */}
-        {step?.unexplainedBrl && Math.abs(step.unexplainedBrl) >= 0.05 ? <p className="mt-0.5 text-[10px] text-muted-foreground">sem registro {formatSignedBrl(step.unexplainedBrl)}</p> : null}
+        {slot.source === "mixed" || step?.source === "mixed" ? <p className="mt-0.5 text-[10px] text-muted-foreground">mixed source</p> : null}
+
+        {step?.unexplainedBrl && Math.abs(step.unexplainedBrl) >= 0.05 ? <p className="mt-0.5 text-[10px] text-muted-foreground">not recorded {formatSignedBrl(step.unexplainedBrl)}</p> : null}
       </td>
       {quoted ? (
         <td className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-foreground/85 md:table-cell">
@@ -232,8 +225,7 @@ function PresentRow({
             <>
               <p className="font-mono text-xs text-foreground/85">{formatSignedBrl(step.priceEffectBrl)}</p>
               {step.pricePercent !== null ? (
-                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                  cotação {formatPercent(step.pricePercent)}
+                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">quote {formatPercent(step.pricePercent)}
                 </p>
               ) : null}
             </>
@@ -246,28 +238,26 @@ function PresentRow({
         className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-foreground/85 lg:table-cell"
         data-testid="month-flows"
       >
-        {/* Com movimentações no mês, os valores registrados; sem elas, a
-            estimativa pela variação da quantidade, identificada (spec 058). */}
+
         {recorded ? (
           <>
             <p>{formatSignedBrl(recorded.netFlowBrl)}</p>
-            <p className="mt-0.5 text-[10px] text-primary">
-              registrado
-              {recorded.incomeBrl !== 0 ? ` · rendimento ${formatSignedBrl(recorded.incomeBrl)}` : ""}
-              {recorded.openingBrl !== 0 ? " · saldo inicial" : ""}
-              {recorded.internalBrl !== 0 ? " · transferência interna" : ""}
+            <p className="mt-0.5 text-[10px] text-primary">recorded
+              {recorded.incomeBrl !== 0 ? ` · return ${formatSignedBrl(recorded.incomeBrl)}` : ""}
+              {recorded.openingBrl !== 0 ? " · opening balance" : ""}
+              {recorded.internalBrl !== 0 ? " · internal transfer" : ""}
             </p>
           </>
         ) : slot.source === "recorded" ? (
-          // Mês acompanhado sem movimentações: nada entrou nem saiu (spec 073).
+
           <>
             <p>{formatSignedBrl(0)}</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">sem movimentações</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">no transactions</p>
           </>
         ) : quoted && (slot.entryBrl !== null || step?.flowBrl != null) ? (
           <>
             <p>{formatSignedBrl(slot.entryBrl ?? step!.flowBrl!)}</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">{step?.source === "mixed" ? "sem movimentos registrados" : "estimado"}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">{step?.source === "mixed" ? "no recorded transactions" : "estimated"}</p>
           </>
         ) : (
           "—"
@@ -294,7 +284,7 @@ function buildTableRows(slots: HistorySlot[]): TableRow[] {
     const last = rows.at(-1);
 
     if (slot.kind === "present") {
-      // Volta depois de uma ausência ou de uma liquidação no mês anterior (spec 076).
+
       const returned =
         previousExisting?.kind === "absent" || (previousExisting?.kind === "present" && previousExisting.liquidated);
       rows.push({

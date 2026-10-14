@@ -1,23 +1,13 @@
-// Histórico de uma posição ao longo das competências (spec 016).
+
+/** Build monthly history across accounts using average cost. Missing months, partial withdrawals and liquidations retain their distinct financial meaning. */
+
 //
-// Uma posição é a combinação de conta e ativo, pelos identificadores; nomes e
-// datas nunca servem de chave. Cada mês do calendário, da primeira à última
-// competência, vira uma casa: "present" quando a posição existe na competência,
-// "absent" quando a competência existe sem ela e "missing" quando o histórico
-// não tem a competência. Ausências e meses sem competência são lacunas, nunca
-// zero.
+
+
+// Keep zero balances in historical periods.
 //
 import { emptyRecordedMonth, type RecordedMonth } from "./position-transactions";
 
-// No histórico legado, a variação entre duas competências seguidas é
-// dividida em efeito de preço (quantidade anterior vezes a variação da cotação)
-// e aportes e resgates (o restante, ou seja, a variação de quantidade valorizada
-// pela cotação do mês em que aparece, mais o arredondamento em centavos). Só há
-// efeito de preço entre duas competências em que a posição existe: a saída
-// conta como resgate do último valor conhecido e a volta como aporte do primeiro
-// valor. Saldos legados sem cotação não separam rendimento de aporte. Com
-// movimentos registrados, a base é a da própria competência; diferenças entre
-// bases mensais independentes ficam sem explicação, nunca viram aporte ou ganho.
 
 export type HistorySource = "estimated" | "recorded" | "mixed";
 
@@ -25,20 +15,20 @@ export type ObservedAllocation = {
   assetClass: string;
   subclass: string;
   duration: string;
-  /** Peso em percentual (0 a 100). */
+  /** Percentage weight (0 to 100). */
   weight: number;
 };
 
 export type PositionObservation = {
-  /** Competência como AAAA-MM. */
+
   month: string;
   accountId: string;
-  /** Instituição e conta, como "Ledger · Principal", para os textos. */
+
   accountLabel: string;
   quantity: number;
-  /** Base independente da competência, quando conhecida. */
+
   openingQuantity?: number;
-  /** Nulo/ausente no legado; não inferir acompanhamento só pela base migrada. */
+
   recorded?: RecordedMonth | null;
   unitPriceBrl: number | null;
   totalBrl: number;
@@ -57,25 +47,25 @@ export type AllocationSlice = ObservedAllocation & {
 
 export type HistoryStep = {
   source?: HistorySource;
-  /** Competência anterior com a posição, sempre a competência existente imediatamente anterior. */
+
   fromMonth: string;
-  /** Há meses sem competência entre as duas. */
+
   acrossMissing: boolean;
   changeBrl: number;
   changePercent: number | null;
-  /** Quantidade anterior vezes a variação da cotação; nulo em saldos sem cotação. */
+
   priceEffectBrl: number | null;
-  /** Variação de quantidade valorizada pela cotação do mês; nulo em saldos sem cotação. */
+
   flowBrl: number | null;
-  /** Variação da cotação entre as duas competências, em percentual. */
+
   pricePercent: number | null;
-  /** Retorno registrado, inclusive dividendos recebidos fora da posição. */
+
   incomeBrl?: number;
-  /** Parte do retorno que alterou o valor da posição. */
+
   capitalizedIncomeBrl?: number;
   internalBrl?: number;
   openingBrl?: number;
-  /** Diferença entre fotografias/base sem causa financeira registrada. */
+
   unexplainedBrl?: number;
 };
 
@@ -85,9 +75,9 @@ export type AbsentSlot = {
   kind: "absent";
   month: string;
   portfolioTotalBrl: number;
-  /** Outras contas que tinham o ativo nesta competência. */
+
   elsewhere: string[];
-  /** Resgate do último valor conhecido, na primeira competência sem a posição. */
+
   exitBrl: number | null;
 };
 
@@ -101,38 +91,30 @@ export type PresentSlot = {
   source: HistorySource;
   priceBrl: number | null;
   valueBrl: number;
-  /** Participação no patrimônio do mês, em percentual. */
+
   share: number;
   accounts: string[];
   strategy: string | null;
   allocations: AllocationSlice[];
-  /** Valor que entrou na volta à conta, quando a posição retorna depois de uma ausência. */
+
   entryBrl: number | null;
   step: HistoryStep | null;
-  /**
-   * Valor aplicado (spec 073): saldo inicial e aportes, menos a parte
-   * proporcional das retiradas, pelo custo médio. Rendimentos mudam o valor,
-   * não o aplicado. No legado sem movimentações, a estimativa pela cotação
-   * do mês, só para ativos cotados.
-   */
+
+
   appliedBrl: number | null;
-  /** Unidades (ou saldo, nos ativos sem cotação) que o valor aplicado cobre. */
+
   appliedUnits: number | null;
-  /** O valor aplicado inclui um saldo inicial, cujo custo de compra real não é conhecido. */
+
   appliedFromOpening: boolean;
-  /**
-   * Lucro realizado nas retiradas até este mês (spec 076): o valor de cada
-   * retirada menos o custo médio que ela tirou. Nulo sem movimentações.
-   */
+
+
   realizedBrl: number | null;
-  /** Rendimento acumulado: valor menos o aplicado, mais o realizado. */
+
   gainBrl: number | null;
-  /**
-   * Liquidada (spec 076): uma retirada zerou a posição neste mês. Ela fica no
-   * histórico, mas não passa ao mês seguinte nem conta como posição ativa.
-   */
+
+
   liquidated: boolean;
-  /** Dia da retirada que zerou a posição (AAAA-MM-DD). */
+
   liquidatedOn: string | null;
 };
 
@@ -142,28 +124,26 @@ export type StepHighlight = HistoryStep & { month: string };
 
 export type PositionSummary = {
   selectedMonth: string;
-  /** "before": a competência selecionada é anterior à primeira com a posição. */
+
   state: "present" | "absent" | "before" | "never";
   firstMonth: string | null;
   lastPresentMonth: string | null;
-  /** Competência existente imediatamente anterior à selecionada. */
+
   previousMonth: string | null;
   previousPresent: boolean;
   current: PresentSlot | null;
   shareChange: number | null;
   monthStep: StepHighlight | null;
   startValueBrl: number | null;
-  /** Valor na competência selecionada; zero quando a posição já saiu. */
+
   endValueBrl: number | null;
   priceGainBrl: number | null;
   flowsBrl: number | null;
   changeBrl: number | null;
-  /**
-   * Variação encadeada dentro dos trechos em que a posição existe: a cotação nos
-   * ativos cotados e o saldo nos demais. Sem efeito das saídas e voltas.
-   */
+
+
   growthPercent: number | null;
-  /** Soma das variações dentro dos trechos, para saldos sem cotação. */
+
   heldChangeBrl: number | null;
   heldMonths: number;
   monthsSinceFirst: number;
@@ -173,14 +153,12 @@ export type PositionSummary = {
   worst: StepHighlight | null;
   averagePriceBrl: number | null;
   costBasisBrl: number | null;
-  /**
-   * De onde vem o preço médio: estimado no legado, conhecido pelas compras, ou
-   * com o saldo inicial valendo como aplicação (spec 073).
-   */
+
+
   costSource?: "estimated" | "known" | "opening";
-  /** Valor aplicado na competência selecionada. */
+
   appliedBrl?: number | null;
-  /** Rendimento acumulado: valor da posição menos o aplicado, mais o realizado nas retiradas. */
+
   gainBrl?: number | null;
   attributionSource?: HistorySource;
   recorded?: RecordedMonth;
@@ -202,7 +180,7 @@ export function monthFromKey(key: string) {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
-/** Meses do calendário entre duas competências, inclusive. */
+
 export function calendarMonths(first: string, last: string) {
   const months: string[] = [];
   const end = monthFromKey(last).getTime();
@@ -216,11 +194,7 @@ export function calendarMonths(first: string, last: string) {
   return months;
 }
 
-/**
- * Monta as casas do calendário para uma conta (`scopeAccountId`) ou para todas
- * as contas do ativo (`null`). As observações são de todas as contas, para
- * dizer onde o ativo estava quando a posição falta na conta.
- */
+
 export function buildHistorySlots({
   months,
   observations,
@@ -251,10 +225,10 @@ export function buildHistorySlots({
   let broken = false;
   let missingSincePrevious = false;
   let applied: number | null = null;
-  // Custo médio das movimentações registradas (spec 073).
+
   let cost: Cost | null = null;
-  // Lucro realizado em toda a vida da posição, inclusive antes de uma saída
-  // e volta (spec 076).
+
+  // Preserve exit and re-entry history (spec 076).
   let realized: number | null = null;
 
   for (const month of calendarMonths(sorted[0].month, sorted.at(-1)!.month)) {
@@ -320,14 +294,14 @@ export function buildHistorySlots({
     }
 
     if (slot.recorded) {
-      // Começo do acompanhamento no meio do histórico: a base que já existia
-      // vale como aplicação, pelo valor estimado até ali ou pelo da posição.
+
+
       const base = slot.openingQuantity ?? slot.quantity - slot.recorded.quantityDelta - slot.recorded.openingQuantity;
       if (!cost) {
         const carried = previous && !broken ? appliedBefore ?? previous.valueBrl : quoted ? base * (slot.priceBrl ?? 0) : base;
         cost = { value: base > QUANTITY_TOLERANCE ? carried : 0, units: base, fromOpening: base > QUANTITY_TOLERANCE };
       } else if (Math.abs(base - cost.units) > QUANTITY_TOLERANCE) {
-        // Bases mensais independentes: o custo segue, nas unidades da base.
+
         cost.units = base;
       }
       realized = roundCents((realized ?? 0) + applyMovements(cost, slot.recorded));
@@ -373,8 +347,8 @@ function aggregate(
   const source: HistorySource = !recorded ? "estimated" : recordedObservations.length === observations.length ? "recorded" : "mixed";
   const valueBrl = roundCents(observations.reduce((total, observation) => total + observation.totalBrl, 0));
   const priced = observations.filter((observation) => observation.unitPriceBrl !== null);
-  // Mesma cotação em todas as contas do mês; a média pela quantidade evita o
-  // arredondamento em centavos que a divisão do total traria.
+
+
   const priceBrl =
     quoted && priced.length === observations.length && quantity > EPSILON
       ? priced.reduce((total, observation) => total + observation.quantity * observation.unitPriceBrl!, 0) / quantity
@@ -425,10 +399,7 @@ function aggregate(
   };
 }
 
-/**
- * Dia da liquidação (spec 076): a posição terminou o mês zerada por uma
- * retirada registrada. Uma posição zerada sem retirada não é liquidação.
- */
+
 function liquidationOf(slot: PresentSlot) {
   if (slot.quantity > QUANTITY_TOLERANCE || !slot.recorded) {
     return null;
@@ -442,12 +413,7 @@ const QUANTITY_TOLERANCE = 5e-13;
 
 type Cost = { value: number; units: number; fromOpening: boolean };
 
-/**
- * Custo médio pelas movimentações do mês, em ordem de data: saldo inicial e
- * aportes somam o valor; retiradas tiram a parte proporcional às unidades; o
- * rendimento muda as unidades (ou o saldo), não o valor aplicado. Devolve o
- * lucro realizado no mês: o valor de cada retirada menos o custo que ela tirou.
- */
+
 function applyMovements(cost: Cost, recorded: RecordedMonth) {
   let realized = 0;
 
@@ -500,7 +466,7 @@ function computeStep(previous: PresentSlot, current: PresentSlot, acrossMissing:
   };
 }
 
-/** A explicação usa os fatos do próprio mês; o restante não é rendimento. */
+
 function computeRecordedStep(previous: PresentSlot | null, current: PresentSlot, acrossMissing: boolean, quoted: boolean): HistoryStep {
   const recorded = current.recorded ?? emptyRecordedMonth();
   const base = current.openingQuantity ?? current.quantity - recorded.quantityDelta - recorded.openingQuantity;
@@ -513,8 +479,8 @@ function computeRecordedStep(previous: PresentSlot | null, current: PresentSlot,
   let priceEffectBrl: number | null = quoted ? null : 0;
 
   if (quoted && current.priceBrl !== null && baselinePrice !== null && hasMovementQuantities) {
-    // A diferença entre execução e cotação pertence ao efeito de preço; a base
-    // inicial é avaliada, sem transformar seu valor em custo de aquisição.
+
+
     const operationEffect = recorded.quantityDelta * current.priceBrl
       - recorded.netFlowBrl - recorded.internalBrl - recorded.capitalizedIncomeBrl;
     priceEffectBrl = roundCents(base * (current.priceBrl - baselinePrice) + operationEffect);
@@ -550,7 +516,7 @@ function mergeRecordedMonths(months: RecordedMonth[]): RecordedMonth {
   return merged;
 }
 
-/** Indicadores da posição até a competência selecionada, inclusive. */
+
 export function summarizeHistory(slots: HistorySlot[], selectedMonth: string, quoted: boolean): PositionSummary {
   const selectedIndex = slots.findIndex((slot) => slot.month === selectedMonth);
   const firstIndex = slots.findIndex((slot) => slot.kind === "present");
@@ -661,8 +627,7 @@ export function summarizeHistory(slots: HistorySlot[], selectedMonth: string, qu
         growth *= ratio;
       }
 
-      // Custo médio: aumentos de quantidade entram pela cotação do mês e
-      // reduções saem pelo preço médio.
+
       const delta = slot.quantity - costQuantity;
 
       if (delta > EPSILON && slot.priceBrl !== null) {
@@ -714,11 +679,7 @@ export function summarizeHistory(slots: HistorySlot[], selectedMonth: string, qu
   return withRecordedSummary(summary, slots.slice(firstIndex, selectedIndex + 1), quoted);
 }
 
-/**
- * A primeira fotografia legada continua estimada. A partir de movimentos
- * conhecidos, os indicadores deixam de atribuir diferenças entre bases a
- * operações, e o custo só é real quando todas as unidades têm origem conhecida.
- */
+
 function withRecordedSummary(summary: PositionSummary, slots: HistorySlot[], quoted: boolean): PositionSummary {
   const present = slots.filter((slot): slot is PresentSlot => slot.kind === "present");
   const recordedSlots = present.filter((slot) => slot.recorded !== null);
@@ -770,7 +731,7 @@ function withRecordedSummary(summary: PositionSummary, slots: HistorySlot[], quo
     capitalizedIncome += step.capitalizedIncomeBrl ?? 0;
     openings += step.openingBrl ?? 0;
     if (slot !== first && slot.recorded && step.fromMonth === slot.month) {
-      // Uma nova base depois de uma ausência é identificável; não é aporte.
+
       const base = slot.openingQuantity ?? slot.quantity - slot.recorded.quantityDelta - slot.recorded.openingQuantity;
       openings += (quoted ? base * (slot.priceBrl ?? 0) : base) + slot.recorded.openingBrl;
     }
@@ -789,8 +750,8 @@ function withRecordedSummary(summary: PositionSummary, slots: HistorySlot[], quo
     capitalizedIncomeBrl: roundCents(capitalizedIncome),
     internalBrl: roundCents(internal),
     openingBrl: roundCents(openings),
-    // O saldo final é observado; uma lacuna, exclusão ou base independente
-    // pode explicar parte da diferença sem ser retorno nem fluxo registrado.
+
+
     unexplainedBrl: roundCents(end - start - priceGain - flows - internal - capitalizedIncome - openings),
     changeBrl: roundCents(end - start),
     growthPercent: quoted ? summary.growthPercent : null,
@@ -800,8 +761,8 @@ function withRecordedSummary(summary: PositionSummary, slots: HistorySlot[], quo
     worst: ranked.length >= 2 ? ranked.at(-1)! : null,
     attributionSource: present.every((slot) => slot.source === "recorded") ? "recorded" : "mixed",
     recorded,
-    // O saldo inicial vale como aplicação pelo valor de entrada (spec 073): o
-    // preço médio existe para toda posição, marcado quando o inclui.
+
+
     costSource: current?.appliedFromOpening ? "opening" : "known",
     averagePriceBrl: quoted && current && applied !== null && units > QUANTITY_TOLERANCE ? applied / units : null,
     costBasisBrl: quoted && current ? applied : null,

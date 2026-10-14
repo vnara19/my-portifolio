@@ -1,3 +1,5 @@
+
+/** Investment navigation, reporting-month selection and the most recent successful quote update. */
 import { ChartDonutIcon, GearSixIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -14,7 +16,7 @@ type AppShellProps = {
   active: TabKey | "none";
   months: PortfolioMonthSummary[];
   selectedMonth: string | null;
-  /** Onde o usuário está dentro de Posições, para a trilha abaixo das abas (spec 073). */
+
   context?: NavContext;
   children: ReactNode;
 };
@@ -27,14 +29,8 @@ export async function AppShell({ active, months, selectedMonth, context, childre
       area="investments"
       header={(menu) => (
         <header className="sticky top-0 z-30 border-b border-border/70 bg-background/88 backdrop-blur-xl">
-          {/* Abaixo de 360 px a marca sai para as abas, a hora das cotações e a
-              configuração caberem sem cortar "Posições"; a aba Visão Geral
-              leva ao mesmo endereço. Com a aba Configuração aberta (spec 073),
-              ela sai já abaixo de 420 px, para as três abas caberem. Com mais
-              de uma área (spec 081), o botão do menu toma o lugar da marca no
-              celular, e no computador a marca fica na barra lateral. */}
-          {/* Colunas laterais iguais mantêm as abas no centro da área útil,
-              inclusive quando o hambúrguer some e a barra lateral aparece. */}
+
+
           <div className="flex h-16 items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
             {menu ?? (
               <Link
@@ -48,8 +44,7 @@ export async function AppShell({ active, months, selectedMonth, context, childre
                   <ChartDonutIcon aria-hidden="true" size={18} weight="bold" />
                 </span>
                 <span className="hidden leading-none sm:block">
-                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">
-                    Meu portfólio
+                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">My portfolio
                   </span>
                   <span className="mt-1 block text-[9px] font-semibold tracking-[0.18em] text-primary/80 uppercase">
                     Private workspace
@@ -63,17 +58,15 @@ export async function AppShell({ active, months, selectedMonth, context, childre
             </div>
 
             <div className="flex shrink-0 items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
-              {/* As cotações do mês saíram daqui e ficam em Posições (spec 048).
-                  Com o botão do menu (spec 081), a hora das cotações sai abaixo
-                  de 360 px, para as abas caberem; ela segue em Cotações. */}
+
               <span className={cn("contents", menu ? "max-[359px]:hidden" : null)}>
                 <QuoteRefreshIndicator summary={quoteRefresh} />
               </span>
-              {/* Na Configuração, a engrenagem vira a aba selecionada (spec 073). */}
+
               {active === "settings" ? null : (
                 <Link
                   href="/configuracao"
-                  aria-label="Configuração da carteira"
+                  aria-label="Portfolio settings"
                   className="grid size-9 shrink-0 place-items-center rounded-xl border border-border text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <GearSixIcon aria-hidden="true" size={17} weight="duotone" />

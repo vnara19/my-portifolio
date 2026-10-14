@@ -7,10 +7,6 @@ import { getPrismaClient } from "@/lib/prisma";
 import { currentUserId } from "@/lib/user-db";
 import { getSessionUser, requireSessionUser, type SessionUser } from "@/modules/auth/session";
 
-// Acesso por área (spec 081). As concessões e os papéis ficam no banco, ligados
-// ao id do usuário, e são lidos aqui a partir da sessão confirmada no servidor:
-// nada que venha do navegador (e-mail, papel, módulo) decide o acesso. Sem a
-// concessão, a área não existe para o usuário: páginas e rotas respondem 404.
 
 export type UserAccess = { modules: AppModule[]; roles: AppRole[] };
 
@@ -18,11 +14,11 @@ const NO_ACCESS: UserAccess = { modules: [], roles: [] };
 
 export class ModuleAccessError extends Error {
   constructor() {
-    super("Área não disponível para este usuário.");
+    super("This area is unavailable for this user.");
   }
 }
 
-/** Concessões e papéis de um usuário; também para os roteiros de terminal. */
+
 export async function readUserAccess(prisma: PrismaClient, userId: string): Promise<UserAccess> {
   const [modules, roles] = await Promise.all([
     prisma.moduleGrant.findMany({ where: { userId }, select: { module: true }, orderBy: { module: "asc" } }),
@@ -37,13 +33,13 @@ const accessOf = cache(async (userId: string): Promise<UserAccess> => {
   return prisma ? readUserAccess(prisma, userId) : NO_ACCESS;
 });
 
-/** Usuário da sessão com as áreas dele, para o menu; nulo sem sessão. */
+
 export async function getSessionAccess(): Promise<{ user: SessionUser; access: UserAccess } | null> {
   const user = await getSessionUser();
   return user ? { user, access: await accessOf(user.id) } : null;
 }
 
-/** Para as páginas da área: sem sessão leva à entrada; sem concessão, 404. */
+
 export async function requireModulePage(module: AppModule): Promise<SessionUser> {
   const user = await requireSessionUser();
 
@@ -54,11 +50,7 @@ export async function requireModulePage(module: AppModule): Promise<SessionUser>
   return user;
 }
 
-/**
- * Usuário da operação com a concessão conferida: o da sessão ou o do roteiro
- * (`runAsUser`). Sem a concessão, `ModuleAccessError`. Toda leitura e gravação
- * dos dados de uma área passa por aqui (getFamilyDb).
- */
+
 export async function assertModuleAccess(module: AppModule): Promise<string> {
   const prisma = getPrismaClient();
   const userId = await currentUserId();
@@ -70,15 +62,15 @@ export async function assertModuleAccess(module: AppModule): Promise<string> {
   return userId;
 }
 
-/** Para as rotas de API: 401 sem sessão e 404 sem a concessão. */
+
 export async function rejectWithoutModule(module: AppModule): Promise<Response | null> {
   const user = await getSessionUser();
 
   if (!user) {
-    return Response.json({ message: "Entre no aplicativo para continuar." }, { status: 401 });
+    return Response.json({ message: "Sign in to continue." }, { status: 401 });
   }
 
   return (await accessOf(user.id)).modules.includes(module)
     ? null
-    : Response.json({ message: "Página não encontrada." }, { status: 404 });
+    : Response.json({ message: "Page not found." }, { status: 404 });
 }

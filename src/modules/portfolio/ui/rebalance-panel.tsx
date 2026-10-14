@@ -1,14 +1,11 @@
+
+import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import type { AllocationRow } from "@/modules/portfolio/domain/rebalance";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { formatBrl, formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
 
-/**
- * Comprar e vender de um recorte (spec 078): as linhas vêm do recorte escolhido
- * nas abas da alocação, fora deste quadro, que também escolhem o gráfico de
- * cima.
- */
-/** Colunas que saem no celular. */
+
 const WIDE = "hidden sm:table-cell";
 
 export function RebalancePanel({ rows }: { rows: AllocationRow[] }) {
@@ -30,40 +27,39 @@ export function RebalancePanel({ rows }: { rows: AllocationRow[] }) {
       className="premium-panel scroll-mt-32 rounded-[24px] p-5 sm:p-7"
       aria-labelledby="rebalance-title"
     >
-      <h2 id="rebalance-title" className="text-base font-semibold tracking-[-0.025em]">
-        Comprar e vender
+      <h2 id="rebalance-title" className="text-base font-semibold tracking-[-0.025em]">Buy and sell
       </h2>
 
-      {/* No celular, só o item e a diferença (spec 080). */}
+
       <div className="mt-4 overflow-x-auto">
         <table className="w-full border-collapse text-left sm:min-w-[640px]">
           <thead>
             <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
               <th className="py-3 pr-3">Item</th>
-              <th className={cn("py-3 pr-3 text-right", WIDE)}>% atual</th>
-              <th className={cn("py-3 pr-3 text-right", WIDE)}>% ideal</th>
-              <th className={cn("py-3 pr-3 text-right", WIDE)}>R$ atual</th>
-              <th className={cn("py-3 pr-3 text-right", WIDE)}>R$ ideal</th>
-              <th className="py-3 text-right">Diferença</th>
+              <th className={cn("py-3 pr-3 text-right", WIDE)}>Current %</th>
+              <th className={cn("py-3 pr-3 text-right", WIDE)}>Target %</th>
+              <th className={cn("py-3 pr-3 text-right", WIDE)}>Current BRL</th>
+              <th className={cn("py-3 pr-3 text-right", WIDE)}>Target BRL</th>
+              <th className="py-3 text-right">Difference</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/55">
             {toBuy.length > 0 ? (
-              <ActionHeader label="Comprar" tone="buy" count={toBuy.length} />
+              <ActionHeader label="Buy" tone="buy" count={toBuy.length} />
             ) : null}
             {toBuy.map((row) => (
               <RebalanceRow key={row.key} row={row} maxDifference={maxDifference} />
             ))}
 
             {toSell.length > 0 ? (
-              <ActionHeader label="Vender" tone="sell" count={toSell.length} />
+              <ActionHeader label="Sell" tone="sell" count={toSell.length} />
             ) : null}
             {toSell.map((row) => (
               <RebalanceRow key={row.key} row={row} maxDifference={maxDifference} />
             ))}
 
             {balanced.length > 0 ? (
-              <ActionHeader label="Equilibrado" tone="balanced" count={balanced.length} />
+              <ActionHeader label="Balanced" tone="balanced" count={balanced.length} />
             ) : null}
             {balanced.map((row) => (
               <RebalanceRow key={row.key} row={row} maxDifference={maxDifference} />
@@ -97,7 +93,7 @@ function ActionHeader({
                 : "bg-white/[0.05] text-muted-foreground",
           )}
         >
-          {label} · {count}
+          {englishLabel(label)} · {count}
         </span>
       </td>
     </tr>
@@ -116,7 +112,7 @@ function RebalanceRow({ row, maxDifference }: { row: AllocationRow; maxDifferenc
             className="size-2 shrink-0 rounded-full"
             style={{ backgroundColor: categoryColor(row.label.split(" · ").at(-1) ?? row.label) }}
           />
-          <span className="text-xs text-foreground/90">{row.label}</span>
+          <span className="text-xs text-foreground/90">{englishLabel(row.label)}</span>
         </div>
       </td>
       <td className={cn("py-3 pr-3 text-right font-mono text-[11px] text-foreground/80", WIDE)}>
@@ -148,9 +144,8 @@ function RebalanceRow({ row, maxDifference }: { row: AllocationRow; maxDifferenc
           <span
             className={cn(
               "w-28 shrink-0 text-right font-mono text-[11px]",
-              // Diferença positiva (acima do ideal) em verde e negativa em
-              // vermelho, a pedido do usuário (spec 040); os selos Comprar e
-              // Vender não mudam.
+
+
               row.direction === "SELL"
                 ? "text-primary"
                 : row.direction === "BUY"
@@ -158,7 +153,7 @@ function RebalanceRow({ row, maxDifference }: { row: AllocationRow; maxDifferenc
                   : "text-muted-foreground",
             )}
           >
-            {row.differenceBrl === null ? "sem meta" : formatBrl(difference)}
+            {row.differenceBrl === null ? "no target" : formatBrl(difference)}
           </span>
         </div>
       </td>

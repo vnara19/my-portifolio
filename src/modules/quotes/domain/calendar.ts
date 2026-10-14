@@ -1,11 +1,11 @@
-// Datas de calendário guardadas como meia-noite UTC, como as colunas DATE do
-// banco. O dia e o mês corrente vêm do relógio local do servidor.
+
+
 
 export function calendarDay(now: Date) {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 }
 
-// Competência do mês corrente: primeiro dia do mês, no relógio local.
+
 export function currentReferenceMonth(now = new Date()) {
   return monthOf(calendarDay(now));
 }

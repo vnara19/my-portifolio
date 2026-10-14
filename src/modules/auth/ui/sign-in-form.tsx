@@ -10,28 +10,24 @@ import { Field, inputClass, primaryButtonClass } from "@/modules/portfolio/ui/ed
 type Mode = "sign-in" | "sign-up";
 
 const MESSAGES: Record<string, string> = {
-  INVALID_EMAIL_OR_PASSWORD: "E-mail ou senha incorretos.",
-  USER_ALREADY_EXISTS: "Já existe uma conta com este e-mail. Entre com ela.",
-  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "Já existe uma conta com este e-mail. Entre com ela.",
-  PASSWORD_TOO_SHORT: "A senha precisa de pelo menos 10 caracteres.",
-  INVALID_EMAIL: "Digite um e-mail válido.",
+  INVALID_EMAIL_OR_PASSWORD: "Incorrect email or password.",
+  USER_ALREADY_EXISTS: "An account with this email already exists. Sign in instead.",
+  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "An account with this email already exists. Sign in instead.",
+  PASSWORD_TOO_SHORT: "The password must contain at least 10 characters.",
+  INVALID_EMAIL: "Enter a valid email address.",
 };
 
 function describe(error: { code?: string; message?: string; status?: number } | null) {
   if (!error) {
-    return "Não foi possível entrar agora. Tente de novo.";
+    return "Could not sign in right now. Try again.";
   }
   if (error.status === 429) {
-    return "Muitas tentativas seguidas. Espere um pouco e tente de novo.";
+    return "Too many attempts. Wait a moment and try again.";
   }
-  return (error.code && MESSAGES[error.code]) ?? error.message ?? "Não foi possível entrar agora. Tente de novo.";
+  return (error.code && MESSAGES[error.code]) ?? error.message ?? "Could not sign in right now. Try again.";
 }
 
-/**
- * Entrar ou criar conta (spec 050). Depois, volta ao endereço pedido. Os campos
- * não são controlados: um gerenciador de senhas pode preenchê-los antes de a
- * página ficar interativa, e o envio lê o que estiver neles.
- */
+
 export function SignInForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("sign-in");
@@ -46,7 +42,7 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
     const password = String(form.get("password") ?? "");
 
     if (!email || !password || (mode === "sign-up" && !name)) {
-      setError(mode === "sign-up" ? "Preencha nome, e-mail e senha." : "Preencha e-mail e senha.");
+      setError(mode === "sign-up" ? "Enter your name, email and password." : "Enter your email and password.");
       return;
     }
 
@@ -73,9 +69,9 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       {signingUp ? (
-        <Field label="Nome">
+        <Field label="Name">
           <input
-            aria-label="Nome"
+            aria-label="Name"
             name="name"
             autoComplete="name"
             required
@@ -83,9 +79,9 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
           />
         </Field>
       ) : null}
-      <Field label="E-mail">
+      <Field label="Email">
         <input
-          aria-label="E-mail"
+          aria-label="Email"
           name="email"
           type="email"
           autoComplete="email"
@@ -94,9 +90,9 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
           className={inputClass}
         />
       </Field>
-      <Field label="Senha">
+      <Field label="Password">
         <input
-          aria-label="Senha"
+          aria-label="Password"
           name="password"
           type="password"
           autoComplete={signingUp ? "new-password" : "current-password"}
@@ -118,11 +114,11 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
         className={`${primaryButtonClass} w-full`}
       >
         {pending ? <CircleNotchIcon aria-hidden="true" size={14} className="animate-spin" /> : null}
-        {signingUp ? "Criar conta" : "Entrar"}
+        {signingUp ? "Create account" : "Sign in"}
       </button>
 
       <p className="text-center text-xs text-muted-foreground">
-        {signingUp ? "Já tem conta?" : "Ainda não tem conta?"}{" "}
+        {signingUp ? "Already have an account?" : "Don't have an account?"}{" "}
         <button
           type="button"
           onClick={() => {
@@ -131,7 +127,7 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
           }}
           className="font-medium text-primary outline-none hover:underline focus-visible:underline"
         >
-          {signingUp ? "Entrar" : "Criar conta"}
+          {signingUp ? "Sign in" : "Create account"}
         </button>
       </p>
     </form>

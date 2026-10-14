@@ -1,3 +1,5 @@
+
+/** English-language, dark-only root layout. Browser zoom remains available for accessibility. */
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -18,13 +20,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Meu portfólio",
-    template: "%s · Meu portfólio",
+    default: "My portfolio",
+    template: "%s · My portfolio",
   },
-  description: "Acompanhamento pessoal de investimentos.",
+  description: "Personal investment tracking.",
 };
 
-// O tema do aplicativo é sempre escuro. O zoom continua disponível (spec 062).
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -37,7 +39,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
-      lang="pt-BR"
+      lang="en-GB"
       data-scroll-behavior="smooth"
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >

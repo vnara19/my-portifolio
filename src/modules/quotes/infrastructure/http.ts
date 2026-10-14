@@ -1,15 +1,15 @@
+
+/** Bound provider requests by timeout and distinguish region blocks, rate limits, malformed responses and network failures. */
 import { z } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 const RETRY_DELAY_MS = 300;
 
 export type FetchJsonOptions = {
-  /** Tempo de cada tentativa; o padrão é 12 s. */
+
   timeoutMs?: number;
-  /**
-   * Tentativas no total. Só falha passageira repete: tempo esgotado, rede e
-   * HTTP 5xx. Recusa do provedor (4xx, como 429 e 451) não repete.
-   */
+
+
   attempts?: number;
 };
 
@@ -25,7 +25,7 @@ export async function fetchJson(url: URL, init?: RequestInit, options: FetchJson
       });
 
       if (!response.ok) {
-        throw new QuoteHttpError(response.status, `O provedor respondeu com HTTP ${response.status}.`);
+        throw new QuoteHttpError(response.status, `The provider responded with HTTP ${response.status}.`);
       }
 
       return (await response.json()) as unknown;
@@ -44,7 +44,7 @@ function isTransient(error: unknown) {
     return error.statusCode >= 500;
   }
 
-  // Tempo esgotado (TimeoutError) e falha de conexão (TypeError do fetch).
+
   return error instanceof TypeError || (error instanceof Error && error.name === "TimeoutError");
 }
 
@@ -58,8 +58,7 @@ export class QuoteHttpError extends Error {
   }
 }
 
-// Resposta válida em que o provedor recusa a consulta, como o aviso de limite de
-// uso do Alpha Vantage, que vem com HTTP 200.
+
 export class ProviderRefusalError extends Error {
   constructor(
     public readonly code: string,
@@ -77,32 +76,32 @@ export function describeProviderError(error: unknown) {
 
   if (error instanceof QuoteHttpError) {
     if (error.statusCode === 451) {
-      return { code: "REGION_BLOCKED", message: "O provedor bloqueia a região do servidor (HTTP 451)." };
+      return { code: "REGION_BLOCKED", message: "The provider blocks the server region (HTTP 451)." };
     }
 
     return {
       code: error.statusCode === 429 ? "RATE_LIMITED" : "HTTP_ERROR",
       message:
         error.statusCode === 429
-          ? "O provedor recusou por excesso de consultas (HTTP 429)."
+          ? "The provider rejected the request due to rate limiting (HTTP 429)."
           : error.message,
     };
   }
 
   if (error instanceof Error && error.name === "TimeoutError") {
-    return { code: "TIMEOUT", message: "O provedor excedeu o tempo limite." };
+    return { code: "TIMEOUT", message: "The provider timed out." };
   }
 
   if (error instanceof z.ZodError || error instanceof SyntaxError) {
-    return { code: "INVALID_RESPONSE", message: "O provedor respondeu em um formato inesperado." };
+    return { code: "INVALID_RESPONSE", message: "The provider responded in an unexpected format." };
   }
 
   if (error instanceof TypeError) {
-    return { code: "NETWORK_ERROR", message: "Não foi possível conectar ao provedor." };
+    return { code: "NETWORK_ERROR", message: "Could not connect to the provider." };
   }
 
   return {
     code: "INVALID_RESPONSE",
-    message: error instanceof Error ? error.message : "Resposta inválida do provedor.",
+    message: error instanceof Error ? error.message : "Invalid provider response.",
   };
 }

@@ -13,8 +13,8 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
   if (!prisma) {
     return {
       state: "not-configured",
-      label: "Não configurado",
-      detail: "Copie .env.example para .env e inicie o PostgreSQL.",
+      label: "Not configured",
+      detail: "Copy .env.example to .env and start PostgreSQL.",
     };
   }
 
@@ -25,15 +25,15 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
 
     return {
       state: "online",
-      label: "Conectado",
-      detail: "O banco local respondeu normalmente.",
+      label: "Connected",
+      detail: "The database responded normally.",
       latencyMs: Math.round(performance.now() - startedAt),
     };
   } catch {
     return {
       state: "offline",
-      label: "Indisponível",
-      detail: "Inicie o container com pnpm db:up e recarregue a página.",
+      label: "Unavailable",
+      detail: "Start the container with pnpm db:up and reload the page.",
     };
   }
 }

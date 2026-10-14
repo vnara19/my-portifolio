@@ -12,22 +12,18 @@ export type TargetEditorItem = {
   percent: number;
 };
 
-/**
- * Linha das versões da configuração: só as importações de backup, que trocam
- * todos os dados (spec 047). As metas não têm versões (spec 054): salvar altera
- * o plano vigente.
- */
+
 export type TargetPlanVersion = {
   id: string;
   importedAt: Date;
-  /** Quando o arquivo foi exportado. */
+
   exportedAt: Date;
 };
 
 const VERSION_LIMIT = 12;
 
 export type TargetEditorData = {
-  /** Última alteração das metas. */
+
   updatedAt: Date;
   tolerance: number;
   items: TargetEditorItem[];
@@ -35,10 +31,7 @@ export type TargetEditorData = {
   preview: { referenceDate: Date; aggregates: AllocationAggregates } | null;
 };
 
-/**
- * Sem plano ativo, `missing`; uma falha ao ler, como uma migração ainda não
- * aplicada, vira `error` com o motivo, em vez de parecer que não há metas.
- */
+
 export type TargetEditorResult =
   | { state: "ready"; editor: TargetEditorData }
   | { state: "missing" }
@@ -48,7 +41,7 @@ export async function getTargetEditor(referenceDate?: Date): Promise<TargetEdito
   const prisma = await getUserDb();
 
   if (!prisma) {
-    return { state: "error", message: "O banco de dados não está configurado." };
+    return { state: "error", message: "The database is not configured." };
   }
 
   try {
@@ -94,8 +87,8 @@ export async function getTargetEditor(referenceDate?: Date): Promise<TargetEdito
           secondaryLabel: target.secondaryLabel,
           percent: target.percentage.mul(100).toNumber(),
         })),
-        // As subclasses fixas da renda fixa, como o prefixado (spec 079), mesmo
-        // sem meta ainda: com 0%, entram no plano ao salvar.
+
+
         ...missingFixedIncomeTargets(active.targets).map((target) => ({ ...target, percent: 0 })),
       ],
       versions: imports.map((entry) => ({ id: entry.id, importedAt: entry.importedAt, exportedAt: entry.exportedAt })),
@@ -104,10 +97,10 @@ export async function getTargetEditor(referenceDate?: Date): Promise<TargetEdito
 
     return { state: "ready", editor };
   } catch (error) {
-    // O Prisma começa a mensagem pela chamada que falhou; a última linha diz o
-    // motivo, como uma tabela que ainda não existe.
+
+
     const reason = error instanceof Error ? error.message.trim().split("\n").filter(Boolean).at(-1) : undefined;
-    return { state: "error", message: reason ? reason.slice(0, 240) : "Erro desconhecido." };
+    return { state: "error", message: reason ? reason.slice(0, 240) : "Unknown error." };
   }
 }
 

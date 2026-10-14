@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { useMemo, useState } from "react";
 import {
   Area,
@@ -32,16 +34,12 @@ const PRESETS: { key: string; label: string; months: number | "ytd" | "all" }[] 
   { key: "6m", label: "6M", months: 6 },
   { key: "12m", label: "12M", months: 12 },
   { key: "ytd", label: "YTD", months: "ytd" },
-  { key: "all", label: "Tudo", months: "all" },
+  { key: "all", label: "All", months: "all" },
 ];
 
 const GAP_FILL = "oklch(1 0 0 / 0.035)";
 
-/**
- * Valor da posição mês a mês, com o calendário inteiro desde a entrada: meses
- * sem competência ficam sombreados e, quando a posição existe dos dois lados,
- * ligados por um traço; meses em que a posição falta interrompem a linha.
- */
+
 export function PositionEvolutionChart({
   slots,
   selectedMonth,
@@ -55,7 +53,7 @@ export function PositionEvolutionChart({
   quoted: boolean;
   quoteSymbol: string | null;
   ticker: string | null;
-  /** "desta conta" ou "da carteira", para o texto das ausências. */
+
   scopeLabel: "account" | "all";
 }) {
   const touch = useTouchTooltip();
@@ -71,7 +69,7 @@ export function PositionEvolutionChart({
   }
 
   const selectedRow = rows.find((row) => row.month === selectedMonth);
-  // Valor aplicado em toda posição que o tenha (spec 073), não só nas cotadas.
+
   const hasApplied = rows.some((row) => row.applied !== null);
   const appliedEstimated = rows.some(
     (row) => row.slot.kind === "present" && row.applied !== null && row.slot.recorded === null,
@@ -99,21 +97,19 @@ export function PositionEvolutionChart({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <ul aria-label="Legenda" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <ul aria-label="Legend" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="h-0.5 w-3.5 rounded-full bg-primary" />
-            Valor da posição
+            <span className="h-0.5 w-3.5 rounded-full bg-primary" />Position value
           </li>
           {hasApplied ? (
             <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="applied-legend">
               <span className="w-3.5 border-t border-dashed border-muted-foreground" />
-              {appliedEstimated ? "Valor aplicado (estimado)" : "Valor aplicado"}
+              {appliedEstimated ? "Invested amount (estimated)" : "Invested amount"}
             </li>
           ) : null}
           {missingRuns.length > 0 ? (
             <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="size-2.5 rounded-[3px] border border-border" style={{ backgroundColor: GAP_FILL }} />
-              Sem competência no histórico
+              <span className="size-2.5 rounded-[3px] border border-border" style={{ backgroundColor: GAP_FILL }} />No reporting month in history
             </li>
           ) : null}
         </ul>
@@ -126,14 +122,13 @@ export function PositionEvolutionChart({
               onClick={() => applyPreset(preset.months)}
               className="rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              {preset.label}
+              {englishLabel(preset.label)}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Sem clique para trocar de mês (spec 078): o gráfico só mostra a
-          indicação, e o mês muda pela faixa de competências ou pelo mês a mês. */}
+
       <div className="h-[300px] w-full" data-testid="position-evolution-chart" {...touch.containerProps}>
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart
@@ -202,7 +197,7 @@ export function PositionEvolutionChart({
             />
             <Area
               dataKey="value"
-              name="Valor da posição"
+              name="Position value"
               type="monotone"
               stroke="var(--primary)"
               strokeWidth={2}
@@ -214,7 +209,7 @@ export function PositionEvolutionChart({
             {hasApplied ? (
               <Line
                 dataKey="applied"
-                name="Valor aplicado"
+                name="Invested amount"
                 type="stepAfter"
                 stroke="var(--muted-foreground)"
                 strokeOpacity={0.8}
@@ -276,8 +271,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     applied: slot.kind === "present" ? slot.appliedBrl : null,
   }));
 
-  // Um traço por lacuna atravessada: a posição existe dos dois lados e não
-  // houve competência sem ela no meio.
+
   const bridges: string[] = [];
   let lastPresent = -1;
 
@@ -298,8 +292,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     lastPresent = index;
   });
 
-  // Sombra de cada sequência de meses sem competência, de uma competência
-  // vizinha à outra, porque o eixo de categorias não dá largura a um ponto só.
+
   const missingRuns: { key: string; from: string; to: string }[] = [];
   let runStart = -1;
 
@@ -318,8 +311,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     }
   });
 
-  // Uma posição que saiu da carteira abre até o mês da saída, ou até a
-  // competência selecionada, em vez de uma cauda vazia até hoje.
+
   const lastPresentIndex = rows.findLastIndex((row) => row.slot.kind === "present");
   const selectedIndex = rows.findIndex((row) => row.month === selectedMonth);
   const defaultEnd = Math.min(
@@ -385,16 +377,16 @@ function EvolutionTooltip({
 
   return (
     <div className="max-w-[260px] rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-      <p className="text-[11px] font-medium text-foreground">{row.label}</p>
+      <p className="text-[11px] font-medium text-foreground">{englishLabel(row.label)}</p>
       {slot.kind === "missing" ? (
-        <p className="mt-1 text-[11px] text-muted-foreground">Sem competência no histórico</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">No reporting month in history</p>
       ) : slot.kind === "absent" ? (
         <>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {scopeLabel === "account" ? "Fora desta conta" : "Fora da carteira"}
+            {scopeLabel === "account" ? "Outside this account" : "Outside the portfolio"}
           </p>
           {slot.elsewhere.length > 0 ? (
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Em {slot.elsewhere.join(", ")}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">In {slot.elsewhere.join(", ")}</p>
           ) : null}
         </>
       ) : (
@@ -408,14 +400,14 @@ function EvolutionTooltip({
           <div className={cn("mt-2 space-y-1")}>
             {slot.appliedBrl !== null ? (
               <>
-                <TooltipRow label="Valor aplicado" value={formatBrl(slot.appliedBrl)} />
-                <TooltipRow label="Rendimento" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
+                <TooltipRow label="Invested amount" value={formatBrl(slot.appliedBrl)} />
+                <TooltipRow label="Return" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
               </>
             ) : null}
-            <TooltipRow label="Da carteira" value={formatSharePercent(slot.share)} />
+            <TooltipRow label="Portfolio share" value={formatSharePercent(slot.share)} />
           </div>
           {scopeLabel === "all" ? (
-            <p className="mt-1.5 text-[10px] text-muted-foreground">Em {slot.accounts.join(", ")}</p>
+            <p className="mt-1.5 text-[10px] text-muted-foreground">In {slot.accounts.join(", ")}</p>
           ) : null}
         </>
       )}
@@ -426,7 +418,7 @@ function EvolutionTooltip({
 function TooltipRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className="text-[10px] text-muted-foreground">{englishLabel(label)}</span>
       <span className="ml-auto font-mono text-[10px] text-muted-foreground">{value}</span>
     </div>
   );

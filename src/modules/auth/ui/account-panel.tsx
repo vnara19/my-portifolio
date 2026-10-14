@@ -8,7 +8,7 @@ import { showAppToast } from "@/components/product/app-toaster";
 import { authClient } from "@/modules/auth/auth-client";
 import { secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 
-/** Conta da sessão na Configuração (spec 050): quem entrou e o botão de sair. */
+
 export function AccountPanel({ name, email }: { name: string; email: string }) {
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
@@ -19,7 +19,7 @@ export function AccountPanel({ name, email }: { name: string; email: string }) {
 
     if (result.error) {
       setLeaving(false);
-      showAppToast({ tone: "error", title: "Não foi possível sair agora. Tente de novo." });
+      showAppToast({ tone: "error", title: "Could not sign out right now. Try again." });
       return;
     }
 
@@ -44,8 +44,7 @@ export function AccountPanel({ name, email }: { name: string; email: string }) {
             <CircleNotchIcon aria-hidden="true" size={14} className="mr-1.5 animate-spin" />
           ) : (
             <SignOutIcon aria-hidden="true" size={14} className="mr-1.5" />
-          )}
-          Sair
+          )}Sign out
         </button>
       </div>
     </section>

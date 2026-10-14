@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import {
   Bar,
   BarChart,
@@ -25,7 +27,7 @@ type Mode = "current" | "target";
 type ChartDatum = { subclass: string; row: FixedIncomeDurationRow } & Record<string, unknown>;
 
 const BAR_GAP = 4;
-// Na Geist Mono todo caractere avança 0,6 em.
+
 const BAR_LABEL_CHAR_EM = 0.6;
 const BAR_LABEL_MIN_DROP = 14;
 const BAR_LABEL_SEPARATION = 2;
@@ -43,8 +45,7 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
 
   return (
     <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-labelledby="duration-title">
-      <h2 id="duration-title" className="text-base font-semibold tracking-[-0.025em]">
-        Renda fixa por resgate
+      <h2 id="duration-title" className="text-base font-semibold tracking-[-0.025em]">Fixed income by redemption term
       </h2>
 
       <ul aria-label="Prazos" className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
@@ -56,13 +57,13 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
         ))}
       </ul>
 
-      {/* Na largura toda (spec 078), atual e ideal lado a lado, na mesma escala. */}
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
         <DurationBars
           mode="current"
-          title="Atual"
+          title="Current"
           empty={!hasCurrent}
-          emptyText="Sem renda fixa nesta competência"
+          emptyText="No fixed income in this reporting month"
           durations={durations}
           rows={rows}
           scale={scale}
@@ -70,9 +71,9 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
         <div aria-hidden="true" className="h-px bg-border/60 lg:h-auto lg:w-px" />
         <DurationBars
           mode="target"
-          title="Ideal"
+          title="Target"
           empty={!hasTarget}
-          emptyText="Sem metas de renda fixa"
+          emptyText="No fixed-income targets"
           durations={durations}
           rows={rows}
           scale={scale}
@@ -80,13 +81,13 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
       </div>
 
       <table className="sr-only">
-        <caption>Renda fixa por resgate, atual e ideal</caption>
+        <caption>Fixed income by redemption term, current and target</caption>
         <thead>
           <tr>
-            <th scope="col">Subclasse</th>
-            <th scope="col">Prazo</th>
-            <th scope="col">Atual</th>
-            <th scope="col">Ideal</th>
+            <th scope="col">Subclass</th>
+            <th scope="col">Term</th>
+            <th scope="col">Current</th>
+            <th scope="col">Target</th>
           </tr>
         </thead>
         <tbody>
@@ -94,8 +95,8 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
             durations
               .filter((entry) => (row.current[entry] ?? 0) > 0 || (row.target[entry] ?? 0) > 0)
               .map((entry) => (
-                <tr key={`${row.subclass}-${entry}`}>
-                  <th scope="row">{row.subclass}</th>
+                <tr key={`${englishLabel(row.subclass)}-${entry}`}>
+                  <th scope="row">{englishLabel(row.subclass)}</th>
                   <td>{durationLabel(entry)}</td>
                   <td>{formatSharePercent(row.current[entry] ?? 0)}</td>
                   <td>{formatSharePercent(row.target[entry] ?? 0)}</td>
@@ -127,8 +128,8 @@ function DurationBars({
 }) {
   const touch = useTouchTooltip();
   const sharesOf = (row: FixedIncomeDurationRow) => (mode === "current" ? row.current : row.target);
-  // Os dois gráficos usam as mesmas séries, inclusive prazos fora do padrão que só ocorrem num
-  // deles, para que cada subclasse e prazo fique na mesma posição e largura no atual e no ideal.
+
+
   const data: ChartDatum[] = rows.map((row) => ({
     subclass: row.subclass,
     row,
@@ -136,7 +137,7 @@ function DurationBars({
   }));
 
   return (
-    <figure aria-label={`Renda fixa por resgate, ${title.toLowerCase()}`} data-testid={`duration-${mode}`}>
+    <figure aria-label={`Fixed income by redemption term, ${title.toLowerCase()}`} data-testid={`duration-${mode}`}>
       <figcaption className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
         {title}
       </figcaption>
@@ -157,6 +158,7 @@ function DurationBars({
               <XAxis
                 axisLine={false}
                 dataKey="subclass"
+                tickFormatter={englishLabel}
                 tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 tickLine={false}
               />
@@ -226,8 +228,8 @@ function DurationTooltip({
   return (
     <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-[11px] font-medium text-foreground">{row.subclass}</p>
-        <p className="text-[9px] tracking-[0.1em] text-muted-foreground uppercase">Atual / ideal</p>
+        <p className="text-[11px] font-medium text-foreground">{englishLabel(row.subclass)}</p>
+        <p className="text-[9px] tracking-[0.1em] text-muted-foreground uppercase">Current / target</p>
       </div>
       <div className="mt-2 space-y-1">
         {entries.map((entry) => (
@@ -278,9 +280,7 @@ function BarValueLabel({
   const halfText = (text.length * BAR_LABEL_CHAR_EM * fontSize) / 2;
   const ownRoom = (width + BAR_GAP - BAR_LABEL_SEPARATION) / 2;
 
-  // O rótulo pode avançar sobre o vizinho vazio, de fora do grupo ou bem mais baixo; ao lado de
-  // um vizinho bem mais alto, cujo rótulo fica acima, ocupa o vão até a barra dele; ao lado de um
-  // vizinho de altura parecida, divide o vão com o rótulo dele.
+
   const room = (neighbor: number | null) => {
     const drop = neighbor === null || neighbor <= 0 ? Infinity : (share - neighbor) * pixelsPerPoint;
 
@@ -295,7 +295,7 @@ function BarValueLabel({
     return ownRoom;
   };
 
-  // Sem espaço, o valor fica só no tooltip e na tabela acessível.
+
   if (halfText > Math.min(room(shareAt(seriesIndex - 1)), room(shareAt(seriesIndex + 1)))) {
     return null;
   }
@@ -315,11 +315,7 @@ function BarValueLabel({
   );
 }
 
-/**
- * Todas as barras dos dois gráficos têm a mesma largura, então todos os rótulos usam o mesmo
- * estilo: a precisão do tooltip e da tabela quando "25,6%" cabe na faixa da barra; senão o
- * percentual inteiro em 10 px e, em barras muito estreitas, em 9 px.
- */
+
 function barLabelStyle(width: number) {
   const fits = (chars: number, fontSize: number) =>
     chars * BAR_LABEL_CHAR_EM * fontSize <= width + BAR_GAP - BAR_LABEL_SEPARATION;
@@ -347,11 +343,11 @@ function seriesKey(index: number) {
 }
 
 function durationLabel(duration: string) {
-  return duration === "-" ? "Sem prazo" : duration;
+  return duration === "-" ? "No term" : duration;
 }
 
 function formatRoundedShare(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-GB", {
     style: "percent",
     maximumFractionDigits: 0,
   }).format(value / 100);

@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { useState } from "react";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -22,14 +24,11 @@ type WaterfallBar = {
   signed: boolean;
 };
 
-// Aportes e resgates em roxo, longe do azul e do laranja de alta e queda
+
 // (spec 038).
 const FLOW_COLOR = "#cc79a7";
 
-/**
- * Decomposição da variação em cascata: valor de partida, ganho de preço,
- * aportes e resgates e valor de chegada. Em saldos sem cotação, só a variação.
- */
+
 export function PositionAttribution({ summary, quoted }: { summary: PositionSummary; quoted: boolean }) {
   const [mode, setMode] = useState<Mode>("since-entry");
   const touch = useTouchTooltip();
@@ -38,20 +37,19 @@ export function PositionAttribution({ summary, quoted }: { summary: PositionSumm
     mode === "month"
       ? monthEmptyText(summary)
       : summary.startValueBrl === null
-        ? "A posição ainda não existia nesta competência."
-        : "A posição tem uma única competência até aqui.";
+        ? "The position did not exist in this reporting month."
+        : "The position has only one reporting month so far.";
 
   return (
     <section className="premium-panel @container rounded-[24px] p-5 sm:p-7" aria-labelledby="attribution-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="attribution-title" className="text-base font-semibold tracking-[-0.025em]">
-          De onde veio a variação
+        <h2 id="attribution-title" className="text-base font-semibold tracking-[-0.025em]">Sources of change
         </h2>
-        <div role="group" aria-label="Período da decomposição" className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+        <div role="group" aria-label="Attribution period" className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
           {(
             [
-              { key: "since-entry", label: summary.firstMonth ? `Desde ${monthLabel(summary.firstMonth)}` : "Desde a entrada" },
-              { key: "month", label: "No mês" },
+              { key: "since-entry", label: summary.firstMonth ? `Since ${monthLabel(summary.firstMonth)}` : "Since opening" },
+              { key: "month", label: "This month" },
             ] as const
           ).map((option) => (
             <button
@@ -64,7 +62,7 @@ export function PositionAttribution({ summary, quoted }: { summary: PositionSumm
                 mode === option.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {option.label}
+              {englishLabel(option.label)}
             </button>
           ))}
         </div>
@@ -118,8 +116,7 @@ export function PositionAttribution({ summary, quoted }: { summary: PositionSumm
                   {bars.map((bar) => (
                     <Cell key={bar.key} fill={barColor(bar)} fillOpacity={bar.tone === "total" ? 0.42 : 0.9} />
                   ))}
-                  {/* Barras de altura zero não recebem rótulo, então o índice
-                      do rótulo não é o da barra; a chave identifica a barra. */}
+
                   <LabelList
                     dataKey="key"
                     content={(props) => {
@@ -199,17 +196,17 @@ function sinceEntryBars(summary: PositionSummary, quoted: boolean): WaterfallBar
 
   if (quoted && summary.priceGainBrl !== null && summary.flowsBrl !== null) {
     return cascade([
-      { key: "start", label: startLabel, description: `Entrada em ${startLabel}`, value: start, tone: "total" },
-      { key: "price", label: "Preço", description: "Ganho de preço", value: summary.priceGainBrl, tone: "price" },
-      { key: "flow", label: "Aportes", description: "Aportes e resgates", value: summary.flowsBrl, tone: "flow" },
-      { key: "end", label: endLabel, description: `Valor em ${endLabel}`, value: end, tone: "total" },
+      { key: "start", label: startLabel, description: `Opened in ${startLabel}`, value: start, tone: "total" },
+      { key: "price", label: "Price", description: "Price gain", value: summary.priceGainBrl, tone: "price" },
+      { key: "flow", label: "Contributions", description: "Contributions and redemptions", value: summary.flowsBrl, tone: "flow" },
+      { key: "end", label: endLabel, description: `Value in ${endLabel}`, value: end, tone: "total" },
     ]);
   }
 
   return cascade([
-    { key: "start", label: startLabel, description: `Entrada em ${startLabel}`, value: start, tone: "total" },
-    { key: "change", label: "Variação", description: "Variação do saldo", value: end - start, tone: "change" },
-    { key: "end", label: endLabel, description: `Valor em ${endLabel}`, value: end, tone: "total" },
+    { key: "start", label: startLabel, description: `Opened in ${startLabel}`, value: start, tone: "total" },
+    { key: "change", label: "Change", description: "Balance change", value: end - start, tone: "change" },
+    { key: "end", label: endLabel, description: `Value in ${endLabel}`, value: end, tone: "total" },
   ]);
 }
 
@@ -226,44 +223,44 @@ function monthBars(summary: PositionSummary, quoted: boolean): WaterfallBar[] | 
   const start = current.valueBrl - step.changeBrl;
 
   if (step.source && step.source !== "estimated") {
-    return recordedBars(start, current.valueBrl, step.fromMonth === step.month ? "Abertura" : fromLabel, toLabel,
+    return recordedBars(start, current.valueBrl, step.fromMonth === step.month ? "Opening" : fromLabel, toLabel,
       step.priceEffectBrl ?? 0, step.flowBrl ?? 0, step.capitalizedIncomeBrl ?? 0,
       step.internalBrl ?? 0, step.openingBrl ?? 0, step.unexplainedBrl ?? 0);
   }
 
   if (quoted && step.priceEffectBrl !== null && step.flowBrl !== null) {
     return cascade([
-      { key: "start", label: fromLabel, description: `Valor em ${fromLabel}`, value: start, tone: "total" },
-      { key: "price", label: "Preço", description: "Ganho de preço", value: step.priceEffectBrl, tone: "price" },
-      { key: "flow", label: "Aportes", description: "Aportes e resgates", value: step.flowBrl, tone: "flow" },
-      { key: "end", label: toLabel, description: `Valor em ${toLabel}`, value: current.valueBrl, tone: "total" },
+      { key: "start", label: fromLabel, description: `Value in ${fromLabel}`, value: start, tone: "total" },
+      { key: "price", label: "Price", description: "Price gain", value: step.priceEffectBrl, tone: "price" },
+      { key: "flow", label: "Contributions", description: "Contributions and redemptions", value: step.flowBrl, tone: "flow" },
+      { key: "end", label: toLabel, description: `Value in ${toLabel}`, value: current.valueBrl, tone: "total" },
     ]);
   }
 
   return cascade([
-    { key: "start", label: fromLabel, description: `Valor em ${fromLabel}`, value: start, tone: "total" },
-    { key: "change", label: "Variação", description: "Variação do saldo", value: step.changeBrl, tone: "change" },
-    { key: "end", label: toLabel, description: `Valor em ${toLabel}`, value: current.valueBrl, tone: "total" },
+    { key: "start", label: fromLabel, description: `Value in ${fromLabel}`, value: start, tone: "total" },
+    { key: "change", label: "Change", description: "Balance change", value: step.changeBrl, tone: "change" },
+    { key: "end", label: toLabel, description: `Value in ${toLabel}`, value: current.valueBrl, tone: "total" },
   ]);
 }
 
 function recordedBars(start: number, end: number, startLabel: string, endLabel: string, price: number, flows: number, income: number, internal: number, opening: number, unexplained: number): WaterfallBar[] {
-  // Centavos de arredondamento entram no preço (ou no rendimento, sem cotação)
-  // em vez de aparecer como variação sem registro (spec 073).
+
+
   if (Math.abs(unexplained) < 0.05) {
     if (price !== 0) price += unexplained;
     else income += unexplained;
     unexplained = 0;
   }
   const entries: Omit<WaterfallBar, "range" | "signed">[] = [
-    { key: "start", label: startLabel, description: `Saldo de partida · ${startLabel}`, value: start, tone: "total" },
-    { key: "flow", label: "Movimentos", description: "Aportes menos retiradas", value: flows, tone: "flow" },
-    { key: "income", label: "Rendimento", description: "Rendimentos incorporados", value: income, tone: "change" },
-    { key: "internal", label: "Transferência", description: "Transferências internas", value: internal, tone: "neutral" },
-    { key: "opening", label: "Saldo inicial", description: "Saldo inicial registrado", value: opening, tone: "neutral" },
-    { key: "price", label: "Preço", description: "Efeito de preço", value: price, tone: "price" },
-    { key: "unexplained", label: "Sem registro", description: "Variação sem registro", value: unexplained, tone: "neutral" },
-    { key: "end", label: endLabel, description: `Valor em ${endLabel}`, value: end, tone: "total" },
+    { key: "start", label: startLabel, description: `Opening balance · ${startLabel}`, value: start, tone: "total" },
+    { key: "flow", label: "Transactions", description: "Contributions minus withdrawals", value: flows, tone: "flow" },
+    { key: "income", label: "Return", description: "Capitalized returns", value: income, tone: "change" },
+    { key: "internal", label: "Transfer", description: "Internal transfers", value: internal, tone: "neutral" },
+    { key: "opening", label: "Opening balance", description: "Recorded opening balance", value: opening, tone: "neutral" },
+    { key: "price", label: "Price", description: "Price effect", value: price, tone: "price" },
+    { key: "unexplained", label: "Not recorded", description: "Unrecorded change", value: unexplained, tone: "neutral" },
+    { key: "end", label: endLabel, description: `Value in ${endLabel}`, value: end, tone: "total" },
   ];
   return cascade(entries.filter((entry) => entry.tone === "total" || Math.abs(entry.value) >= 0.005));
 }
@@ -285,14 +282,14 @@ function cascade(entries: Omit<WaterfallBar, "range" | "signed">[]): WaterfallBa
 
 function monthEmptyText(summary: PositionSummary) {
   if (summary.state !== "present") {
-    return "Sem a posição nesta competência.";
+    return "No position in this reporting month.";
   }
 
   if (!summary.previousMonth) {
-    return "Primeira competência do histórico.";
+    return "First reporting month in history.";
   }
 
-  return `Sem a posição em ${monthLabel(summary.previousMonth)}: ela entrou nesta competência.`;
+  return `No position in ${monthLabel(summary.previousMonth)}: it was opened in this reporting month.`;
 }
 
 function barColor(bar: WaterfallBar) {
@@ -307,10 +304,9 @@ function barColor(bar: WaterfallBar) {
   return bar.value >= 0 ? "var(--chart-up)" : "var(--chart-down)";
 }
 
-// Rótulo curto sobre a barra, sem o símbolo da moeda, que já está no eixo: com
-// ele, "+R$ 135,6 mil" invadia a barra vizinha no celular.
+
 function compactValue(bar: WaterfallBar) {
-  const formatted = new Intl.NumberFormat("pt-BR", {
+  const formatted = new Intl.NumberFormat("en-GB", {
     notation: "compact",
     maximumFractionDigits: 1,
     signDisplay: bar.signed ? "exceptZero" : "auto",

@@ -6,18 +6,14 @@ import type {
 } from "@/modules/quotes/domain/quote-refresh";
 import { toDateKey } from "@/modules/quotes/domain/calendar";
 
-// As execuções da atualização são de todos os usuários (spec 051). Cada um vê,
-// de cada execução, só os símbolos dos próprios ativos: o que deu certo, as
-// falhas com os nomes dos ativos dele e um estado calculado sobre esses
-// símbolos. A falha de um símbolo que só outro usuário tem não aparece.
 
 export type QuoteViewer = {
   symbols: Set<string>;
-  /** Nomes dos ativos do usuário por símbolo, para os avisos indicarem o ativo. */
+
   assetNames: Map<string, string[]>;
 };
 
-/** Símbolos e nomes dos ativos do usuário, pelo cliente com escopo dele. */
+
 export async function readQuoteViewer(db: PrismaClient): Promise<QuoteViewer> {
   const [assets, latest] = await Promise.all([
     db.asset.findMany({
@@ -36,8 +32,7 @@ export async function readQuoteViewer(db: PrismaClient): Promise<QuoteViewer> {
     symbols.add(symbol);
     all.set(symbol, [...(all.get(symbol) ?? []), asset.name]);
 
-    // Os avisos nomeiam os ativos da competência mais recente, como antes; um
-    // símbolo que saiu dela usa os nomes de qualquer mês.
+
     if (latest && asset.positions.some((position) => position.portfolioMonthId === latest.id)) {
       current.set(symbol, [...(current.get(symbol) ?? []), asset.name]);
     }
@@ -67,7 +62,7 @@ type ResultRow = {
   errorMessage: string | null;
 };
 
-/** A execução vista por um usuário. */
+
 export function runViewFor(run: RunRow, results: ResultRow[], viewer: QuoteViewer): QuoteRefreshRunView {
   const own = results.filter((result) => viewer.symbols.has(result.symbol));
   const failed = own.filter((result) => result.status === QuoteUpdateStatus.FAILED);
@@ -77,7 +72,7 @@ export function runViewFor(run: RunRow, results: ResultRow[], viewer: QuoteViewe
     assets: viewer.assetNames.get(result.symbol) ?? [],
     provider: result.provider,
     errorCode: result.errorCode ?? "UNKNOWN",
-    errorMessage: result.errorMessage ?? "Falha sem descrição.",
+    errorMessage: result.errorMessage ?? "Failure without a description.",
   }));
 
   return {
@@ -88,13 +83,13 @@ export function runViewFor(run: RunRow, results: ResultRow[], viewer: QuoteViewe
     finishedAt: run.finishedAt?.toISOString() ?? null,
     succeeded,
     failures,
-    // A falha da execução inteira vale para todos; a contagem de falhas, só
-    // sobre os símbolos do usuário.
+
+
     errorMessage:
       run.status === "FAILED"
         ? run.errorMessage
         : failed.length > 0
-          ? `${failed.length} de ${own.length} cotações não foram atualizadas.`
+          ? `${failed.length} of ${own.length} quotes were not updated.`
           : null,
     repricedMonth: run.repricedMonth ? toDateKey(run.repricedMonth).slice(0, 7) : null,
   };

@@ -21,10 +21,6 @@
     "backup:restore": "tsx scripts/backup.ts restore",
     "auth:user": "tsx scripts/auth-user.ts",
     "auth:access": "tsx scripts/access.ts",
-    "family:convert": "tsx scripts/family-expenses.ts convert",
-    "family:backup": "tsx scripts/family-expenses.ts backup",
-    "income:backup": "tsx scripts/income.ts backup",
-    "income:overtime": "tsx scripts/income.ts overtime",
     "quotes:sync": "tsx scripts/quotes-sync.ts",
     "jobs:build": "node jobs/neon/build.mjs",
     "postinstall": "prisma generate"
@@ -72,7 +68,7 @@
     "typescript": "^5"
   },
   "packageManager": "pnpm@11.25.0",
-  "description": "Aplicação pessoal para acompanhamento de investimentos",
+  "description": "Personal investment portfolio tracking",
   "engines": {
     "node": ">=24.20.0 <25"
   }

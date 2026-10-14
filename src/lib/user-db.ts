@@ -1,14 +1,11 @@
+
+/** All portfolio reads and writes are scoped to the verified user. CLI operations use an explicit runAsUser context. */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { PrismaClient } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireSessionUser } from "@/modules/auth/session";
 
-// Dados por usuário (spec 050). As tabelas da carteira têm `user_id`; este
-// cliente acrescenta o usuário a toda leitura e gravação delas, para o código
-// de cada tela não precisar lembrar do filtro. As cotações são compartilhadas
-// (spec 051) e passam sem filtro. As chaves estrangeiras compostas com o
-// usuário garantem no banco que nenhuma linha aponte para dados de outro.
 
 const OWNED_MODELS = new Set([
   "DataImport",
@@ -22,18 +19,18 @@ const OWNED_MODELS = new Set([
   "TargetPlan",
   "AllocationTarget",
   "ManualQuote",
-  // Gastos familiares (spec 082), lidos e gravados só por getFamilyDb, que
-  // confere antes a concessão da área.
+
+
   "FamilyContact",
   "FamilySeries",
   "FamilyEntry",
-  // Recebimentos (spec 088), lidos e gravados só por getIncomeContext e pela
-  // Previdência (spec 089), que conferem antes a concessão de cada área.
+
+
   "IncomeMonth",
   "IncomePayslip",
-  // Horas do holerite (specs 094 e 098), gravadas com o mês de Recebimentos.
+
   "IncomeHourRecord",
-  // Horas extras (spec 098), também só pelo cliente de Recebimentos.
+
   "OvertimeMonth",
   "OvertimeDay",
   "OvertimeRule",
@@ -58,14 +55,7 @@ const WHERE_OPERATIONS = new Set([
 
 type Args = { where?: object; data?: object | object[]; create?: object };
 
-/**
- * Valor de `userId` nas gravações pelo cliente com escopo: os tipos do Prisma
- * pedem o campo, e a extensão sempre o troca pelo usuário da operação. No
- * cliente comum, o texto vazio não é um UUID e a gravação falha, em vez de
- * criar uma linha sem dono. Só nos dados gravados: dentro de uma chave única
- * composta (como `userId_referenceDate_symbol`) ele não é trocado; nesses casos,
- * busque com `findFirst`, que recebe o usuário.
- */
+
 export const SCOPED_USER = "";
 
 export function isOwnedModel(model: string) {
@@ -86,7 +76,7 @@ function scope(operation: string, args: Args, userId: string): Args {
     scoped.where = { ...args.where, userId };
     scoped.create = { ...args.create, userId };
   } else {
-    throw new Error(`Operação ${operation} sem escopo de usuário.`);
+    throw new Error(`Operation ${operation} without user scope.`);
   }
 
   return scoped;
@@ -95,12 +85,7 @@ function scope(operation: string, args: Args, userId: string): Args {
 const globalForScoped = globalThis as unknown as { scopedClients?: Map<string, PrismaClient> };
 const scopedClients = (globalForScoped.scopedClients ??= new Map());
 
-/**
- * Cliente do Prisma restrito a um usuário. As gravações nas tabelas da carteira
- * recebem o usuário, e as leituras, atualizações e exclusões só alcançam as
- * linhas dele. O tipo continua o do cliente comum: a extensão só muda os
- * argumentos das consultas, não os resultados.
- */
+
 export function scopedPrisma(base: PrismaClient, userId: string): PrismaClient {
   const cached = scopedClients.get(userId);
 
@@ -125,24 +110,17 @@ export function scopedPrisma(base: PrismaClient, userId: string): PrismaClient {
 
 const userContext = new AsyncLocalStorage<{ userId: string }>();
 
-/**
- * Roda uma operação como um usuário, fora de um pedido do navegador: os roteiros
- * de terminal, como o backup (`pnpm backup:export --user`).
- */
+
 export function runAsUser<T>(userId: string, operation: () => Promise<T>) {
   return userContext.run({ userId }, operation);
 }
 
-/** Usuário da operação: o do roteiro, se houver, ou o da sessão do pedido. */
+
 export async function currentUserId() {
   return userContext.getStore()?.userId ?? (await requireSessionUser()).id;
 }
 
-/**
- * Cliente do usuário da sessão. Sem banco configurado, nulo, como
- * `getPrismaClient`. Sem sessão, leva à página de entrada; as rotas de API
- * conferem a sessão antes e respondem 401.
- */
+
 export async function getUserDb(): Promise<PrismaClient | null> {
   const prisma = getPrismaClient();
 

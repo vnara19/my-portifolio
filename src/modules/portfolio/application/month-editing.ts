@@ -1,3 +1,5 @@
+
+/** Transactional edits require user ownership and an open reporting month. Verify tickers and classifications server-side; preserve historical months. */
 import { createHash, randomUUID } from "node:crypto";
 
 import { PortfolioMonthStatus, PositionTransactionKind, Prisma, QuoteUpdateStatus } from "@/generated/prisma/client";
@@ -42,58 +44,49 @@ export class MonthEditError extends Error {
   }
 }
 
-/** Conta nova, numa instituição existente ou também nova (spec 026). */
+
 export type NewAccountInput = {
   institutionId: string | null;
   institutionName: string | null;
   name: string;
 };
-/** Ativo novo com a conferência do ticker (spec 026). */
+
 export type NewAssetInput = {
   name: string;
   kind: AssetKind;
   ticker: string | null;
   maturityDate: string | null;
-  /** Prazo de liquidez, opcional (spec 039). */
+  /** Optional liquidity period (spec 039). */
   liquidity?: string | null;
   quoteCheckToken: string | null;
   manualPriceBrl: string | null;
-  /** Conta corrente (spec 059), só no caixa em reais e no caixa em dólar. */
+
   cashAccount?: boolean;
-  /**
-   * Rendimento automático (spec 079) e o dia da aplicação, desde quando o
-   * valor rende. A rentabilidade é de cada classificação do rateio.
-   */
+
+
   autoIncome?: boolean;
   appliedOn?: string | null;
 };
-/** Inclusão pelo formulário da posição (spec 043), já com o rateio completo. */
+
 export type PositionAddition = {
   accountId?: string;
   newAccount?: NewAccountInput;
   assetId?: string;
   newAsset?: NewAssetInput;
   value: string;
-  /**
-   * O que `value` informa num ativo cotado (spec 070): a quantidade, o padrão,
-   * ou o valor da posição em reais, de que o servidor tira a quantidade pela
-   * cotação do mês. Nos saldos em reais, o valor é sempre o saldo.
-   */
+
+
   valueKind?: "quantity" | "amount";
-  /**
-   * Como o valor entra (spec 056): saldo que a posição já tinha, sem ser
-   * aporte nem custo conhecido, ou aporte de dinheiro novo.
-   */
+
+
   initialKind?: "OPENING" | "CONTRIBUTION";
-  /** Preço executado do aporte inicial num ativo cotado; sem ele, a cotação do mês. */
+
   executedPriceBrl?: string | null;
   strategy: string | null;
   allocations: AllocationInput[];
 };
-/**
- * Edição pelo formulário da posição (spec 043): os atributos da posição, o
- * rateio e o ativo. Quantidade e saldo só mudam por movimentações (spec 057).
- */
+
+
 export type PositionEdit = {
   positionId: string;
   strategy: string | null;
@@ -105,10 +98,8 @@ export type AllocationInput = {
   subclass: string;
   duration: string;
   weightPercent: string;
-  /**
-   * Rentabilidade da classificação (spec 079): % do CDI no pós-fixado, taxa ao
-   * ano no prefixado. Opcional.
-   */
+
+
   ratePercent?: string | null;
 };
 export type QuoteInput = { symbol: string; valueBrl: string };
@@ -137,7 +128,7 @@ type SnapshotPosition = {
   }[];
 };
 
-/** Cotação digitada à mão pelo usuário (spec 051); as compartilhadas ficam fora. */
+
 type SnapshotQuote = {
   id: string;
   symbol: string;
@@ -146,7 +137,7 @@ type SnapshotQuote = {
   valueBrl: Prisma.Decimal;
 };
 
-/** Movimentação registrada no mês (spec 056), que volta junto no desfazer. */
+
 type SnapshotTransaction = {
   id: string;
   positionId: string;
@@ -162,11 +153,7 @@ type SnapshotTransaction = {
 
 type MonthSnapshot = { positions: SnapshotPosition[]; quotes: SnapshotQuote[]; transactions: SnapshotTransaction[] };
 
-/**
- * Cadastros criados junto com uma inclusão. Ficam fora da fotografia da
- * competência, que só guarda posições e cotações do mês; o desfazer os remove
- * depois de restaurar o mês, desde que nada mais os use.
- */
+
 type CreatedEntities = {
   institutionIds: string[];
   accountIds: string[];
@@ -174,8 +161,7 @@ type CreatedEntities = {
   dailyQuoteIds: string[];
 };
 
-// O depósito do desfazer é um só no servidor; cada entrada guarda o usuário
-// que fez a alteração, e só ele pode desfazê-la (spec 050).
+
 type UndoEntry = { userId: string } & (
   | {
       kind: "restore";
@@ -184,7 +170,7 @@ type UndoEntry = { userId: string } & (
       fingerprint: string;
       expiresAt: number;
       created?: CreatedEntities;
-      /** Ativos editados junto, no estado anterior. */
+
       assets?: AssetState[];
     }
   | { kind: "delete-month"; monthId: string; fingerprint: string; expiresAt: number }
@@ -201,10 +187,7 @@ const MAX_ASSET_NAME_LENGTH = 80;
 const globalForUndo = globalThis as unknown as { monthUndoStore?: Map<string, UndoEntry> };
 const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>());
 
-/**
- * Inclui uma posição pelo formulário (spec 043): conta e ativo existentes ou
- * novos, com o rateio informado. Um ativo que já existe é reaproveitado.
- */
+
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const allocations = parseAllocations(input.addition.allocations);
 
@@ -229,7 +212,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     const asset = await resolveAdditionAsset(transaction, addition, account, batch);
 
     if (positions.some((position) => position.accountId === account.id && position.assetId === asset.id)) {
-      throw new MonthEditError("Este ativo já possui posição nesta instituição e competência.");
+      throw new MonthEditError("This asset already has a position at this institution in this reporting month.");
     }
 
     const value = parseNonNegative(addition.value);
@@ -242,14 +225,14 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
 
       if (!price) {
         throw new MonthEditError(
-          `Não há cotação de ${asset.quoteSymbol} nesta competência. Informe-a na página de cotações.`,
+          `No quote exists for ${asset.quoteSymbol} in this reporting month. Enter it on the Quotes page.`,
         );
       }
       unitPriceBrl = price;
 
       if (addition.valueKind === "amount") {
-        // Valor da posição em reais, como o saldo do Tesouro no banco: o total
-        // fica o digitado, e a quantidade, a que ele compra pela cotação.
+
+
         totalBrl = value.toDecimalPlaces(2);
         quantity = totalBrl.div(price).toDecimalPlaces(12);
       } else {
@@ -278,12 +261,10 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     });
     const income = await assertIncomeRates(transaction, asset.id, allocations);
 
-    // A posição nasce com o movimento inicial (spec 056): saldo inicial, o
-    // valor que ela já tinha ao começar o acompanhamento, ou aporte. A base do
-    // mês fica zero e a quantidade vem do movimento.
+
     if (quantity.greaterThan(0)) {
-      // O dia da aplicação vale só para a renda fixa criada nesta inclusão; um
-      // ativo que já existia entra pelo dia do movimento no mês.
+
+
       const dates = batch.created.assetIds.includes(asset.id)
         ? await transaction.asset.findUnique({
             where: { id: asset.id },
@@ -293,7 +274,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
 
       if (dates?.appliedOn && dates.appliedOn > lastDayOf(month.referenceDate)) {
         throw new MonthEditError(
-          `O dia da aplicação fica até o fim da competência (${formatDay(lastDayOf(month.referenceDate))}).`,
+          `The investment date must be on or before the end of the reporting month (${formatDay(lastDayOf(month.referenceDate))}).`,
         );
       }
 
@@ -311,16 +292,13 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
           kind: contribution ? PositionTransactionKind.CONTRIBUTION : PositionTransactionKind.OPENING,
           occurredOn: dates?.appliedOn ?? transactionDay(month.referenceDate),
           quantity,
-          // O saldo inicial não é custo de compra: sem preço executado.
+
           unitPriceBrl: executed,
           amountBrl: executed ? quantity.mul(executed).toDecimalPlaces(2) : totalBrl,
         },
       });
 
-      // Rendimento automático (spec 079): o valor informado é o aplicado no dia
-      // da aplicação, e o saldo bruto sai do cálculo pela taxa de cada
-      // classificação até hoje. Uma aplicação de antes da competência rende
-      // desde o próprio dia.
+
       if (income) {
         const start = dates?.appliedOn && dates.appliedOn < month.referenceDate ? dates.appliedOn : month.referenceDate;
         await transaction.position.update({ where: { id: created.id }, data: { calculationStartDate: start } });
@@ -332,11 +310,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   });
 }
 
-/**
- * Edita uma posição pelo formulário (spec 043): quantidade ou saldo,
- * estratégia, rateio e os atributos do ativo, que valem para todos os meses.
- * Tudo numa transação, com desfazer que também volta o ativo.
- */
+
 export async function editPosition(input: { monthId: string; edit: PositionEdit }) {
   const allocations = parseAllocations(input.edit.allocations);
 
@@ -353,17 +327,17 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
     });
 
     if (!position) {
-      throw new MonthEditError("A posição não pertence a esta competência.");
+      throw new MonthEditError("The position does not belong to this reporting month.");
     }
 
-    // O lápis edita só os atributos: quantidade e saldo vêm das movimentações
+
     // (spec 057).
     await transaction.position.update({
       where: { id: position.id },
       data: { strategy: normalizeStrategy(input.edit.strategy) },
     });
 
-    // Uma classificação fora da lista só continua se a posição já a tinha.
+
     assertAllocationRules(allocations, position.allocations);
     await transaction.positionAllocation.deleteMany({ where: { positionId: position.id } });
     await transaction.positionAllocation.createMany({
@@ -387,14 +361,7 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
   });
 }
 
-/**
- * Liga, recalcula ou desliga o rendimento automático da posição (spec 079),
- * pela flag e pela taxa do ativo, que chegam pelos atributos. Ligado, a base do
- * mês rende desde o dia 1, como no banco: ela é o saldo de fechamento do mês
- * anterior, e cada movimentação rende desde o próprio dia. Desligar guarda o
- * rendimento já calculado como um rendimento registrado, para o saldo não
- * sumir.
- */
+
 async function applyAutoIncome(
   transaction: Transaction,
   month: { id: string; referenceDate: Date },
@@ -409,34 +376,33 @@ async function applyAutoIncome(
   }
 
   if (!position.calculationStartDate) {
-    // Uma posição liquidada no mês fechou o cálculo no dia do resgate.
+
     const liquidated = await transaction.positionTransaction.count({
-      where: { positionId: position.id, note: { startsWith: LIQUIDATION_NOTE } },
+      where: { positionId: position.id, OR: [{ note: { startsWith: LIQUIDATION_NOTE } }, { note: { startsWith: "Liquidação" } }] },
     });
 
     if (liquidated > 0) {
       return;
     }
 
-    // Um rendimento manual no mês somaria duas vezes com o calculado. O que o
-    // próprio cálculo guardou ao ser desligado volta a ser calculado.
+
     const manual = await transaction.positionTransaction.count({
       where: {
         positionId: position.id,
         kind: PositionTransactionKind.INCOME,
-        // Sem observação também conta: no SQL, NOT LIKE de nulo não é verdadeiro.
-        OR: [{ note: null }, { NOT: { note: { startsWith: AUTO_INCOME_NOTE } } }],
+
+        OR: [{ note: null }, { NOT: { OR: [{ note: { startsWith: AUTO_INCOME_NOTE } }, { note: { startsWith: "Rendimento automático" } }] } }],
       },
     });
 
     if (manual > 0) {
       throw new MonthEditError(
-        "Este mês já tem rendimento registrado à mão. Apague-o nas movimentações antes de ligar o cálculo automático.",
+        "This month already has a manual return. Delete it in Transactions before enabling automatic accrual.",
       );
     }
 
     await transaction.positionTransaction.deleteMany({
-      where: { positionId: position.id, kind: PositionTransactionKind.INCOME, note: { startsWith: AUTO_INCOME_NOTE } },
+      where: { positionId: position.id, kind: PositionTransactionKind.INCOME, OR: [{ note: { startsWith: AUTO_INCOME_NOTE } }, { note: { startsWith: "Rendimento automático" } }] },
     });
     await transaction.position.update({ where: { id: position.id }, data: { calculationStartDate: month.referenceDate } });
   }
@@ -444,14 +410,10 @@ async function applyAutoIncome(
   await valueCdiPositions(transaction, { where: { id: position.id } });
 }
 
-const AUTO_INCOME_NOTE = "Rendimento automático";
-const LIQUIDATION_NOTE = "Liquidação";
+const AUTO_INCOME_NOTE = "Automatic accrual";
+const LIQUIDATION_NOTE = "Liquidation";
 
-/**
- * Desliga o cálculo da posição no mês e guarda o rendimento já calculado como
- * um rendimento registrado, "Rendimento automático até…", para o saldo não
- * sumir. Na liquidação, o registro fica no dia do resgate.
- */
+
 export async function foldCalculatedIncome(
   transaction: Transaction,
   month: { referenceDate: Date },
@@ -473,7 +435,7 @@ export async function foldCalculatedIncome(
         occurredOn,
         quantity: income,
         amountBrl: income,
-        note: `${AUTO_INCOME_NOTE}${current.incomeCalculatedThrough ? ` até ${formatDay(current.incomeCalculatedThrough)}` : ""}`,
+        note: `${AUTO_INCOME_NOTE}${current.incomeCalculatedThrough ? ` through ${formatDay(current.incomeCalculatedThrough)}` : ""}`,
       },
     });
   }
@@ -484,41 +446,32 @@ export async function foldCalculatedIncome(
   });
 }
 
-/** Dia como DD/MM/AAAA, nas mensagens. */
+
 function formatDay(day: Date) {
   const [year, month, date] = toDateKey(day).split("-");
   return `${date}/${month}/${year}`;
 }
 
-/**
- * Rendimento automático e dia da aplicação de um ativo novo (spec 079): só
- * renda fixa e caixa em reais. O dia da aplicação é pedido com o cálculo
- * ligado, desde quando o valor rende; a taxa vem de cada classificação.
- */
+
 function incomeOfNewAsset(input: NewAssetInput) {
   if (!input.autoIncome) {
     return {};
   }
 
   if (!supportsAutoIncome(input.kind)) {
-    throw new MonthEditError("Só renda fixa e caixa em reais têm rendimento automático.");
+    throw new MonthEditError("Only fixed income and BRL cash support automatic accrual.");
   }
 
   const applied = input.appliedOn && /^\d{4}-\d{2}-\d{2}$/.test(input.appliedOn) ? new Date(`${input.appliedOn}T00:00:00.000Z`) : null;
 
   if (!applied || Number.isNaN(applied.getTime()) || toDateKey(applied) !== input.appliedOn || applied > calendarDay(new Date()) || input.appliedOn < "2000-01-01") {
-    throw new MonthEditError("Informe o dia da aplicação, até hoje, para calcular o rendimento.");
+    throw new MonthEditError("Enter an investment date no later than today to calculate accrual.");
   }
 
   return { autoIncome: true, appliedOn: applied };
 }
 
-/**
- * Confere as taxas do rateio contra o ativo (spec 079): só renda fixa e caixa
- * em reais, sem cotação de mercado, têm rentabilidade, e o rendimento
- * automático exige a taxa em cada classificação. Devolve se o cálculo fica
- * ligado.
- */
+
 async function assertIncomeRates(
   transaction: Transaction,
   assetId: string,
@@ -531,19 +484,19 @@ async function assertIncomeRates(
   const supported = !asset.quoteSymbol && supportsAutoIncome(assetTypeOf(asset));
 
   if (allocations.some((allocation) => allocation.ratePercent !== null) && !supported) {
-    throw new MonthEditError("Só renda fixa e caixa em reais, sem cotação de mercado, têm rentabilidade.");
+    throw new MonthEditError("Only fixed income and BRL cash without a market quote support a rate of return.");
   }
 
   if (asset.autoIncome && !autoIncomeParts(asset, allocations)) {
     throw new MonthEditError(
-      "Com o rendimento automático, cada classificação precisa ser pós-fixada ou prefixada e ter a rentabilidade.",
+      "With automatic accrual, every classification must be floating-rate or fixed-rate and have a rate of return.",
     );
   }
 
   return Boolean(autoIncomeParts(asset, allocations));
 }
 
-/** Remove uma posição da competência (spec 043), com desfazer. */
+
 export async function removePosition(input: { monthId: string; positionId: string }) {
   return withUndo(input.monthId, async (transaction, month) => {
     const removed = await transaction.position.deleteMany({
@@ -551,7 +504,7 @@ export async function removePosition(input: { monthId: string; positionId: strin
     });
 
     if (removed.count === 0) {
-      throw new MonthEditError("A posição não pertence a esta competência.");
+      throw new MonthEditError("The position does not belong to this reporting month.");
     }
   });
 }
@@ -560,8 +513,8 @@ type AdditionBatch = {
   month: { id: string; referenceDate: Date };
   isCurrentMonth: boolean;
   quoteBySymbol: Map<string, Prisma.Decimal>;
-  // Cadastros criados neste salvamento, pela chave normalizada: duas posições
-  // novas na mesma instituição nova criam a instituição uma vez só.
+
+
   institutions: Map<string, { id: string; name: string }>;
   accounts: Map<string, string>;
   assets: Map<string, { id: string; signature: string; quoteSymbol: string | null }>;
@@ -580,7 +533,7 @@ async function resolveAdditionAccount(
     });
 
     if (!account) {
-      throw new MonthEditError("A conta escolhida não existe.");
+      throw new MonthEditError("The selected account does not exist.");
     }
 
     return { id: account.id, institutionName: account.institution.name };
@@ -589,11 +542,11 @@ async function resolveAdditionAccount(
   const input = addition.newAccount;
 
   if (!input) {
-    throw new MonthEditError("Escolha a conta da posição.");
+    throw new MonthEditError("Choose the position account.");
   }
 
   const institution = await resolveInstitution(transaction, input, batch);
-  const name = requireName(input.name, MAX_ENTITY_NAME_LENGTH, "o nome da conta");
+  const name = requireName(input.name, MAX_ENTITY_NAME_LENGTH, "the account name");
   const key = `${institution.id}:${normalizeKey(name)}`;
   const reused = batch.accounts.get(key);
 
@@ -608,7 +561,7 @@ async function resolveAdditionAccount(
   const duplicate = siblings.find((account) => normalizeKey(account.name) === normalizeKey(name));
 
   if (duplicate) {
-    throw new MonthEditError(`A conta "${duplicate.name}" já existe em ${institution.name}. Escolha-a na lista.`);
+    throw new MonthEditError(`The account "${duplicate.name}" already exists in ${institution.name}. Select it from the list.`);
   }
 
   const account = await transaction.account.create({
@@ -629,13 +582,13 @@ async function resolveInstitution(transaction: Transaction, input: NewAccountInp
     });
 
     if (!institution) {
-      throw new MonthEditError("A instituição escolhida não existe.");
+      throw new MonthEditError("The selected institution does not exist.");
     }
 
     return institution;
   }
 
-  const name = requireName(input.institutionName ?? "", MAX_ENTITY_NAME_LENGTH, "o nome da instituição");
+  const name = requireName(input.institutionName ?? "", MAX_ENTITY_NAME_LENGTH, "the institution name");
   const normalizedName = normalizeKey(name);
   const reused = batch.institutions.get(normalizedName);
 
@@ -649,7 +602,7 @@ async function resolveInstitution(transaction: Transaction, input: NewAccountInp
   });
 
   if (existing) {
-    throw new MonthEditError(`A instituição "${existing.name}" já existe. Escolha-a na lista.`);
+    throw new MonthEditError(`The institution "${existing.name}" already exists. Select it from the list.`);
   }
 
   const institution = await transaction.institution.create({
@@ -675,7 +628,7 @@ async function resolveAdditionAsset(
     });
 
     if (!asset) {
-      throw new MonthEditError("O ativo escolhido não existe.");
+      throw new MonthEditError("The selected asset does not exist.");
     }
 
     return asset;
@@ -684,25 +637,25 @@ async function resolveAdditionAsset(
   const input = addition.newAsset;
 
   if (!input) {
-    throw new MonthEditError("Escolha o ativo da posição.");
+    throw new MonthEditError("Choose the position asset.");
   }
 
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
-  const name = requireName(input.name, MAX_ASSET_NAME_LENGTH, "o nome do ativo");
+  const name = requireName(input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
   const symbol = definition.ticker === null ? null : normalizeTicker(input.kind, input.ticker ?? "");
 
   if (definition.ticker !== null && !symbol) {
-    throw new MonthEditError(`Informe um ticker válido para ${name}.`);
+    throw new MonthEditError(`Enter a valid ticker for ${name}.`);
   }
 
   const officialMaturity = input.kind === "treasury" ? symbol?.slice(-10) ?? null : null;
   if (officialMaturity && input.maturityDate && input.maturityDate !== officialMaturity) {
-    throw new MonthEditError("O vencimento deve ser o do título oficial selecionado.");
+    throw new MonthEditError("The maturity date must match the selected official security.");
   }
   const maturityDate = parseMaturityDate(officialMaturity ?? input.maturityDate);
 
   if (maturityDate && !definition.allowsMaturity) {
-    throw new MonthEditError("Só ativos sem ticker de mercado têm vencimento.");
+    throw new MonthEditError("Only assets without a market ticker have a maturity date.");
   }
 
   const maturityKey = maturityDate ? maturityDate.toISOString().slice(0, 10) : null;
@@ -717,7 +670,7 @@ async function resolveAdditionAsset(
 
   if (reused) {
     if (reused.signature !== signature) {
-      throw new MonthEditError(`Duas posições novas criam o ativo ${name} com dados diferentes.`);
+      throw new MonthEditError(`Two new positions create the asset ${name} with different details.`);
     }
 
     return { id: reused.id, quoteSymbol: reused.quoteSymbol };
@@ -732,9 +685,8 @@ async function resolveAdditionAsset(
   }
 
   const verifiedCoinId = symbol ? await ensureMonthQuote(transaction, input, symbol, batch) : null;
-  // A moeda da CoinGecko fica no ativo para a atualização de cotações não
-  // buscar outra moeda com o mesmo símbolo. Um símbolo que outro ativo já cota
-  // mantém a moeda dele.
+
+
   const quoteProviderId =
     symbol && definition.provider === "coingecko"
       ? ((
@@ -758,7 +710,7 @@ async function resolveAdditionAsset(
       liquidity: normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance"),
-      // O tipo da inclusão é o tipo do ativo (spec 068).
+
       assetType: input.kind,
       ...incomeOfNewAsset(input),
     },
@@ -770,14 +722,7 @@ async function resolveAdditionAsset(
   return { id: asset.id, quoteSymbol: symbol };
 }
 
-/**
- * Garante a cotação do mês para o símbolo de um ativo novo. Um símbolo já
- * cotado na competência usa a cotação existente. Os demais exigem a conferência
- * do ticker: com o ticker encontrado e a competência do mês corrente, vale a
- * cotação de hoje, também gravada no histórico diário; com o provedor
- * indisponível ou numa competência passada, vale a cotação digitada. Devolve a
- * moeda da CoinGecko conferida, quando houver.
- */
+
 async function ensureMonthQuote(
   transaction: Transaction,
   input: NewAssetInput,
@@ -801,7 +746,7 @@ async function ensureMonthQuote(
     }));
 
   if (definition.ticker === "market" && stored && providerForQuote(stored.instrumentType, stored.baseCurrency) !== provider) {
-    throw new MonthEditError(`${symbol} já é cotado na carteira por outro provedor. Escolha o tipo correspondente.`);
+    throw new MonthEditError(`${symbol} is already quoted in the portfolio by another provider. Choose the corresponding type.`);
   }
 
   if (batch.quoteBySymbol.has(symbol)) {
@@ -809,7 +754,7 @@ async function ensureMonthQuote(
   }
 
   if (definition.ticker !== "market") {
-    throw new MonthEditError(`Não há cotação de ${symbol} nesta competência. Informe-a na página de cotações.`);
+    throw new MonthEditError(`No quote exists for ${symbol} in this reporting month. Enter it on the Quotes page.`);
   }
 
   const verified = input.quoteCheckToken ? readVerifiedTicker(input.quoteCheckToken, {
@@ -817,7 +762,7 @@ async function ensureMonthQuote(
   }) : null;
 
   if (!verified || verified.symbol !== symbol || verified.kind !== input.kind) {
-    throw new MonthEditError(`A conferência do ticker ${symbol} expirou. Confira o ticker novamente e tente salvar.`);
+    throw new MonthEditError(`Ticker verification for ${symbol} has expired. Verify the ticker again and try saving.`);
   }
 
   const useFetched = verified.status === "found" && verified.priceBrl !== null && batch.isCurrentMonth;
@@ -825,17 +770,16 @@ async function ensureMonthQuote(
   const typed = input.manualPriceBrl ? parsePositive(input.manualPriceBrl, 8) : null;
 
   if (!official && !typed) {
-    throw new MonthEditError(`Informe a cotação de ${symbol} em reais.`);
+    throw new MonthEditError(`Enter the quote for ${symbol} in BRL.`);
   }
 
-  // No Tesouro, o preço digitado vale por cima do oficial, só para o usuário e
-  // só nesta competência (spec 070); nos demais, o oficial do mês corrente.
+
   const own = typed && (!official || (input.kind === "treasury" && !typed.equals(official))) ? typed : null;
   const valueBrl = own ?? official!;
 
   if (official) {
-    // A cotação de hoje é dos provedores e vale para todos (spec 051); outro
-    // usuário pode tê-la gravado no meio-tempo.
+
+
     await transaction.marketQuote.createMany({
       data: [
         {
@@ -852,8 +796,8 @@ async function ensureMonthQuote(
   }
 
   if (own) {
-    // A digitada vale só para o usuário, como a edição à mão da página de
-    // cotações.
+
+
     await transaction.manualQuote.create({
       data: {
         userId: SCOPED_USER,
@@ -867,8 +811,7 @@ async function ensureMonthQuote(
   }
   batch.quoteBySymbol.set(symbol, valueBrl);
 
-  // O ticker novo entra no cadastro como pendente, e o job agendado carrega o
-  // histórico dele (spec 053). Um símbolo já cadastrado fica como está.
+
   await transaction.quoteSymbol.createMany({
     data: [{ symbol, instrumentType, baseCurrency, providerId: verified.coinId }],
     skipDuplicates: true,
@@ -910,11 +853,7 @@ function hasCreated(created: CreatedEntities) {
   );
 }
 
-/**
- * Remove, no desfazer, os cadastros criados por uma inclusão que ficaram sem
- * uso depois de restaurar a competência. Um cadastro usado em outro lugar
- * nesse meio-tempo é mantido.
- */
+
 async function removeUnusedCreated(transaction: Transaction, created: CreatedEntities) {
   if (created.assetIds.length > 0) {
     await transaction.asset.deleteMany({ where: { id: { in: created.assetIds }, positions: { none: {} } } });
@@ -925,8 +864,8 @@ async function removeUnusedCreated(transaction: Transaction, created: CreatedEnt
       where: { id: { in: created.dailyQuoteIds } },
       select: { id: true, symbol: true },
     });
-    // O histórico diário é de todos (spec 051): fica se o ativo de qualquer
-    // usuário usa o símbolo. A consulta crua passa por cima do escopo.
+
+
     const symbols = daily.map((entry) => entry.symbol);
     const inUse = new Set(
       symbols.length > 0
@@ -955,10 +894,7 @@ async function removeUnusedCreated(transaction: Transaction, created: CreatedEnt
   }
 }
 
-/**
- * Rateio do formulário: classe, subclasse e resgate preenchidos, sem
- * repetições, com pesos positivos que somam 100%. Devolve os pesos em fração.
- */
+
 function parseAllocations(inputs: AllocationInput[]) {
   const parsed = inputs.map((allocation) => {
     const subclass = normalizeLabel(allocation.subclass, "subclasse");
@@ -973,30 +909,27 @@ function parseAllocations(inputs: AllocationInput[]) {
   });
 
   if (parsed.length === 0) {
-    throw new MonthEditError("Informe ao menos uma classificação.");
+    throw new MonthEditError("Enter at least one classification.");
   }
 
   const identities = new Set(parsed.map((entry) => `${entry.assetClass}|${entry.subclass}|${entry.duration}`));
   if (identities.size !== parsed.length) {
-    throw new MonthEditError("Há classificações repetidas com a mesma classe, subclasse e resgate.");
+    throw new MonthEditError("There are duplicate allocations with the same class, subclass and redemption term.");
   }
 
   const sum = parsed.reduce((total, entry) => total.plus(entry.weight), new Prisma.Decimal(0));
   if (sum.minus(1).abs().greaterThan("0.0001")) {
-    throw new MonthEditError(`Os pesos somam ${sum.mul(100).toFixed(2)}%. A soma precisa ser 100%.`);
+    throw new MonthEditError(`Weights add up to ${sum.mul(100).toFixed(2)}%. The total must be 100%.`);
   }
 
   if (parsed.some((entry) => entry.weight.greaterThan(1))) {
-    throw new MonthEditError("Nenhum peso pode ultrapassar 100%.");
+    throw new MonthEditError("No weight can exceed 100%.");
   }
 
   return parsed;
 }
 
-/**
- * Rentabilidade de uma classificação (spec 079), pelo indexador da subclasse:
- * % do CDI no pós-fixado, taxa ao ano no prefixado.
- */
+
 function parseAllocationRate(subclass: string, raw: string | null) {
   if (raw === null || raw.trim() === "") {
     return null;
@@ -1005,13 +938,13 @@ function parseAllocationRate(subclass: string, raw: string | null) {
   const indexer = indexerOfSubclass(subclass);
 
   if (!indexer) {
-    throw new MonthEditError("Só as classificações pós-fixadas ou prefixadas têm rentabilidade.");
+    throw new MonthEditError("Only floating-rate or fixed-rate classifications support a rate of return.");
   }
 
   try {
     return indexer === "CDI" ? parseCdiPercent(raw) : parseFixedRate(raw);
   } catch (error) {
-    throw new MonthEditError(error instanceof Error ? error.message : "Revise a rentabilidade.");
+    throw new MonthEditError(error instanceof Error ? error.message : "Review the rate of return.");
   }
 }
 
@@ -1025,11 +958,11 @@ export async function updateMonthQuotes(input: {
   }));
 
   if (parsed.length === 0) {
-    throw new MonthEditError("Não há cotações para salvar.");
+    throw new MonthEditError("No quotes to save.");
   }
 
   if (new Set(parsed.map((quote) => quote.symbol)).size !== parsed.length) {
-    throw new MonthEditError("Há cotações repetidas.");
+    throw new MonthEditError("There are duplicate quotes.");
   }
 
   return withUndo(input.monthId, async (transaction, month) => {
@@ -1040,8 +973,8 @@ export async function updateMonthQuotes(input: {
     );
 
     for (const quote of parsed) {
-      // O valor digitado fica com o usuário (spec 051), por cima da cotação
-      // compartilhada, até a próxima busca bem-sucedida do símbolo no mês.
+
+
       const reference =
         (await transaction.marketQuote.findFirst({
           where: { symbol: quote.symbol },
@@ -1055,7 +988,7 @@ export async function updateMonthQuotes(input: {
         }));
 
       if (!reference) {
-        throw new MonthEditError(`Não há histórico de ${quote.symbol} para identificar o tipo de cotação.`);
+        throw new MonthEditError(`No history exists for ${quote.symbol} to identify the quote type.`);
       }
 
       const existing = await transaction.manualQuote.findFirst({
@@ -1109,8 +1042,8 @@ export async function cloneLatestMonth() {
 
   return prisma.$transaction(
     async (transaction) => {
-      // Renda fixa pelo CDI (spec 060): o mês de origem fecha pelo CDI até o
-      // primeiro dia do mês novo antes de servir de base.
+
+
       const head = await transaction.portfolioMonth.findFirst({
         orderBy: { referenceDate: "desc" },
         select: { id: true, referenceDate: true },
@@ -1128,7 +1061,7 @@ export async function cloneLatestMonth() {
         select: {
           id: true,
           referenceDate: true,
-          // Posições zeradas, como um título liquidado (spec 059), ficam no mês.
+
           positions: {
             where: { quantity: { gt: 0 } },
             select: {
@@ -1149,13 +1082,13 @@ export async function cloneLatestMonth() {
       });
 
       if (!latest || latest.positions.length === 0) {
-        throw new MonthEditError("Não existe competência com posições para clonar.");
+        throw new MonthEditError("No reporting month contains positions to copy.");
       }
 
       const target = nextMonth(latest.referenceDate);
 
       if (target.getTime() > currentReferenceMonth().getTime()) {
-        throw new MonthEditError("A competência mais recente já é a do mês corrente.");
+        throw new MonthEditError("The latest reporting month is already the current month.");
       }
 
       const month = await transaction.portfolioMonth.create({
@@ -1165,9 +1098,8 @@ export async function cloneLatestMonth() {
 
       for (const position of latest.positions) {
         const { allocations, asset, ...fields } = position;
-        // O mês novo herda uma vez o fechamento do anterior como base, sem as
-        // movimentações dele (spec 056); com o rendimento automático ligado, o
-        // cálculo recomeça no dia 1 (specs 060 e 079).
+
+
         const created = await transaction.position.create({
           data: {
             ...fields,
@@ -1206,7 +1138,7 @@ export async function undoChange(token: string) {
   const prisma = await requirePrisma();
   const userId = await currentUserId();
   const stored = undoStore.get(token);
-  // A entrada de outro usuário fica intacta e é tratada como inexistente.
+
   const entry = stored?.userId === userId ? stored : undefined;
 
   if (entry) {
@@ -1214,7 +1146,7 @@ export async function undoChange(token: string) {
   }
 
   if (!entry || entry.expiresAt < Date.now()) {
-    throw new MonthEditError("Não é mais possível desfazer esta alteração.");
+    throw new MonthEditError("This change can no longer be undone.");
   }
 
 
@@ -1226,20 +1158,20 @@ export async function undoChange(token: string) {
       });
 
       if (!month) {
-        throw new MonthEditError("A competência não existe mais.");
+        throw new MonthEditError("The reporting month no longer exists.");
       }
 
       const current = await readSnapshot(transaction, month);
 
       if (fingerprint(current) !== entry.fingerprint) {
         throw new MonthEditError(
-          "A competência mudou depois desta alteração. Desfazer agora sobrescreveria mudanças posteriores.",
+          "The reporting month changed after this operation. Undoing would overwrite later changes.",
         );
       }
 
       if (entry.kind === "delete-month") {
-        // As cotações compartilhadas do mês ficam: podem servir a outros
-        // usuários (spec 051). Saem só as digitadas por este.
+
+
         await transaction.manualQuote.deleteMany({ where: { referenceDate: month.referenceDate } });
         await transaction.portfolioMonth.delete({ where: { id: month.id } });
         return { referenceDate: month.referenceDate, deleted: true };
@@ -1268,12 +1200,7 @@ export async function undoChange(token: string) {
   );
 }
 
-/**
- * Regras do rateio (spec 068, que substituiu a lista aberta da spec 035):
- * classe, subclasse e resgate vêm da lista fixa da planilha, dependentes entre
- * si. Uma classificação antiga que a posição já tinha continua aceita como
- * está, para editar outros atributos sem reclassificar o passado.
- */
+
 function assertAllocationRules(
   allocations: { assetClass: string; subclass: string; duration: string }[],
   legacy: { assetClass: string; subclass: string; duration: string }[] = [],
@@ -1285,28 +1212,24 @@ function assertAllocationRules(
     const issue = classificationIssue(allocation);
 
     if (issue && !legacy.some((entry) => sameAs(entry, allocation))) {
-      throw new MonthEditError(`${issue} Escolha uma opção da lista.`);
+      throw new MonthEditError(`${issue} Choose an option from the list.`);
     }
   }
 }
 
-/**
- * Abre ou fecha um mês (spec 034). Aberto é rascunho e aceita edição; fechado
- * trava posições, rateio e cotações à mão até ser aberto de novo. A
- * atualização automática continua reprecificando o mês corrente fechado.
- */
+
 export async function setMonthOpen({ monthId, open }: { monthId: string; open: boolean }) {
   const prisma = await requirePrisma();
   const month = await prisma.portfolioMonth.findUnique({ where: { id: monthId }, select: { id: true, status: true } });
 
   if (!month) {
-    throw new MonthEditError("Esta competência não existe.");
+    throw new MonthEditError("This reporting month does not exist.");
   }
 
   const isOpen = month.status === PortfolioMonthStatus.DRAFT;
 
   if (isOpen === open) {
-    throw new MonthEditError(open ? "Este mês já está aberto." : "Este mês já está fechado.");
+    throw new MonthEditError(open ? "This month is already open." : "This month is already closed.");
   }
 
   await prisma.portfolioMonth.update({
@@ -1315,10 +1238,7 @@ export async function setMonthOpen({ monthId, open }: { monthId: string; open: b
   });
 }
 
-/**
- * A edição à mão vale só para cotações não encontradas ou com falha na última
- * busca do mês (spec 028); as demais vêm dos provedores.
- */
+
 async function assertQuotesEditable(transaction: Transaction, referenceDate: Date, symbols: string[]) {
   const [quoteBySymbol, lastResults] = await Promise.all([
     readMonthQuoteValues(transaction, referenceDate, symbols),
@@ -1337,7 +1257,7 @@ async function assertQuotesEditable(transaction: Transaction, referenceDate: Dat
   );
   const locked = symbols.filter((symbol) => {
     const quote = quoteBySymbol.get(symbol);
-    // A digitada à mão continua editável até a próxima busca bem-sucedida.
+
     return (
       !quote?.manual &&
       !isQuoteEditable({ hasValue: quote !== undefined, carried: Boolean(quote?.carriedFrom), lastFailed: failed.has(symbol) })
@@ -1346,7 +1266,7 @@ async function assertQuotesEditable(transaction: Transaction, referenceDate: Dat
 
   if (locked.length > 0) {
     throw new MonthEditError(
-      `${locked.join(", ")} ${locked.length === 1 ? "vem" : "vêm"} da atualização automática e não ${
+      `${locked.join(", ")} ${locked.length === 1 ? "comes" : "come"} from automatic updates and cannot ${
         locked.length === 1 ? "pode" : "podem"
       } ser ${locked.length === 1 ? "editada" : "editadas"}.`,
     );
@@ -1389,7 +1309,7 @@ export async function withUndo(
       throw error;
     }
 
-    throw new MonthEditError("Não foi possível salvar. Nenhuma alteração foi aplicada.");
+    throw new MonthEditError("Could not save. No changes were applied.");
   }
 }
 
@@ -1400,13 +1320,12 @@ async function assertEditable(transaction: Transaction, monthId: string) {
   });
 
   if (!month) {
-    throw new MonthEditError("Esta competência não existe.");
+    throw new MonthEditError("This reporting month does not exist.");
   }
 
-  // Só um mês aberto (rascunho) aceita edição (spec 034); para editar um mês
-  // fechado, o usuário o abre antes pela linha do tempo.
+
   if (month.status !== PortfolioMonthStatus.DRAFT) {
-    throw new MonthEditError("Este mês está fechado. Abra o mês na linha do tempo para editar.");
+    throw new MonthEditError("This month is closed. Open it in the timeline to edit.");
   }
 
   return { id: month.id, referenceDate: month.referenceDate };
@@ -1509,8 +1428,7 @@ async function restoreSnapshot(
     }
   }
 
-  // Só as cotações digitadas pelo usuário voltam; as compartilhadas não são
-  // dele para desfazer (spec 051).
+
   const keepQuoteIds = snapshot.quotes.map((quote) => quote.id);
   await transaction.manualQuote.deleteMany({
     where: { referenceDate: month.referenceDate, id: { notIn: keepQuoteIds } },
@@ -1524,8 +1442,7 @@ async function restoreSnapshot(
     });
   }
 
-  // As movimentações do mês voltam como estavam (spec 056); as de posições
-  // apagadas acima já saíram junto com elas.
+
   const keepTransactionIds = snapshot.transactions.map((entry) => entry.id);
   await transaction.positionTransaction.deleteMany({
     where: { position: { portfolioMonthId: month.id }, id: { notIn: keepTransactionIds } },
@@ -1541,12 +1458,7 @@ async function restoreSnapshot(
   }
 }
 
-/**
- * Repete as cotações de um mês no seguinte, marcadas como repetidas, como na
- * virada automática (spec 021). As compartilhadas só entram se o mês ainda não
- * as tiver, porque outro usuário pode tê-las criado (spec 051); uma digitada à
- * mão sem compartilhada correspondente é repetida como digitada do usuário.
- */
+
 async function carryMonthQuotes(transaction: Transaction, source: Date, target: Date) {
   const [shared, manual] = await Promise.all([
     transaction.marketQuote.findMany({
@@ -1599,10 +1511,7 @@ function storeUndo(userId: string, entry: NewUndoEntry) {
   return token;
 }
 
-/**
- * Dia de uma movimentação registrada agora numa competência: hoje, no mês
- * corrente; o último dia do mês, num mês passado aberto de novo.
- */
+
 export function transactionDay(referenceDate: Date, now = new Date()) {
   const today = calendarDay(now);
   const last = lastDayOf(referenceDate);
@@ -1613,7 +1522,7 @@ async function requirePrisma() {
   const prisma = await getUserDb();
 
   if (!prisma) {
-    throw new MonthEditError("O banco de dados não está disponível.");
+    throw new MonthEditError("The database is unavailable.");
   }
 
   return prisma;
@@ -1627,7 +1536,7 @@ function normalizeStrategy(value: string | null) {
   const trimmed = value?.trim() ?? "";
 
   if (trimmed.length > MAX_STRATEGY_LENGTH) {
-    throw new MonthEditError("A estratégia informada é longa demais.");
+    throw new MonthEditError("The strategy is too long.");
   }
 
   return trimmed === "" ? null : trimmed;
@@ -1637,7 +1546,7 @@ function requireName(value: string, maxLength: number, field: string) {
   const name = cleanName(value);
 
   if (!name || name.length > maxLength || !normalizeKey(name)) {
-    throw new MonthEditError(`Informe ${field} com até ${maxLength} caracteres.`);
+    throw new MonthEditError(`Informe ${field} with up to ${maxLength} characters.`);
   }
 
   return name;
@@ -1652,7 +1561,7 @@ function parseMaturityDate(value: string | null) {
   const date = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : null;
 
   if (!date || date.toISOString().slice(0, 10) !== value || date.getUTCFullYear() < 2000 || date.getUTCFullYear() > 2100) {
-    throw new MonthEditError("Informe um vencimento válido.");
+    throw new MonthEditError("Enter a valid maturity date.");
   }
 
   return date;
@@ -1662,7 +1571,7 @@ function normalizeLabel(value: string, field: string) {
   const trimmed = value.trim();
 
   if (!trimmed || trimmed.length > MAX_LABEL_LENGTH) {
-    throw new MonthEditError(`Informe uma ${field} válida em cada classificação.`);
+    throw new MonthEditError(`Enter a ${field} that is valid for every classification.`);
   }
 
   return trimmed;
@@ -1672,11 +1581,11 @@ function parseNonNegative(raw: string) {
   const value = parseDecimal(raw);
 
   if (!value || value.isNegative()) {
-    throw new MonthEditError("Use apenas valores numéricos maiores ou iguais a zero.");
+    throw new MonthEditError("Use only numeric values greater than or equal to zero.");
   }
 
   if (value.decimalPlaces() > 12 || value.precision() > 30) {
-    throw new MonthEditError("Um dos valores excede o limite de precisão permitido.");
+    throw new MonthEditError("One value exceeds the allowed precision limit.");
   }
 
   return value;
@@ -1686,11 +1595,11 @@ function parsePositive(raw: string, maxDecimals = 10) {
   const value = parseDecimal(raw);
 
   if (!value || !value.greaterThan(0)) {
-    throw new MonthEditError("Use apenas valores numéricos maiores que zero.");
+    throw new MonthEditError("Use only numeric values greater than zero.");
   }
 
   if (value.decimalPlaces() > maxDecimals || value.precision() > 24) {
-    throw new MonthEditError("Um dos valores excede o limite de precisão permitido.");
+    throw new MonthEditError("One value exceeds the allowed precision limit.");
   }
 
   return value;

@@ -1,22 +1,22 @@
 "use client";
 
+/** Accessible calendar using English labels and UTC-safe date keys. Parse display dates separately from database values. */
+
+import { englishLabel } from "@/lib/english-labels";
+
 import { Popover } from "@base-ui/react/popover";
 import { CalendarBlankIcon, CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { cn } from "@/lib/utils";
 
-// Campo de data do design system (spec 069), no lugar do `<input type="date">`
-// nativo, que cada navegador desenha de um jeito. O texto aceita digitar
-// DD/MM/AAAA, com as barras postas sozinhas; o botão abre um calendário com
-// os dias fora do intervalo bloqueados. Valores em AAAA-MM-DD, como antes.
 
 const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
-const WEEKDAY_NAMES = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+const WEEKDAY_NAMES = ["domingo", "segunda", "Tuesday", "quarta", "quinta", "sexta", "Saturday"];
 const MONTH_NAMES = [
   "janeiro",
   "fevereiro",
-  "março",
+  "March",
   "abril",
   "maio",
   "junho",
@@ -30,15 +30,15 @@ const MONTH_NAMES = [
 const YEARS_PER_PAGE = 12;
 
 export type DatePickerProps = {
-  /** AAAA-MM-DD, ou vazio. */
+  /** YYYY-MM-DD, or empty. */
   value: string;
   onChange: (value: string) => void;
-  /** Primeiro e último dia aceitos, AAAA-MM-DD. */
+
   min?: string;
   max?: string;
   "aria-label": string;
   placeholder?: string;
-  /** Oferece "Limpar" no calendário, para datas opcionais. */
+
   clearable?: boolean;
   invalid?: boolean;
   disabled?: boolean;
@@ -58,7 +58,7 @@ export function DatePicker({
   className,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
-  // Texto digitado enquanto o campo tem foco; fora dele, a data escolhida.
+
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? (value ? toDisplay(value) : "");
   const typed = draft !== null && draft.length === 10 ? fromDisplay(draft) : null;
@@ -96,7 +96,7 @@ export function DatePicker({
         )}
       >
         <input
-          aria-label={label}
+          aria-label={englishLabel(label)}
           aria-invalid={invalid || outOfRange || undefined}
           inputMode="numeric"
           autoComplete="off"
@@ -117,7 +117,7 @@ export function DatePicker({
         />
         <Popover.Trigger
           disabled={disabled}
-          aria-label={`Abrir calendário: ${label}`}
+          aria-label={`Open calendar: ${englishLabel(label)}`}
           className="absolute inset-y-0 right-0 grid w-9 place-items-center rounded-r-lg text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-primary data-popup-open:text-primary"
         >
           <CalendarBlankIcon aria-hidden="true" size={14} weight="bold" />
@@ -125,13 +125,13 @@ export function DatePicker({
       </div>
       {incomplete || outOfRange ? (
         <span className="sr-only" role="status">
-          {outOfRange ? `Escolha um dia entre ${toDisplay(min ?? "")} e ${toDisplay(max ?? "")}.` : "Data incompleta."}
+          {outOfRange ? `Choose a date between ${toDisplay(min ?? "")} e ${toDisplay(max ?? "")}.` : "Incomplete date."}
         </span>
       ) : null}
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={12} className="z-[60] outline-none">
           <Popover.Popup
-            aria-label={`Calendário: ${label}`}
+            aria-label={`Calendar: ${englishLabel(label)}`}
             className="w-[min(18rem,calc(100vw-1.5rem))] origin-[var(--transform-origin)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl outline-none transition-[scale,opacity] duration-100 ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             {open ? (
@@ -176,7 +176,7 @@ function Calendar({
   const moved = useRef(false);
 
   useEffect(() => {
-    // Foco no dia escolhido ao abrir e a cada movimento pelo teclado.
+
     if (view === "days") {
       focusRef.current?.focus({ preventScroll: !moved.current });
     }
@@ -228,12 +228,12 @@ function Calendar({
       <div>
         <CalendarHeader
           title={`${years[0]} – ${years[years.length - 1]}`}
-          titleLabel="Voltar aos dias"
+          titleLabel="Back to days"
           onTitle={() => setView("days")}
           onPrevious={() => setYearPage((page) => page - YEARS_PER_PAGE)}
           onNext={() => setYearPage((page) => page + YEARS_PER_PAGE)}
-          previousLabel="Anos anteriores"
-          nextLabel="Próximos anos"
+          previousLabel="Previous years"
+          nextLabel="Next years"
         />
         <div className="mt-3 grid grid-cols-3 gap-1.5">
           {years.map((candidate) => (
@@ -263,15 +263,15 @@ function Calendar({
     <div>
       <CalendarHeader
         title={`${MONTH_NAMES[month]} ${year}`}
-        titleLabel={`${MONTH_NAMES[month]} de ${year}. Escolher o ano`}
+        titleLabel={`${MONTH_NAMES[month]} on ${year}. Choose the year`}
         onTitle={() => {
           setYearPage(year - 5);
           setView("years");
         }}
         onPrevious={() => move(addMonthsKeepingDay(focused, -1))}
         onNext={() => move(addMonthsKeepingDay(focused, 1))}
-        previousLabel="Mês anterior"
-        nextLabel="Próximo mês"
+        previousLabel="Previous month"
+        nextLabel="Next month"
         previousDisabled={monthDisabled(-1)}
         nextDisabled={monthDisabled(1)}
       />
@@ -299,7 +299,7 @@ function Calendar({
               tabIndex={day === focused ? 0 : -1}
               disabled={!allowed}
               aria-pressed={selected}
-              aria-label={`${WEEKDAY_NAMES[date.getUTCDay()]}, ${date.getUTCDate()} de ${MONTH_NAMES[date.getUTCMonth()]} de ${date.getUTCFullYear()}${isToday ? ", hoje" : ""}`}
+              aria-label={`${WEEKDAY_NAMES[date.getUTCDay()]}, ${date.getUTCDate()} on ${MONTH_NAMES[date.getUTCMonth()]} on ${date.getUTCFullYear()}${isToday ? ", today" : ""}`}
               onClick={() => onSelect(day)}
               onFocus={() => {
                 if (day !== focused) setFocused(day);
@@ -327,8 +327,7 @@ function Calendar({
             type="button"
             onClick={() => onSelect(today)}
             className="rounded-md px-2 py-1 text-[11px] font-medium text-primary outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            Hoje
+          >Today
           </button>
         ) : (
           <span />
@@ -338,8 +337,7 @@ function Calendar({
             type="button"
             onClick={() => onSelect("")}
             className="rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            Limpar
+          >Clear
           </button>
         ) : null}
       </div>
@@ -391,7 +389,7 @@ function CalendarHeader({
   );
 }
 
-/** DD/MM/AAAA a partir dos dígitos digitados, com as barras nos lugares. */
+
 export function maskDate(text: string) {
   const digits = text.replace(/\D/g, "").slice(0, 8);
   return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join("/");
@@ -433,7 +431,7 @@ function addDays(day: string, amount: number) {
   return toKey(date);
 }
 
-/** Mesmo dia em outro mês, no último dia quando o mês é mais curto. */
+
 function addMonthsKeepingDay(day: string, amount: number) {
   const [year, month, date] = day.split("-").map(Number);
   const target = new Date(Date.UTC(year, month - 1 + amount, 1));
@@ -447,17 +445,14 @@ function todayKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-// Campo de mês do mesmo design system (spec 082), para as competências de
-// Gastos familiares: o texto aceita MM/AAAA, com a barra posta sozinha, e o
-// botão abre a grade dos doze meses, com o ano navegável. Valores em AAAA-MM.
 
-const SHORT_MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const SHORT_MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export type MonthPickerProps = {
-  /** AAAA-MM, ou vazio. */
+  /** YYYY-MM, or empty. */
   value: string;
   onChange: (value: string) => void;
-  /** Primeiro e último mês aceitos, AAAA-MM. */
+
   min?: string;
   max?: string;
   "aria-label": string;
@@ -511,7 +506,7 @@ export function MonthPicker({
         )}
       >
         <input
-          aria-label={label}
+          aria-label={englishLabel(label)}
           aria-invalid={invalid || outOfRange || undefined}
           inputMode="numeric"
           autoComplete="off"
@@ -532,7 +527,7 @@ export function MonthPicker({
         />
         <Popover.Trigger
           disabled={disabled}
-          aria-label={`Abrir meses: ${label}`}
+          aria-label={`Open months: ${englishLabel(label)}`}
           className="absolute inset-y-0 right-0 grid w-9 place-items-center rounded-r-lg text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-primary data-popup-open:text-primary"
         >
           <CalendarBlankIcon aria-hidden="true" size={14} weight="bold" />
@@ -540,13 +535,13 @@ export function MonthPicker({
       </div>
       {incomplete || outOfRange ? (
         <span className="sr-only" role="status">
-          {outOfRange ? `Escolha um mês entre ${toMonthDisplay(min)} e ${toMonthDisplay(max)}.` : "Mês incompleto."}
+          {outOfRange ? `Choose a month between ${toMonthDisplay(min)} e ${toMonthDisplay(max)}.` : "Incomplete month."}
         </span>
       ) : null}
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={12} className="z-[60] outline-none">
           <Popover.Popup
-            aria-label={`Meses: ${label}`}
+            aria-label={`Months: ${englishLabel(label)}`}
             className="w-[min(17rem,calc(100vw-1.5rem))] origin-[var(--transform-origin)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl outline-none transition-[scale,opacity] duration-100 ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             {open ? (
@@ -610,12 +605,12 @@ function MonthGrid({
     <div>
       <CalendarHeader
         title={String(year)}
-        titleLabel={`Ano de ${year}. Voltar ao ano atual`}
+        titleLabel={`Year ${year}. Return to the current year`}
         onTitle={() => setFocused(shift(current, 0))}
         onPrevious={() => setFocused(shift(focused, -12))}
         onNext={() => setFocused(shift(focused, 12))}
-        previousLabel="Ano anterior"
-        nextLabel="Próximo ano"
+        previousLabel="Previous year"
+        nextLabel="Next year"
         previousDisabled={`${year - 1}-12` < min}
         nextDisabled={`${year + 1}-01` > max}
       />
@@ -633,7 +628,7 @@ function MonthGrid({
               tabIndex={month === focused ? 0 : -1}
               disabled={month < min || month > max}
               aria-pressed={selected}
-              aria-label={`${MONTH_NAMES[index]} de ${year}${isCurrent ? ", mês atual" : ""}`}
+              aria-label={`${MONTH_NAMES[index]} on ${year}${isCurrent ? ", current month" : ""}`}
               onClick={() => onSelect(month)}
               onFocus={() => {
                 if (month !== focused) setFocused(month);
@@ -658,8 +653,7 @@ function MonthGrid({
             type="button"
             onClick={() => onSelect(current)}
             className="rounded-md px-2 py-1 text-[11px] font-medium text-primary outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            Mês atual
+          >Current month
           </button>
         </div>
       ) : null}

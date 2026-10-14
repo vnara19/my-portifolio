@@ -67,19 +67,12 @@
   --accent: oklch(0.205 0.025 160);
   --accent-foreground: oklch(0.84 0.105 158);
   --destructive: oklch(0.68 0.2 25);
-  /*
-   * Alta e queda nos gráficos e marcas (spec 038): azul e laranja da paleta
-   * Okabe-Ito, distinguíveis com daltonismo, no lugar de verde e vermelho.
-   */
+
+
   --chart-up: #56b4e9;
   --chart-down: #e69f00;
-  /*
-   * Recebimentos (spec 088, revisão de 2026-10-08): o que sobra em menta, a cor
-   * da marca, e o que sai em violeta, no lugar do laranja. Simulando protanopia,
-   * deuteranopia e tritanopia, o par fica com ΔE2000 de 41 a 49 (menta e laranja
-   * caem a 16-18 em protanopia e deuteranopia). Só Recebimentos usa; os gráficos
-   * de Investimentos seguem o azul e o laranja acima.
-   */
+
+
   --chart-saved: oklch(0.79 0.15 158);
   --chart-spent: oklch(0.7 0.17 305);
   --border: oklch(0.255 0.014 165 / 0.72);
@@ -119,8 +112,7 @@
     font-feature-settings: "ss01" 1, "cv02" 1, "cv03" 1;
   }
 
-  /* No toque, o arraste lateral não navega (spec 077): nem entre abas, nem no
-     histórico do navegador por excesso de rolagem. */
+
   @media (pointer: coarse) {
     html,
     body {
@@ -195,13 +187,7 @@
       transform 160ms ease-out;
   }
 
-  /*
-   * Todo card reage ao ponteiro do mesmo jeito: borda na cor primária e fundo um passo
-   * mais claro. Só os cards pequenos sobem 1px; painéis grandes não se movem, porque o
-   * deslocamento de uma seção inteira parece a página tremendo. Um transform no hover do painel
-   * nem teria efeito: o preenchimento da animação surface-enter mantém o transform do painel.
-   * Em telas de toque não há hover.
-   */
+
   @media (hover: hover) {
     .premium-panel:hover {
       border-color: oklch(0.79 0.15 158 / 0.2);
@@ -259,11 +245,7 @@
   }
 }
 
-/*
- * O Safari do iPhone amplia a página ao focar um campo com texto menor que
- * 16 px. Em telas de toque, os campos de texto usam 16 px (spec 031). Fora das
- * camadas do Tailwind, esta regra vence os utilitários de tamanho de texto.
- */
+
 @media (pointer: coarse) {
   input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
   select,
@@ -272,10 +254,7 @@
   }
 }
 
-/*
- * Gráficos sem o contorno de foco ao clicar (spec 038): o Recharts torna a
- * área e as fatias focáveis, e o clique deixava um retângulo em volta.
- */
+
 .recharts-wrapper:focus,
 .recharts-wrapper :focus,
 .recharts-wrapper :focus-visible {

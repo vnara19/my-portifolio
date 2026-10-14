@@ -1,51 +1,46 @@
-// Histórico de preço de um símbolo para a página da posição (spec 016).
+
 //
-// Gráficos e valorização usam a cotação de fechamento de cada mês, a mais
-// recente daquele mês (decisão do usuário em 2026-10-02, spec 028): um ponto
-// por mês. Vale a cotação da competência, que é a usada pela carteira; nos
-// meses sem ela, a cotação diária mais recente do mês, como as de fechamento
-// buscadas ao incluir um ativo novo (spec 029). Cotações repetidas de outra
-// competência (`carried_from`) não são observações e ficam de fora.
+
+
 //
-// O ponto fica no dia da cotação quando ele é conhecido e, nas importadas do
-// Excel e nas editadas à mão, no último dia do mês, nunca depois de hoje.
+
 
 export type MonthlyQuoteInput = {
-  /** AAAA-MM */
+  /** YYYY-MM */
   month: string;
   valueBrl: number;
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   quoteDate: string | null;
   carriedFrom: string | null;
 };
 
 export type DailyQuoteInput = {
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   day: string;
   valueBrl: number;
 };
 
 export type PricePoint = {
-  /** Meia-noite UTC do dia, em milissegundos, para o eixo de tempo. */
+
   t: number;
   day: string;
   month: string;
-  /** Mês ainda em curso: a cotação é a mais recente, não o fechamento. */
+
   open: boolean;
   valueBrl: number;
-  /** Em dólar pelo câmbio de fechamento do mesmo mês. */
+
   valueUsd: number | null;
 };
 
 export type PriceHistory = {
   points: PricePoint[];
-  /** Competências cuja cotação é repetida de outra e ficou fora do gráfico. */
+
   carriedMonths: string[];
 };
 
 type Closing = { day: string; valueBrl: number };
 
-/** Fechamento de cada mês: a competência quando própria, senão o diário mais recente. */
+
 export function monthlyClosings(monthly: MonthlyQuoteInput[], daily: DailyQuoteInput[], today: string) {
   const closings = new Map<string, Closing>();
   const carried = new Set<string>();
@@ -91,7 +86,7 @@ export function buildPriceHistory({
   daily: DailyQuoteInput[];
   usdMonthly: MonthlyQuoteInput[];
   usdDaily: DailyQuoteInput[];
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   today: string;
 }): PriceHistory {
   const inUsd = symbol !== "USD";

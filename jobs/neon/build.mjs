@@ -1,7 +1,6 @@
-// Empacota a função do job das cotações (spec 053) num único index.mjs para o
-// Neon, com o cliente do Prisma dentro. O `require` criado no topo atende os
-// pacotes CommonJS (como o pg) dentro do módulo ESM. `neon.ts` publica a pasta
-// dist como está (bundler "none").
+
+
+
 import { build } from "esbuild";
 
 await build({

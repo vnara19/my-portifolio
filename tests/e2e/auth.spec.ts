@@ -3,54 +3,54 @@ import { expect, test } from "@playwright/test";
 import { SIGNED_OUT, testUser } from "./support/auth";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// Login (spec 050): sem sessão, nada dos dados aparece.
-test.describe("sem sessão", () => {
+
+test.describe("without a session", () => {
   test.use({ storageState: SIGNED_OUT });
 
-  test("as páginas levam à entrada e voltam ao endereço pedido", async ({ page }) => {
+  test("pages redirect to sign-in and return to the requested URL", async ({ page }) => {
     await stubQuoteChecks(page);
     await page.goto("/posicoes");
     await expect(page).toHaveURL(/\/entrar\?para=%2Fposicoes$/);
-    await expect(page.getByRole("heading", { name: "Meu portfólio" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My portfolio" })).toBeVisible();
 
     const { email, password } = testUser();
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
-    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/posicoes$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
   });
 
-  test("senha errada mostra o aviso e não entra", async ({ page }) => {
+  test("an incorrect password shows an error without signing in", async ({ page }) => {
     await page.goto("/entrar");
-    await page.getByLabel("E-mail").fill(testUser().email);
-    await page.getByLabel("Senha").fill("senha-incorreta-do-teste");
-    await page.getByRole("button", { name: "Entrar", exact: true }).click();
-    await expect(page.locator("form").getByRole("alert")).toHaveText("E-mail ou senha incorretos.");
+    await page.getByLabel("Email").fill(testUser().email);
+    await page.getByLabel("Password").fill("senha-incorreta-do-teste");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.locator("form").getByRole("alert")).toHaveText("Incorrect email or password.");
     await expect(page).toHaveURL(/\/entrar$/);
   });
 
-  test("as rotas de dados respondem 401", async ({ request }) => {
+  test("data routes return 401", async ({ request }) => {
     expect((await request.get("/api/backup")).status()).toBe(401);
     const check = await request.post("/api/quotes/open-check", { data: {} });
     expect(check.status()).toBe(401);
   });
 
-  test("um e-mail fora da lista não cria conta", async ({ page }) => {
+  test("an email outside the allowlist cannot create an account", async ({ page }) => {
     await page.goto("/entrar");
-    await page.getByRole("button", { name: "Criar conta" }).click();
-    await page.getByLabel("Nome").fill("Visitante");
-    await page.getByLabel("E-mail").fill("visitante@exemplo.test");
-    await page.getByLabel("Senha").fill("senha-de-visitante-123");
-    await page.getByRole("button", { name: "Criar conta", exact: true }).click();
-    await expect(page.locator("form").getByRole("alert")).toContainText("não tem permissão para criar conta");
+    await page.getByRole("button", { name: "Create account" }).click();
+    await page.getByLabel("Name").fill("Visitante");
+    await page.getByLabel("Email").fill("visitante@exemplo.test");
+    await page.getByLabel("Password").fill("senha-de-visitante-123");
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+    await expect(page.locator("form").getByRole("alert")).toContainText("is not allowed to create an account");
   });
 });
 
-test("a configuração mostra a conta e o botão de sair", async ({ page }) => {
+test("settings show the account and sign-out button", async ({ page }) => {
   await stubQuoteChecks(page);
   await page.goto("/configuracao");
   const account = page.getByRole("region").filter({ hasText: testUser().email });
   await expect(account).toHaveCount(1);
-  await expect(account.getByRole("button", { name: "Sair" })).toBeVisible();
+  await expect(account.getByRole("button", { name: "Sign out" })).toBeVisible();
 });

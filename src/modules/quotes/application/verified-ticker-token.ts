@@ -1,3 +1,5 @@
+
+/** HMAC-signed ticker proofs are valid across processes. Verify expiry, request fields and signature before trusting provider results. */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
@@ -44,17 +46,13 @@ function sign(payload: string, secret: string) {
   return createHmac("sha256", secret).update(`${TOKEN_PURPOSE}\n${payload}`).digest();
 }
 
-/**
- * A conferência cruza Route Handler e Server Action, possivelmente em funções
- * distintas. O comprovante assinado guarda o preço do servidor sem depender
- * da memória de uma instância e só vale para o usuário e mês que o pediram.
- */
+
 export function createVerifiedTickerToken(
   entry: Omit<VerifiedTicker, "expiresAt">,
   context: Context,
   secret = process.env.BETTER_AUTH_SECRET,
 ): string {
-  if (!secret) throw new Error("BETTER_AUTH_SECRET não está configurado.");
+  if (!secret) throw new Error("BETTER_AUTH_SECRET is not configured.");
   const claims = claimsSchema.parse({
     ...entry,
     version: 1,

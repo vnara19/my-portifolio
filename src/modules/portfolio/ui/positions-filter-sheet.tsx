@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { FunnelSimpleIcon } from "@phosphor-icons/react/dist/ssr";
 
 import { BottomSheet, BottomSheetClose, BottomSheetTrigger, sheetButton } from "@/components/product/bottom-sheet";
@@ -11,11 +13,11 @@ export type FilterGroup = {
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
-  /** Rótulo de uma opção guardada por código, como o mês AAAA-MM. */
+
   formatOption?: (value: string) => string;
-  /** Ausente mantém a multisseleção de Posições. */
+
   multiple?: boolean;
-  /** A família usa o mesmo destaque discreto dos badges externos. */
+
   subtle?: boolean;
 };
 
@@ -25,22 +27,18 @@ export type GroupingControl = {
   onChange: (value: string | null) => void;
 };
 
-/**
- * Filtros de Posições no celular (spec 077): um botão ao lado da busca abre uma
- * folha de baixo para cima com cada filtro em chips de toque e o agrupamento.
- * No computador, os filtros continuam em listas na própria linha.
- */
+
 export function PositionsFilterSheet({
   groups,
   grouping,
   resultCount,
-  resultLabel = (count) => `Ver ${count} ${count === 1 ? "posição" : "posições"}`,
+  resultLabel = (count) => `View ${count} ${count === 1 ? "position" : "positions"}`,
   onClear,
   className,
   testId = "positions-filter-sheet",
 }: {
   groups: FilterGroup[];
-  /** Agrupamento da tabela; Gastos familiares (spec 082) não tem. */
+
   grouping?: GroupingControl;
   resultCount: number;
   resultLabel?: (count: number) => string;
@@ -52,19 +50,18 @@ export function PositionsFilterSheet({
 
   return (
     <BottomSheet
-      title="Filtros"
+      title="Filters"
       testId={testId}
       trigger={
         <BottomSheetTrigger
-          aria-label={active > 0 ? `Filtros, ${active} ${active === 1 ? "ativo" : "ativos"}` : "Filtros"}
+          aria-label={active > 0 ? `Filters, ${active} ${active === 1 ? "ativo" : "ativos"}` : "Filters"}
           className={cn(
             "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
             active > 0 ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-card/60 text-foreground",
             className,
           )}
         >
-          <FunnelSimpleIcon aria-hidden="true" size={15} weight="bold" />
-          Filtros
+          <FunnelSimpleIcon aria-hidden="true" size={15} weight="bold" />Filters
           {active > 0 ? (
             <span className="rounded-full bg-primary px-1.5 font-mono text-[10px] text-primary-foreground">{active}</span>
           ) : null}
@@ -72,8 +69,7 @@ export function PositionsFilterSheet({
       }
       footer={
         <>
-          <button type="button" onClick={onClear} disabled={active === 0} className={sheetButton({ variant: "secondary" })}>
-            Limpar
+          <button type="button" onClick={onClear} disabled={active === 0} className={sheetButton({ variant: "secondary" })}>Clear
           </button>
           <BottomSheetClose className={sheetButton({ variant: "primary" })}>{resultLabel(resultCount)}</BottomSheetClose>
         </>
@@ -81,8 +77,8 @@ export function PositionsFilterSheet({
     >
       {grouping ? (
         <ChipGroup
-          label="Agrupar"
-          options={grouping.options.map((option) => ({ key: option.value ?? "", label: option.label }))}
+          label="Group by"
+          options={grouping.options.map((option) => ({ key: option.value ?? "", label: englishLabel(option.label) }))}
           isOn={(key) => (grouping.value ?? "") === key}
           onToggle={(key) => grouping.onChange(key === "" ? null : key)}
         />
@@ -92,7 +88,7 @@ export function PositionsFilterSheet({
         .map((group) => (
           <ChipGroup
             key={group.key}
-            label={group.label}
+            label={englishLabel(group.label)}
             count={group.selected.length}
             subtle={group.subtle}
             options={group.options.map((option) => ({ key: option, label: group.formatOption?.(option) ?? option }))}
@@ -130,7 +126,7 @@ function ChipGroup({
   return (
     <fieldset>
       <legend className="mb-2 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-        {label}
+        {englishLabel(label)}
         {count > 0 ? <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] text-primary">{count}</span> : null}
       </legend>
       <div className="flex flex-wrap gap-1.5">
@@ -152,7 +148,7 @@ function ChipGroup({
                   : "border-border bg-background/40 text-muted-foreground hover:text-foreground",
               )}
             >
-              {option.label}
+              {englishLabel(option.label)}
             </button>
           );
         })}

@@ -1,8 +1,5 @@
-// Tipos e regras da atualização de cotações compartilhados entre servidor e
-// interface. Sem dependências de banco, para poder ser importado no cliente.
 
-// As cotações são atualizadas só pelo job agendado, de hora em hora (spec
-// 053); a interface lê o resumo da última execução.
+
 
 export type QuoteRefreshRunStatus = "RUNNING" | "COMPLETED" | "COMPLETED_WITH_ISSUES" | "FAILED";
 
@@ -14,7 +11,7 @@ export type QuoteFailureView = {
   errorMessage: string;
 };
 
-/** Uma execução vista por um usuário: só os símbolos dele (spec 051). */
+
 export type QuoteRefreshRunView = {
   id: string;
   status: QuoteRefreshRunStatus;
@@ -33,11 +30,7 @@ export type QuoteRefreshSummary = {
   lastRun: QuoteRefreshRunView | null;
 };
 
-/**
- * Cotação que pode ser editada à mão (spec 028). O usuário não pretende editar
- * cotações: a edição existe só para a que não foi encontrada (sem valor no
- * mês ou repetida de outro mês) ou cuja última busca no mês falhou.
- */
+
 export function isQuoteEditable({
   hasValue,
   carried,
@@ -58,10 +51,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   brapi: "brapi",
   coinbase: "Coinbase",
   coingecko: "CoinGecko",
-  configuration: "Configuração",
+  configuration: "Settings",
   finnhub: "Finnhub",
-  fixed: "Valor fixo",
-  provider: "Provedor",
+  fixed: "Fixed value",
+  provider: "Provider",
   yahoo: "Yahoo Finance",
   tesouro: "Tesouro Nacional",
 };

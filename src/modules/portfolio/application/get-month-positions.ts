@@ -9,7 +9,7 @@ export type MonthPositionAllocation = {
   subclass: string;
   duration: string;
   weight: number;
-  /** Rentabilidade da classificação (spec 079): % do CDI ou taxa ao ano. */
+
   ratePercent?: number | null;
 };
 
@@ -24,17 +24,17 @@ export type MonthPosition = {
   accountName: string;
   strategy: string | null;
   baseCurrency: string;
-  /** Vencimento do ativo (AAAA-MM-DD), quando informado na inclusão (spec 026). */
+
   maturityDate: string | null;
-  /** Prazo de liquidez do ativo, opcional (spec 039). */
+
   liquidity: string | null;
-  /** Conta corrente (spec 059): recebe o dinheiro de títulos liquidados. */
+
   cashAccount: boolean;
-  /** Tipo do ativo (spec 068): o escolhido ou, nos antigos, o deduzido. */
+
   assetType: AssetType;
-  /** O tipo foi deduzido, sem escolha do usuário. */
+
   assetTypeInferred: boolean;
-  /** Rendimento calculado automaticamente pela taxa de cada classificação (spec 079). */
+
   autoIncome?: boolean;
   appliedOn?: string | null;
   calculationStartDate?: string | null;
@@ -43,10 +43,8 @@ export type MonthPosition = {
   incomeCalculationError?: string | null;
   quantity: number;
   quantityText: string;
-  /**
-   * Liquidada (spec 076): uma retirada zerou a posição neste mês. Ela aparece
-   * no mês da saída e não passa ao seguinte.
-   */
+
+
   liquidated: boolean;
   unitPriceBrl: number | null;
   totalBrl: number;
@@ -67,15 +65,12 @@ export type MonthPositions = {
   referenceDate: Date;
   status: PortfolioMonthStatus;
   isLatest: boolean;
-  /** Mês fechado: editar exige abri-lo na linha do tempo (spec 034). */
+
   isLocked: boolean;
-  /** Competência do mês corrente, a única em que a cotação de hoje vale para o mês. */
+
   isCurrent: boolean;
-  /**
-   * Dia de referência para os avisos de vencimento: hoje na competência
-   * corrente e o último dia do mês nas demais, para o histórico não mostrar
-   * como vencido o que venceu depois.
-   */
+
+
   referenceDay: string;
   totalBrl: number;
   usdRate: number | null;
@@ -148,7 +143,7 @@ export async function getMonthPositions(
       return null;
     }
 
-    // Cotação do mês para o usuário: a compartilhada ou a digitada por ele (spec 051).
+
     const storedQuotes = await readMonthQuoteValues(prisma, month.referenceDate);
     const quoteBySymbol = new Map([...storedQuotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
     const usdRate = quoteBySymbol.get("USD")?.toNumber() ?? null;

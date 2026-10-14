@@ -9,14 +9,14 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
-    // Builds dos servidores de teste (PORTFOLIO_TEST_DIST_DIR, spec 072).
+
     ".next-*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Pacote gerado da função do Neon (pnpm jobs:build, spec 053).
+
     "jobs/neon/dist/**",
-    // Capturas e roteiros avulsos de conferência, fora do Git (como no tsconfig).
+
     "artifacts/**",
   ]),
 ]);

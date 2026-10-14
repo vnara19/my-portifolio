@@ -1,22 +1,22 @@
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 import { ASSET_TYPE_LABELS } from "@/modules/portfolio/domain/classification";
 
-export const NO_CLASS = "Sem classificação";
-export const NO_STRATEGY = "Sem estratégia";
-export const NO_MATURITY = "Sem vencimento";
-export const NO_LIQUIDITY = "Sem liquidez informada";
+export const NO_CLASS = "Unclassified";
+export const NO_STRATEGY = "No strategy";
+export const NO_MATURITY = "No maturity date";
+export const NO_LIQUIDITY = "Liquidity not specified";
 
 export type PositionFilters = {
   classes: string[];
   subclasses: string[];
-  /** Tipo do ativo, pelo rótulo, como "Tesouro Direto" (spec 068). */
+
   types: string[];
   institutions: string[];
   strategies: string[];
   currencies: string[];
-  /** Ano do vencimento, como "2027", ou "Sem vencimento" (spec 031). */
+
   maturities: string[];
-  /** Prazo de liquidez do ativo, ou "Sem liquidez informada" (spec 039). */
+
   liquidities: string[];
   search: string;
 };
@@ -56,7 +56,7 @@ export type PositionGroup<T extends MonthPosition = MonthPosition> = {
   totalBrl: number;
 };
 
-/** Rótulo do tipo do ativo, para a coluna, o filtro e o agrupamento. */
+
 export function typeOf(position: MonthPosition) {
   return ASSET_TYPE_LABELS[position.assetType];
 }
@@ -71,10 +71,7 @@ export function classesOf(position: MonthPosition) {
     : [...new Set(position.allocations.map((allocation) => allocation.assetClass))];
 }
 
-/**
- * Rótulo de uma classificação na tabela (spec 044): classe, subclasse e o
- * resgate quando há, como "Renda Fixa · IPCA · Curto".
- */
+
 export function allocationLabel(allocation: { assetClass: string; subclass: string; duration: string }) {
   return [allocation.assetClass, allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
     .filter(Boolean)
@@ -85,12 +82,12 @@ export function subclassesOf(position: MonthPosition) {
   return [...new Set(position.allocations.map((allocation) => allocation.subclass))];
 }
 
-/** Prazo de liquidez, para o filtro; "Sem liquidez informada" quando vazio. */
+
 export function liquidityOf(position: MonthPosition) {
   return position.liquidity ?? NO_LIQUIDITY;
 }
 
-/** Ano do vencimento, para o filtro; "Sem vencimento" quando não informado. */
+
 export function maturityOf(position: MonthPosition) {
   return position.maturityDate ? position.maturityDate.slice(0, 4) : NO_MATURITY;
 }
@@ -224,15 +221,7 @@ export function groupPositions<T extends MonthPosition>(
   return [...groups.values()].sort((left, right) => right.totalBrl - left.totalBrl);
 }
 
-/**
- * Opções de cada filtro em cascata, da esquerda para a direita (spec 044, que
- * substituiu a ordem de aplicação da spec 031): as opções de um filtro só levam
- * em conta os filtros à esquerda dele, na ordem de `FILTER_DIMENSIONS`, a
- * mesma da tela. Assim, escolher a classe Caixa limita a subclasse às que
- * existem em Caixa, e escolher uma subclasse não limita a classe. Os valores
- * já escolhidos continuam na lista, para poderem ser desmarcados. A busca
- * vale para todos.
- */
+
 export function filterOptions(
   positions: MonthPosition[],
   filters: PositionFilters = EMPTY_FILTERS,
@@ -249,7 +238,7 @@ export function filterOptions(
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
     options[dimension] = [...new Set([...values, ...filters[dimension]])].sort((left, right) =>
-      left.localeCompare(right, "pt-BR"),
+      left.localeCompare(right, "en-GB"),
     );
   }
 
@@ -268,11 +257,7 @@ const EMPTY_FILTERS: PositionFilters = {
   search: "",
 };
 
-/**
- * Valores de uma posição para um filtro. Classe e subclasse olham o rateio:
- * com a classe já filtrada, só as subclasses daquela classe contam, e o
- * contrário também.
- */
+
 function facetValues(position: MonthPosition, dimension: FilterDimension, scoped: PositionFilters) {
   switch (dimension) {
     case "classes":
@@ -304,6 +289,6 @@ function normalize(value: string) {
   return value
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
-    .toLocaleLowerCase("pt-BR")
+    .toLocaleLowerCase("en-GB")
     .trim();
 }

@@ -1,10 +1,7 @@
-// Os dados entram e saem do aplicativo pelo backup em JSON (spec 042); o
-// formato acompanha este schema e é mantido conforme docs/backup-format.md.
+
+
 //
-// Dados por usuário (spec 050): as tabelas da carteira têm `user_id`, e as
-// chaves estrangeiras entre elas incluem o usuário, para nenhuma linha apontar
-// para dados de outro. O código as acessa pelo cliente com escopo
-// (src/lib/user-db.ts). As cotações são compartilhadas (spec 051).
+
 
 generator client {
   provider = "prisma-client"
@@ -15,10 +12,7 @@ datasource db {
   provider = "postgresql"
 }
 
-// Login (spec 050): tabelas do Better Auth, com os nomes de campo que a
-// biblioteca usa. `auth_accounts` guarda a senha; `accounts` é das contas da
-// carteira. Os ids são UUID, como os das tabelas da carteira que apontam para o
-// usuário.
+
 model User {
   id               String             @id @default(uuid()) @db.Uuid
   name             String
@@ -51,18 +45,15 @@ model User {
   @@map("users")
 }
 
-// Acesso por área (spec 081). Investimentos é a área-base: todo usuário com
-// login a usa. As áreas pessoais pedem uma concessão ligada ao id do usuário,
-// gravada só pelo servidor (migração ou `pnpm access`), nunca pela interface.
+
 enum AppModule {
   FAMILY_EXPENSES
-  // Recebimentos (spec 088) e Previdência (spec 089).
+
   INCOME
   PENSION
 }
 
-// Papéis das ações administrativas, separados das áreas: administrar acessos
-// não dá leitura dos dados pessoais de outro usuário.
+
 enum AppRole {
   ADMIN
 }
@@ -89,28 +80,25 @@ model RoleGrant {
   @@map("role_grants")
 }
 
-// Gastos familiares (spec 082): acerto de contas entre o dono e pessoas da
-// família. RECEIVABLE é o DEVE da planilha (a pessoa me deve, saldo +) e
-// PAYABLE, o DEVO (eu devo à pessoa, saldo −). O saldo não é guardado.
+
 enum FamilyDirection {
   RECEIVABLE
   PAYABLE
 }
 
-// PENDING é o NOK da planilha (pendente); SETTLED, o OK (acertado).
+
 enum FamilyEntryStatus {
   PENDING
   SETTLED
 }
 
-// Série criada de uma vez (spec 083): parcelas numeradas, "Bicicleta (6/12)",
-// ou a mesma despesa todo mês, como um streaming.
+
 enum FamilySeriesKind {
   INSTALLMENTS
   MONTHLY
 }
 
-/// Pessoa dos lançamentos: contato do dono, não uma conta de login.
+
 model FamilyContact {
   id             String         @id @default(uuid()) @db.Uuid
   userId         String         @map("user_id") @db.Uuid
@@ -126,8 +114,7 @@ model FamilyContact {
   @@map("family_contacts")
 }
 
-/// Parcelas ou meses gerados juntos (spec 083). Os lançamentos guardam os
-/// próprios valores; a série guarda o pedido, para editá-lo depois.
+
 model FamilySeries {
   id              String           @id @default(uuid()) @db.Uuid
   userId          String           @map("user_id") @db.Uuid
@@ -135,7 +122,7 @@ model FamilySeries {
   kind            FamilySeriesKind
   description     String
   direction       FamilyDirection
-  /// Valor de cada parcela ou mês, positivo.
+
   amount          Decimal          @db.Decimal(12, 2)
   firstCompetence DateTime         @map("first_competence") @db.Date
   count           Int
@@ -150,8 +137,7 @@ model FamilySeries {
   @@map("family_series")
 }
 
-/// Lançamento de Gastos familiares: a competência é o mês (dia 1), não a
-/// data da compra; o valor é sempre positivo, e o sinal vem do tipo.
+
 model FamilyEntry {
   id          String            @id @default(uuid()) @db.Uuid
   userId      String            @map("user_id") @db.Uuid
@@ -162,7 +148,7 @@ model FamilyEntry {
   amount      Decimal           @db.Decimal(12, 2)
   status      FamilyEntryStatus @default(PENDING)
   seriesId    String?           @map("series_id") @db.Uuid
-  /// Número do lançamento na série, de 1 até a quantidade dela.
+
   installment Int?
   createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -177,21 +163,19 @@ model FamilyEntry {
   @@map("family_entries")
 }
 
-// Recebimentos (spec 088): entradas, saídas e holerites de cada mês. Os
-// valores do mês são nulos quando não foram lançados, como nos meses que só
-// têm holerite; o total e o balanço são derivados e nunca guardados.
+
 model IncomeMonth {
   id               String             @id @default(uuid()) @db.Uuid
   userId           String             @map("user_id") @db.Uuid
-  /// O mês (dia 1), único por usuário.
+
   month            DateTime           @db.Date
-  /// Salário líquido mais extras: a coluna "Salário Líquido + Extras" do Excel.
+
   netIncome        Decimal?           @map("net_income") @db.Decimal(12, 2)
-  /// VA/VR recebido no mês.
+
   mealVoucher      Decimal?           @map("meal_voucher") @db.Decimal(12, 2)
   cardSpend        Decimal?           @map("card_spend") @db.Decimal(12, 2)
   pixSpend         Decimal?           @map("pix_spend") @db.Decimal(12, 2)
-  /// VA/VR gasto no mês.
+
   mealVoucherSpend Decimal?           @map("meal_voucher_spend") @db.Decimal(12, 2)
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -204,8 +188,7 @@ model IncomeMonth {
   @@map("income_months")
 }
 
-// Tipo da linha do holerite (spec 088). 13º salário e PLR têm tributação
-// exclusiva na fonte e ficam fora da renda tributável da Previdência (spec 089).
+
 enum PayslipKind {
   SALARY
   VACATION
@@ -214,24 +197,23 @@ enum PayslipKind {
   OTHER
 }
 
-/// Linha do holerite: um período trabalhado numa empresa, dentro do mês do
-/// registro. É o "Meses Trabalhados" da aba Previdência do Excel.
+
 model IncomePayslip {
   id            String      @id @default(uuid()) @db.Uuid
   userId        String      @map("user_id") @db.Uuid
   incomeMonthId String      @map("income_month_id") @db.Uuid
   kind          PayslipKind @default(SALARY)
-  /// Nome livre, obrigatório no tipo Outro.
+
   label         String?
   employer      String
   startsOn      DateTime    @map("starts_on") @db.Date
   endsOn        DateTime    @map("ends_on") @db.Date
-  /// Salário bruto do mês cheio (total de vencimentos do holerite).
+
   grossSalary   Decimal     @map("gross_salary") @db.Decimal(12, 2)
-  /// "Necessário calcular": a renda é proporcional aos dias, com o mês de 30.
+
   prorated      Boolean     @default(false)
-  /// Entra na renda tributável do limite do PGBL (spec 095). O padrão vem do
-  /// tipo (13º e PLR começam desmarcados) e o usuário pode trocar.
+
+
   taxable       Boolean     @default(true)
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -244,8 +226,7 @@ model IncomePayslip {
   @@map("income_payslips")
 }
 
-// Tipo das horas do mês (spec 094): as normais e as extras com o adicional que
-// o holerite paga (50%, 75% ou 100%). O DSR e os dias de férias não são horas
+
 // trabalhadas e ficam fora.
 enum HourKind {
   NORMAL
@@ -254,20 +235,17 @@ enum HourKind {
   OVERTIME_100
 }
 
-/// Horas de um tipo no holerite do mês (spec 094): a transcrição dos holerites
-/// de 2026, sem tela. As horas extras declaradas e pagas ficam nas Horas extras
-/// (`OvertimeMonth` e `OvertimePayment`, spec 098); daqui saem só o valor da hora
-/// normal e a sugestão do que um holerite pagou.
+
 model IncomeHourRecord {
   id            String      @id @default(uuid()) @db.Uuid
   userId        String      @map("user_id") @db.Uuid
   incomeMonthId String      @map("income_month_id") @db.Uuid
   kind          HourKind
-  /// Horas da linha do holerite (a referência dela, em horas).
+
   paidHours     Decimal?    @map("paid_hours") @db.Decimal(7, 2)
-  /// Valor em reais da linha do holerite, sem o DSR.
+
   paidAmount    Decimal?    @map("paid_amount") @db.Decimal(12, 2)
-  /// Observação livre: de onde veio a hora, o que foi inferido.
+
   note          String?
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -280,16 +258,13 @@ model IncomeHourRecord {
   @@map("income_hour_records")
 }
 
-// Horas extras (spec 098): o mês de trabalho é a folha de horas que o usuário
-// declara à empresa (do dia de corte do mês anterior ao do mês; ex.: 21/02 a
-// 21/03 é março). O pagamento vem no holerite do mês seguinte e é registrado à
-// parte (`OvertimePayment`); a conciliação é derivada e nunca guardada.
+
 enum OvertimeSource {
   IMPORT
   MANUAL
 }
 
-/// Como o dia conta para as horas extras.
+
 enum OvertimeDayType {
   WORKDAY
   SATURDAY
@@ -297,33 +272,29 @@ enum OvertimeDayType {
   HOLIDAY
 }
 
-/// Mês de trabalho das horas extras. Os totais são das horas a mais: em dia
-/// útil, além da jornada, divididas pelo limite de 2 h por dia do art. 59 da
-/// CLT; no fim de semana e no feriado, todas. Nos meses importados, os totais
-/// saem dos dias (e são recalculados quando um dia ou a regra muda); nos
-/// lançados à mão, são os digitados.
+
 model OvertimeMonth {
   id                 String            @id @default(uuid()) @db.Uuid
   userId             String            @map("user_id") @db.Uuid
-  /// Competência de trabalho (dia 1), única por usuário.
+
   month              DateTime          @db.Date
   startsOn           DateTime          @map("starts_on") @db.Date
   endsOn             DateTime          @map("ends_on") @db.Date
   source             OvertimeSource
-  /// Dia útil: horas a mais até 2 h por dia.
+
   weekdayHours       Decimal           @default(0) @map("weekday_hours") @db.Decimal(7, 2)
-  /// Dia útil: horas a mais além de 2 h por dia.
+
   weekdayBeyondHours Decimal           @default(0) @map("weekday_beyond_hours") @db.Decimal(7, 2)
   saturdayHours      Decimal           @default(0) @map("saturday_hours") @db.Decimal(7, 2)
   sundayHours        Decimal           @default(0) @map("sunday_hours") @db.Decimal(7, 2)
   holidayHours       Decimal           @default(0) @map("holiday_hours") @db.Decimal(7, 2)
-  /// Horas abaixo da jornada em dias úteis trabalhados (informativo).
+
   shortfallHours     Decimal           @default(0) @map("shortfall_hours") @db.Decimal(7, 2)
-  /// Horas extras compensadas com folga, que não serão pagas.
+
   compensatedHours   Decimal           @default(0) @map("compensated_hours") @db.Decimal(7, 2)
-  /// Arquivo e aba de onde o mês veio, na importação.
+
   sourceName         String?           @map("source_name")
-  /// Avisos da importação (datas corrigidas, dia da semana divergente).
+
   importWarnings     String[]          @default([]) @map("import_warnings")
   note               String?
   createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -337,17 +308,15 @@ model OvertimeMonth {
   @@map("overtime_months")
 }
 
-/// O que um holerite pagou de um mês de trabalho, em horas por adicional. O
-/// usuário registra quando recebe o holerite; um mês pode ter mais de um
-/// pagamento (o do holerite seguinte e uma regularização depois).
+
 model OvertimePayment {
   id              String        @id @default(uuid()) @db.Uuid
   userId          String        @map("user_id") @db.Uuid
   overtimeMonthId String        @map("overtime_month_id") @db.Uuid
-  /// Competência do holerite que pagou (dia 1).
+
   paymentMonth    DateTime      @map("payment_month") @db.Date
-  /// Horas pagas em cada adicional. O valor e o DSR não são guardados: saem do
-  /// salário bruto do holerite em Recebimentos e do calendário do mês dele.
+
+
   hours50         Decimal       @default(0) @map("hours_50") @db.Decimal(7, 2)
   hours75         Decimal       @default(0) @map("hours_75") @db.Decimal(7, 2)
   hours100        Decimal       @default(0) @map("hours_100") @db.Decimal(7, 2)
@@ -363,7 +332,7 @@ model OvertimePayment {
   @@map("overtime_payments")
 }
 
-/// Um dia da folha importada: as horas trabalhadas (todas) e como o dia conta.
+
 model OvertimeDay {
   id              String          @id @default(uuid()) @db.Uuid
   userId          String          @map("user_id") @db.Uuid
@@ -371,7 +340,7 @@ model OvertimeDay {
   date            DateTime        @db.Date
   hours           Decimal         @db.Decimal(5, 2)
   dayType         OvertimeDayType @map("day_type")
-  /// O usuário trocou o tipo à mão; a reimportação mantém a escolha.
+
   manualType      Boolean         @default(false) @map("manual_type")
   activity        String?
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -385,9 +354,7 @@ model OvertimeDay {
   @@map("overtime_days")
 }
 
-/// Regra das horas extras a partir de uma competência de trabalho: jornada,
-/// adicionais e os limites diários informados pela empresa. Cada mês usa a
-/// versão mais recente que já vale nele; sem nenhuma, vale o piso da CLT.
+
 model OvertimeRule {
   id                    String   @id @default(uuid()) @db.Uuid
   userId                String   @map("user_id") @db.Uuid
@@ -398,10 +365,10 @@ model OvertimeRule {
   saturdayPercent       Int      @map("saturday_percent")
   sundayPercent         Int      @map("sunday_percent")
   holidayPercent        Int      @map("holiday_percent")
-  /// Limites de horas extras por dia útil informados pela empresa; nulo é desconhecido.
+
   usualDailyLimit       Decimal? @map("usual_daily_limit") @db.Decimal(4, 2)
   exceptionalDailyLimit Decimal? @map("exceptional_daily_limit") @db.Decimal(4, 2)
-  /// Desconta das extras do mês as horas abaixo da jornada (compensação).
+
   netShortfall          Boolean  @default(false) @map("net_shortfall")
   note                  String?
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -460,8 +427,7 @@ model Verification {
   @@map("verifications")
 }
 
-// Contagem do limite de pedidos do login, no banco porque na Vercel cada
-// instância tem a própria memória.
+
 model RateLimit {
   id          String @id @default(uuid()) @db.Uuid
   key         String @unique
@@ -471,13 +437,12 @@ model RateLimit {
   @@map("rate_limits")
 }
 
-/// Importação de um backup (spec 047): a configuração mostra cada uma ao lado
-/// das versões das metas.
+
 model DataImport {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @map("user_id") @db.Uuid
   importedAt    DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
-  /// Quando o arquivo importado foi exportado.
+
   exportedAt    DateTime @map("exported_at") @db.Timestamptz(3)
   formatVersion Int      @map("format_version")
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -486,7 +451,7 @@ model DataImport {
   @@map("data_imports")
 }
 
-// Mês aberto (DRAFT), que aceita edição, ou fechado (REVIEWED) (spec 034).
+
 enum PortfolioMonthStatus {
   DRAFT
   REVIEWED
@@ -512,8 +477,8 @@ model Account {
   institutionId String      @map("institution_id") @db.Uuid
   name          String
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  // NoAction: como Restrict, mas conferido no fim do comando, o que deixa a
-  // exclusão de um usuário apagar tudo dele de uma vez.
+
+
   institution   Institution @relation(fields: [institutionId, userId], references: [id, userId], onDelete: NoAction)
   positions     Position[]
 
@@ -531,32 +496,27 @@ model Asset {
   ticker          String?
   quoteSymbol     String?    @map("quote_symbol")
   baseCurrency    String     @map("base_currency")
-  // Vencimento informativo de ativos sem ticker, como renda fixa (spec 026).
-  // Só ativos criados pela interface o recebem; os importados ficam nulos.
+
+
   maturityDate    DateTime?  @map("maturity_date") @db.Date
-  // Prazo de liquidez do ativo, opcional (spec 039): em quanto tempo o dinheiro
-  // fica disponível no resgate, como "D+0", "D+1" ou "No vencimento". Diferente
-  // do vencimento e do resgate Curto, Médio e Longo do rateio.
+
+
   liquidity       String?
-  // Identificador do símbolo no provedor quando não é o próprio símbolo: a
-  // moeda da CoinGecko conferida ao incluir um cripto novo (spec 026), para a
-  // atualização de cotações não buscar outra moeda com o mesmo símbolo. Nulo
-  // nos demais ativos; BTC e SOL têm identificador fixo no código.
+
+
   quoteProviderId String?    @map("quote_provider_id")
-  // Conta corrente (spec 059): um caixa em reais ou em dólar marcado para
-  // receber o dinheiro de títulos vencidos e de outras liquidações.
+
+
   cashAccount     Boolean    @default(false) @map("cash_account")
-  // Percentual do CDI da spec 060, legado: desde a spec 079 a rentabilidade é
-  // de cada classificação (`position_allocations.rate_percent`). O dia da
-  // aplicação é aquele a partir do qual o rendimento bruto é calculado.
+
+
   cdiPercent      Decimal?   @map("cdi_percent") @db.Decimal(7, 3)
   appliedOn       DateTime?  @map("applied_on") @db.Date
-  // Rendimento calculado automaticamente (spec 079), como os bancos: pela
-  // rentabilidade de cada classificação, em dias úteis.
+
+
   autoIncome      Boolean    @default(false) @map("auto_income")
-  // Tipo do ativo (spec 068), para a visão por tipo, como Tesouro Direto ou
-  // ETF dos EUA. Uma das chaves de `ASSET_TYPES`; nulo nos ativos antigos, cujo
-  // tipo é inferido na leitura até o usuário escolher um.
+
+
   assetType       String?    @map("asset_type")
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -590,13 +550,12 @@ model Position {
   accountId               String                @map("account_id") @db.Uuid
   assetId                 String                @map("asset_id") @db.Uuid
   quantity                Decimal               @db.Decimal(30, 12)
-  /// Base do mês (spec 056): a quantidade com que a posição abriu a competência,
-  /// herdada uma vez do fechamento do mês anterior. A quantidade é a base mais
-  /// as movimentações do mês. Zero numa posição incluída no mês.
+
+
   openingQuantity         Decimal               @default(0) @map("opening_quantity") @db.Decimal(30, 12)
-  /// Data financeira da base do mês; nula no legado até configuração explícita.
+
   calculationStartDate    DateTime?             @map("calculation_start_date") @db.Date
-  /// Retorno automático do próprio mês, separado das movimentações (spec 060).
+
   calculatedIncomeBrl     Decimal               @default(0) @map("calculated_income_brl") @db.Decimal(24, 8)
   incomeCalculatedThrough DateTime?             @map("income_calculated_through") @db.Date
   incomeCalculationError  String?               @map("income_calculation_error")
@@ -620,9 +579,7 @@ model Position {
   @@map("positions")
 }
 
-// Cotação de cada mês, compartilhada entre os usuários (spec 051): vem dos
-// provedores, da virada de mês ou da inclusão de um ativo. A cotação digitada
-// por um usuário fica em ManualQuote e vale só para ele.
+
 enum PositionTransactionKind {
   CONTRIBUTION
   WITHDRAWAL
@@ -630,30 +587,25 @@ enum PositionTransactionKind {
   OPENING
 }
 
-// Movimentação de uma posição (spec 056): saldo inicial de uma posição nova,
-// aporte, retirada ou rendimento. Fica na posição da competência em que foi
-// registrada; a quantidade da posição é a base do mês mais as movimentações
-// dele. Só as do mês aberto podem ser incluídas, corrigidas ou apagadas, e a
-// correção não mexe em outros meses.
+
 model PositionTransaction {
   id           String                  @id @default(uuid()) @db.Uuid
   userId       String                  @map("user_id") @db.Uuid
   positionId   String                  @map("position_id") @db.Uuid
   kind         PositionTransactionKind
   occurredOn   DateTime                @map("occurred_on") @db.Date
-  /// Quantidade movimentada: unidades nos ativos cotados, dólares no caixa em
-  /// dólar e o próprio valor nos saldos em reais. Sempre positiva; zero no
-  /// rendimento recebido em dinheiro, como dividendos.
+
+
   quantity     Decimal                 @db.Decimal(30, 12)
-  /// Preço executado em reais (o de compra ou de venda, ou o câmbio no caixa em
-  /// dólar), diferente da cotação do mês. Nulo nos saldos em reais.
+
+
   unitPriceBrl Decimal?                @map("unit_price_brl") @db.Decimal(24, 8)
-  /// Dinheiro movimentado em reais. Positivo; só o rendimento de acerto de
-  /// uma liquidação pode ser negativo (spec 059).
+
+
   amountBrl    Decimal                 @map("amount_brl") @db.Decimal(24, 2)
   note         String?
-  /// Liga as pernas de uma transferência interna, como a liquidação de um
-  /// título num caixa (spec 059): não é aporte externo nem rendimento novo.
+
+
   transferId   String?                 @map("transfer_id") @db.Uuid
   createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   position     Position                @relation(fields: [positionId, userId], references: [id, userId], onDelete: Cascade)
@@ -665,8 +617,7 @@ model PositionTransaction {
   @@map("position_transactions")
 }
 
-// Indexadores diários compartilhados (spec 060): percentual ao dia, nunca preço
-// em reais. O CDI observado na SGS12 é diferente da Selic e da cotação de ativo.
+
 model RateObservation {
   id           String   @id @default(uuid()) @db.Uuid
   indexer      String
@@ -680,8 +631,7 @@ model RateObservation {
   @@map("rate_observations")
 }
 
-// Janelas lidas integralmente da fonte. Uma ausência dentro da resposta não
-// inventa uma taxa: só as observações efetivamente publicadas acumulam juros.
+
 model RateCoverage {
   id                String    @id @default(uuid()) @db.Uuid
   indexer           String
@@ -694,8 +644,7 @@ model RateCoverage {
   @@map("rate_coverage")
 }
 
-// Taxas de referência informativas, compartilhadas (spec 064). A meta Selic
-// é percentual ao ano, nunca cotação em reais nem CDI diário.
+
 model ReferenceRate {
   key           String    @id
   percentAnnual Decimal?  @map("percent_annual") @db.Decimal(12, 6)
@@ -708,9 +657,7 @@ model ReferenceRate {
   @@map("reference_rates")
 }
 
-// Histórico da meta Selic (spec 067): um ponto a cada mudança da taxa, para
-// mostrar a meta vigente em cada competência. Compartilhado e recarregável
-// pelo job, fora do backup como `reference_rates`.
+
 model ReferenceRatePoint {
   key           String
   effectiveOn   DateTime @map("effective_on") @db.Date
@@ -727,12 +674,11 @@ model MarketQuote {
   instrumentType String    @map("instrument_type")
   baseCurrency   String    @map("base_currency")
   valueBrl       Decimal   @map("value_brl") @db.Decimal(24, 8)
-  // Dia do preço que a cotação do mês carrega, quando conhecido. Nulo nas
-  // cotações importadas do Excel, que são fatos mensais.
+
+
   quoteDate      DateTime? @map("quote_date") @db.Date
-  // Competência cuja cotação foi repetida, quando o mês não tem valor próprio:
-  // virada de mês sem histórico diário no mês ou clone do mês anterior. Nulo
-  // quando o valor é do próprio mês: importado ou atualizado.
+
+
   carriedFrom    DateTime? @map("carried_from") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -741,9 +687,7 @@ model MarketQuote {
   @@map("market_quotes")
 }
 
-// Cotação digitada por um usuário (spec 051), só para cotação não encontrada ou
-// com falha na última busca (spec 028). Vale por cima da compartilhada, só para
-// ele, até a próxima atualização bem-sucedida do símbolo no mês corrente.
+
 model ManualQuote {
   id             String   @id @default(uuid()) @db.Uuid
   userId         String   @map("user_id") @db.Uuid
@@ -768,7 +712,7 @@ enum QuoteRefreshStatus {
   FAILED
 }
 
-// Histórico diário: uma cotação por símbolo e dia. Cada atualização do dia
+
 // sobrescreve o valor daquele dia, nunca o de outro.
 model DailyQuote {
   id             String           @id @default(uuid()) @db.Uuid
@@ -788,34 +732,30 @@ model DailyQuote {
   @@map("daily_quotes")
 }
 
-// Execução da atualização automática de cotações, de todos os usuários
-// (spec 051). Cada um vê só os resultados dos próprios símbolos.
+
 enum QuoteSymbolStatus {
   PENDING
   ACTIVE
   ERROR
 }
 
-// Cadastro dos símbolos cotados, compartilhado por todos os usuários (spec
-// 053). O símbolo é a mesma chave de daily_quotes, market_quotes e
-// manual_quotes. O job agendado lê daqui o que buscar e grava aqui o resultado
-// de cada tentativa; quem usa o símbolo são os ativos dos usuários.
+
 model QuoteSymbol {
   symbol             String            @id
   instrumentType     String            @map("instrument_type")
   baseCurrency       String            @map("base_currency")
-  /// Moeda da CoinGecko do símbolo, a mesma para todos os usuários.
+
   providerId         String?           @map("provider_id")
   status             QuoteSymbolStatus @default(PENDING)
   lastAttemptAt      DateTime?         @map("last_attempt_at") @db.Timestamptz(3)
   lastSuccessAt      DateTime?         @map("last_success_at") @db.Timestamptz(3)
-  /// Falhas seguidas da cotação atual; volta a zero no sucesso.
+
   failureCount       Int               @default(0) @map("failure_count")
   lastErrorCode      String?           @map("last_error_code")
   lastErrorMessage   String?           @map("last_error_message")
-  /// Espera depois de falhas: antes disso o job não tenta de novo.
+
   nextAttemptAt      DateTime?         @map("next_attempt_at") @db.Timestamptz(3)
-  /// Último mês (dia 1) com o histórico de fechamento conferido; nulo até o
+
   /// primeiro carregamento.
   historySyncedUntil DateTime?         @map("history_synced_until") @db.Date
   historyAttemptedAt DateTime?         @map("history_attempted_at") @db.Timestamptz(3)
@@ -830,7 +770,7 @@ model QuoteRefreshRun {
   id            String               @id @default(uuid()) @db.Uuid
   status        QuoteRefreshStatus   @default(RUNNING)
   quoteDate     DateTime             @map("quote_date") @db.Date
-  /// Competência reprecificada (o mês corrente), quando algum usuário a tinha.
+
   repricedMonth DateTime?            @map("repriced_month") @db.Date
   startedAt     DateTime             @default(now()) @map("started_at") @db.Timestamptz(3)
   finishedAt    DateTime?            @map("finished_at") @db.Timestamptz(3)
@@ -874,9 +814,8 @@ model PositionAllocation {
   subclass    String
   duration    String
   weight      Decimal  @db.Decimal(12, 10)
-  // Rentabilidade da classificação (spec 079), pelo indexador da subclasse:
-  // % do CDI no pós-fixado (105 = 105% do CDI) e taxa ao ano no prefixado
-  // (12.5 = 12,5% a.a.). Opcional; exigida com o rendimento automático.
+
+
   ratePercent Decimal? @map("rate_percent") @db.Decimal(9, 4)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

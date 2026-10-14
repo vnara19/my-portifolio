@@ -1,3 +1,5 @@
+
+/** Carry the previous month's positions and allocations forward after explicit confirmation. Prior months remain closed. */
 import { PortfolioMonthStatus, Prisma } from "@/generated/prisma/client";
 import { MONTH_ROLLOVER_LOCK_KEY } from "@/lib/advisory-locks";
 import { getUserDb, SCOPED_USER } from "@/lib/user-db";
@@ -10,16 +12,11 @@ import { addMonths, calendarDay, lastDayOf, monthOf, toDateKey } from "@/modules
 type Transaction = Prisma.TransactionClient;
 
 
-/**
- * Confere a virada de mês sem gravar nada (spec 078): diz quais competências
- * faltam até o mês corrente, para o usuário confirmar antes de criá-las. Um
- * usuário novo, sem competência nenhuma, recebe a primeira na hora (spec 055).
- */
 export async function checkMonthsUpToDate(today: Date = new Date()): Promise<MonthRolloverOutcome> {
   const prisma = await getUserDb();
 
   if (!prisma) {
-    return { state: "unavailable", message: "O banco de dados não está configurado." };
+    return { state: "unavailable", message: "The database is not configured." };
   }
 
   const target = monthOf(calendarDay(today));
@@ -45,15 +42,12 @@ export async function checkMonthsUpToDate(today: Date = new Date()): Promise<Mon
   return { state: "pending", latestMonth: toMonthParam(latest.referenceDate), months };
 }
 
-// Garante que exista a competência do mês de `today`, copiando a anterior para
-// cada mês que faltar depois da mais recente. Competências passadas geradas
-// aqui usam a cotação do último dia do mês disponível no histórico diário; na
-// falta dele, repetem a do mês anterior e isso é informado no resultado.
+
 export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<MonthRolloverOutcome> {
   const prisma = await getUserDb();
 
   if (!prisma) {
-    return { state: "unavailable", message: "O banco de dados não está configurado." };
+    return { state: "unavailable", message: "The database is not configured." };
   }
 
   const day = calendarDay(today);
@@ -75,7 +69,7 @@ export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<Mo
     async (transaction): Promise<MonthRolloverOutcome> => {
       await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${MONTH_ROLLOVER_LOCK_KEY})`;
 
-      // Relê dentro do bloqueio: outra aba pode ter criado as competências.
+
       let source = await transaction.portfolioMonth.findFirst({
         orderBy: { referenceDate: "desc" },
         select: { id: true, referenceDate: true },
@@ -97,8 +91,7 @@ export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<Mo
         source = generated.month;
       }
 
-      // Os meses anteriores ao corrente ficam fechados (spec 034): editá-los
-      // exige abri-los de novo na linha do tempo, como os meses passados.
+
       await transaction.portfolioMonth.updateMany({
         where: { referenceDate: { lt: target }, status: PortfolioMonthStatus.DRAFT },
         data: { status: PortfolioMonthStatus.REVIEWED },
@@ -110,11 +103,7 @@ export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<Mo
   );
 }
 
-/**
- * Usuário novo, sem competência nenhuma (spec 055): cria a do mês corrente,
- * vazia e aberta, para ele já poder incluir a primeira posição. Restaurar um
- * backup depois troca tudo, como sempre.
- */
+
 async function startFirstMonth(target: Date): Promise<MonthRolloverOutcome> {
   const prisma = (await getUserDb())!;
 
@@ -143,13 +132,13 @@ async function copyMonth(
   month: Date,
   today: Date,
 ) {
-  // Renda fixa pelo CDI (spec 060): o mês de origem fecha pelo CDI até o
-  // primeiro dia do mês novo, e esse fechamento vira a base dele.
+
+
   await valueCdiPositions(transaction, { where: { portfolioMonthId: source.id }, asOf: toDateKey(month) });
 
   const [positions, sharedQuotes, manualQuotes] = await Promise.all([
-    // Uma posição zerada, como um título liquidado (spec 059), não passa ao
-    // mês seguinte.
+
+
     transaction.position.findMany({
       where: { portfolioMonthId: source.id, quantity: { gt: 0 } },
       orderBy: { id: "asc" },
@@ -193,8 +182,8 @@ async function copyMonth(
       .map((position) => position.asset.quoteSymbol)
       .filter((symbol): symbol is string => Boolean(symbol)),
   );
-  // As cotações do mês são de todos (spec 051): a virada cuida só das do
-  // usuário, das que ele digitou e do dólar.
+
+
   const relevant = new Set([...positionSymbols, ...manualQuotes.map((quote) => quote.symbol), "USD"]);
   const sharedSymbols = new Set(sharedQuotes.map((quote) => quote.symbol));
   const sourceQuotes = [
@@ -227,7 +216,7 @@ async function copyMonth(
       quoteDate: Date | null;
       carriedFrom: Date | null;
       fromHistory: boolean;
-      /** Repetida de uma digitada à mão: continua só do usuário. */
+
       manual: boolean;
     }
   >();
@@ -238,8 +227,8 @@ async function copyMonth(
       quote.symbol,
       daily
         ? { ...quote, valueBrl: daily.valueBrl, quoteDate: daily.quoteDate, carriedFrom: null, fromHistory: true, manual: false }
-        : // A repetida aponta para a competência que tem o valor próprio, mesmo
-          // depois de vários meses repetidos.
+        :
+
           { ...quote, carriedFrom: quote.manual ? null : (quote.carriedFrom ?? source.referenceDate), fromHistory: false },
     );
   }
@@ -266,7 +255,7 @@ async function copyMonth(
   const shared = [...quotes].filter(([, quote]) => !quote.manual);
   const manual = [...quotes].filter(([, quote]) => quote.manual);
 
-  // Outro usuário pode já ter criado as cotações do mês; as existentes ficam.
+
   if (shared.length > 0) {
     await transaction.marketQuote.createMany({
       data: shared.map(([symbol, quote]) => ({
@@ -302,8 +291,8 @@ async function copyMonth(
     await transaction.position.createMany({
       data: positions.map((position) => {
         const quote = position.asset.quoteSymbol ? quotes.get(position.asset.quoteSymbol) : undefined;
-        // Cotação repetida mantém preço e total copiados, como o clone; só a
-        // cotação vinda do histórico do mês reprecifica a posição.
+
+
         const repriced = quote?.fromHistory ? quote.valueBrl : null;
 
         return {
@@ -312,11 +301,11 @@ async function copyMonth(
           accountId: position.accountId,
           assetId: position.assetId,
           quantity: position.quantity,
-          // O fechamento do mês anterior vira, uma vez, a base do mês novo; as
-          // movimentações dele não são copiadas (spec 056).
+
+
           openingQuantity: position.quantity,
-          // Com o rendimento automático ligado no ativo, o cálculo do mês novo
-          // começa no primeiro dia dele, sobre o fechamento (specs 060 e 079).
+
+
           calculationStartDate: autoIncomeParts(position.asset, position.allocations) ? month : null,
           unitPriceBrl: repriced ?? position.unitPriceBrl,
           exchangeRateBrl:

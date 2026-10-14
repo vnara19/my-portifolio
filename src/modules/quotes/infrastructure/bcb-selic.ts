@@ -3,17 +3,14 @@ import { z } from "zod";
 import { fetchJson, ProviderRefusalError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
 
 export type SelicObservation = { observedOn: string; percentAnnual: string; source: string };
-/** Observações diárias válidas de um período, em ordem crescente de data. */
+
 export type SelicHistory = { source: string; observations: { observedOn: string; percentAnnual: string }[] };
 export type SelicFetcher = (startDay: string, today: string) => Promise<SelicHistory>;
 
 const observationsSchema = z.array(z.object({ data: z.string(), valor: z.string() }));
 const SOAP_URL = "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS";
 
-/**
- * Meta definida pelo Copom, SGS 432, percentual ao ano; nunca CDI ou preço. A
- * série é diária, e a API JSON aceita no máximo dez anos por consulta.
- */
+
 export const fetchSelicTarget: SelicFetcher = async (startDay, today) => {
   try {
     const url = new URL("https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados");
@@ -22,7 +19,7 @@ export const fetchSelicTarget: SelicFetcher = async (startDay, today) => {
     url.searchParams.set("dataFinal", sgsDate(today));
     return selicHistory(observationsSchema.parse(await fetchJson(url)), today, "bcb-sgs-432");
   } catch {
-    // A API JSON já ficou indisponível; a reserva é o mesmo SGS oficial.
+
     return fetchSelicTargetSoap(startDay, today);
   }
 };
@@ -43,7 +40,7 @@ export async function fetchSelicTargetSoap(startDay: string, today: string): Pro
   });
 
   if (!response.ok) {
-    throw new QuoteHttpError(response.status, `O Banco Central respondeu com HTTP ${response.status}.`);
+    throw new QuoteHttpError(response.status, `Banco Central responded with HTTP ${response.status}.`);
   }
 
   return parseSelicSoap(await response.text(), today);
@@ -54,7 +51,7 @@ export function parseSelicSoap(xml: string, today: string): SelicHistory {
   const contents = /<SERIE\b[^>]*ID=['"]432['"][^>]*>([\s\S]*?)<\/SERIE>/.exec(series)?.[1];
 
   if (!contents) {
-    throw new ProviderRefusalError("INVALID_RESPONSE", "O Banco Central respondeu sem a série da meta Selic.");
+    throw new ProviderRefusalError("INVALID_RESPONSE", "Banco Central responded without the Selic target series.");
   }
 
   const observations = [...contents.matchAll(/<ITEM>([\s\S]*?)<\/ITEM>/g)].flatMap((match) => {
@@ -66,10 +63,7 @@ export function parseSelicSoap(xml: string, today: string): SelicHistory {
   return selicHistory(observations, today, "bcb-sgs-432-soap");
 }
 
-/**
- * Observações válidas, em ordem crescente: datas reais até hoje e percentuais
- * não negativos até 1000. Sem nenhuma, a fonte não serviu.
- */
+
 export function selicHistory(observations: { data: string; valor: string }[], today: string, source: string): SelicHistory {
   const byDay = new Map<string, string>();
 
@@ -84,7 +78,7 @@ export function selicHistory(observations: { data: string; valor: string }[], to
   }
 
   if (byDay.size === 0) {
-    throw new ProviderRefusalError("MISSING_RATE", "O Banco Central não devolveu uma meta Selic válida para o período.");
+    throw new ProviderRefusalError("MISSING_RATE", "Banco Central did not return a valid Selic target for the period.");
   }
 
   return {
@@ -95,17 +89,13 @@ export function selicHistory(observations: { data: string; valor: string }[], to
   };
 }
 
-/** A observação mais recente de uma lista, com a fonte. */
+
 export function latestSelicObservation(observations: { data: string; valor: string }[], today: string, source: string): SelicObservation {
   const history = selicHistory(observations, today, source);
   return { ...history.observations[history.observations.length - 1], source };
 }
 
-/**
- * Pontos de mudança: só as observações cujo percentual difere do anterior.
- * `previous` é o percentual vigente antes da primeira observação, quando já
- * conhecido, para não repetir um ponto a cada consulta.
- */
+
 export function selicChangePoints(history: SelicHistory, previous: string | null) {
   const points: { effectiveOn: string; percentAnnual: string }[] = [];
   let current = previous === null ? null : Number(previous);

@@ -12,7 +12,7 @@ import { devToolsEnabled } from "@/lib/dev-tools";
 
 type DevSyncResponse = { ok: boolean; state: string; lines?: string[]; message?: string };
 
-/** O botão e a rota só funcionam no `pnpm dev` (`devToolsEnabled`, spec 072). */
+
 export function DevQuoteSyncButton({ className }: { className?: string }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
@@ -21,7 +21,7 @@ export function DevQuoteSyncButton({ className }: { className?: string }) {
 
   const sync = async () => {
     if (hasPendingChanges()) {
-      showAppToast({ tone: "info", title: "Salve suas alterações primeiro", description: "Depois, atualize as cotações." });
+      showAppToast({ tone: "info", title: "Save your changes first", description: "Then update quotes." });
       return;
     }
     setRunning(true);
@@ -32,16 +32,16 @@ export function DevQuoteSyncButton({ className }: { className?: string }) {
         body: "{}",
       });
       const body = await response.json() as DevSyncResponse;
-      if (!response.ok && !body.lines) throw new Error(body.message ?? "O aplicativo não conseguiu atualizar as cotações.");
+      if (!response.ok && !body.lines) throw new Error(body.message ?? "The application could not update quotes.");
       showAppToast({
         tone: body.ok ? "success" : "warning",
-        title: body.state === "busy" ? "Atualização já em andamento" : body.ok ? "Atualização local concluída" : "Atualização concluída com avisos",
+        title: body.state === "busy" ? "Update already in progress" : body.ok ? "Local update completed" : "Update completed with warnings",
         description: body.message,
         data: { items: body.lines?.map((line) => ({ label: line })) },
       });
       refreshUnlessEditing(() => router.refresh());
     } catch (error) {
-      showAppToast({ tone: "error", title: "Não foi possível atualizar as cotações", description: error instanceof Error ? error.message : "Tente novamente." });
+      showAppToast({ tone: "error", title: "Could not update quotes", description: error instanceof Error ? error.message : "Try again." });
     } finally {
       setRunning(false);
     }
@@ -50,7 +50,7 @@ export function DevQuoteSyncButton({ className }: { className?: string }) {
   return (
     <Button variant="outline" onClick={() => void sync()} disabled={running} className={className}>
       <ArrowClockwiseIcon aria-hidden="true" className={running ? "animate-spin motion-reduce:animate-none" : undefined} />
-      {running ? "Atualizando…" : "Atualizar cotações (dev)"}
+      {running ? "Updating…" : "Update quotes (dev)"}
     </Button>
   );
 }

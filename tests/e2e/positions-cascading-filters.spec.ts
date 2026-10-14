@@ -3,84 +3,82 @@ import { expect, test } from "@playwright/test";
 import { chooseFilter, filterOptions as optionsOf } from "./support/position-filters";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// Filtros em cascata e vencimento em Posições (spec 031). Só leitura: a
-// checagem de abertura é substituída por uma resposta fixa.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
 
-test("a classe escolhida primeiro limita as subclasses", async ({ page }) => {
+test("choosing a class limits available subclasses", async ({ page }) => {
   await page.goto("/posicoes?mes=2026-09&classe=Caixa");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 
-  // A subclasse "Curto" do caixa virou Pós-fixado no histórico preparado (spec 041).
-  expect(await optionsOf(page, "Subclasse")).toEqual(["Pós-fixado", "Stablecoin"]);
-  // A classe é o primeiro filtro: as próprias opções não encolhem.
-  expect(await optionsOf(page, "Classe")).toEqual(
-    expect.arrayContaining(["Caixa", "Cripto", "Renda Fixa", "Renda Variável"]),
+
+  expect(await optionsOf(page, "Subclass")).toEqual(["Floating-rate", "Stablecoin"]);
+
+  expect(await optionsOf(page, "Class")).toEqual(
+    expect.arrayContaining(["Cash", "Crypto", "Fixed income", "Equities"]),
   );
 });
 
-test("os filtros limitam da esquerda para a direita, não pela ordem de aplicação", async ({ page }) => {
-  // Mesmo com a subclasse aplicada antes, a classe fica à esquerda: ela não
-  // encolhe, e a subclasse só oferece as de Caixa (spec 044).
+test("filters constrain left to right regardless of selection order", async ({ page }) => {
+
+
   await page.goto("/posicoes?mes=2026-09&subclasse=P%C3%B3s-fixado&classe=Caixa");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 
-  expect(await optionsOf(page, "Classe")).toEqual(
-    expect.arrayContaining(["Caixa", "Cripto", "Renda Fixa", "Renda Variável"]),
+  expect(await optionsOf(page, "Class")).toEqual(
+    expect.arrayContaining(["Cash", "Crypto", "Fixed income", "Equities"]),
   );
-  expect(await optionsOf(page, "Subclasse")).toEqual(["Pós-fixado", "Stablecoin"]);
+  expect(await optionsOf(page, "Subclass")).toEqual(["Floating-rate", "Stablecoin"]);
 });
 
-test("o vencimento tem coluna e filtro", async ({ page }, testInfo) => {
+test("maturity has a column and filter", async ({ page }, testInfo) => {
   await page.goto("/posicoes?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 
-  expect(await optionsOf(page, "Vencimento")).toContain("Sem vencimento");
+  expect(await optionsOf(page, "Maturity")).toContain("No maturity date");
 
   if (!testInfo.project.name.startsWith("mobile")) {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await expect(page.getByRole("columnheader", { name: "Vencimento" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Maturity" })).toBeVisible();
   }
 
   await page.goto("/posicoes?mes=2026-09&venc=Sem%20vencimento");
   await expect(page.getByTestId("position-row").first()).toBeVisible();
 });
 
-test("pela tela, a instituição só oferece as que têm a classe escolhida", async ({ page }) => {
+test("institution choices respect the selected class", async ({ page }) => {
   await page.goto("/posicoes?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 
-  await chooseFilter(page, "Instituição", "Inter", /inst=Inter/);
+  await chooseFilter(page, "Institution", "Inter", /inst=Inter/);
 
-  // A classe fica à esquerda da instituição: escolher Inter não a encolhe.
-  expect(await optionsOf(page, "Classe")).toContain("Cripto");
 
-  // Com Caixa, a instituição só oferece as que têm caixa: a Ledger, só com
-  // Bitcoin, sai da lista.
-  await page.getByRole("button", { name: "Caixa", exact: true }).click();
+  expect(await optionsOf(page, "Class")).toContain("Crypto");
+
+
+  await page.getByRole("button", { name: "Cash", exact: true }).click();
   await expect(page).toHaveURL(/classe=Caixa/);
-  const institutions = await optionsOf(page, "Instituição");
+  const institutions = await optionsOf(page, "Institution");
   expect(institutions).toContain("Inter");
   expect(institutions).not.toContain("Ledger");
 });
 
-test("no celular, busca e filtros dividem a linha e os filtros abrem numa folha", async ({ page, isMobile }) => {
-  test.skip(!isMobile, "Folha de filtros do celular (spec 077).");
+test("mobile search and filters share a row and open a filter sheet", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "Mobile filter sheet (spec 077).");
   await page.goto("/posicoes?mes=2026-09");
-  const search = page.getByRole("searchbox", { name: "Buscar posição" });
+  const search = page.getByRole("searchbox", { name: "Search positions" });
   const filters = page.getByRole("button", { name: /^Filtros/ });
   await expect(search).toBeVisible();
   await expect(filters).toBeVisible();
   await expect(page.getByRole("combobox", { name: /^Subclasse/ })).toBeHidden();
-  // As duas caixas lidas de uma vez: a página ainda pode deslizar na entrada.
+
   const [searchBox, filtersBox] = await page.evaluate(() => {
     const box = (element: Element | null) => {
       const rect = element!.getBoundingClientRect();
       return { center: rect.top + rect.height / 2, width: rect.width };
     };
-    const button = [...document.querySelectorAll("button")].find((entry) => entry.textContent?.trim().startsWith("Filtros"));
+    const button = [...document.querySelectorAll("button")].find((entry) => entry.textContent?.trim().startsWith("Filters"));
     return [box(document.querySelector('input[type="search"]')), box(button ?? null)];
   });
   expect(Math.abs(searchBox.center - filtersBox.center)).toBeLessThan(2);
@@ -88,16 +86,16 @@ test("no celular, busca e filtros dividem a linha e os filtros abrem numa folha"
 
   await filters.click();
   const sheet = page.getByTestId("positions-filter-sheet");
-  await sheet.getByRole("group", { name: /^Moeda/ }).getByRole("button", { name: "USD", exact: true }).click();
+  await sheet.getByRole("group", { name: /^Currency/ }).getByRole("button", { name: "USD", exact: true }).click();
   await expect(page).toHaveURL(/moeda=USD/);
-  await sheet.getByRole("group", { name: /^Agrupar/ }).getByRole("button", { name: "Instituição", exact: true }).click();
+  await sheet.getByRole("group", { name: /^Agrupar/ }).getByRole("button", { name: "Institution", exact: true }).click();
   await expect(page).toHaveURL(/agrupar=instituicao/);
-  await sheet.getByRole("button", { name: /^Ver \d+ posiç/ }).click();
+  await sheet.getByRole("button", { name: /^View \d+ positi/ }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Filtros, 1 ativo" })).toBeVisible();
 });
 
-test("em tela de toque os campos usam 16 px para o Safari não ampliar", async ({ page }, testInfo) => {
+test("touch fields use 16 px text to prevent Safari zoom", async ({ page }, testInfo) => {
   await page.goto("/posicoes?mes=2026-09");
   const search = page.getByRole("searchbox");
   await expect(search).toBeVisible();
@@ -107,11 +105,11 @@ test("em tela de toque os campos usam 16 px para o Safari não ampliar", async (
   expect(size).toBe(coarse ? "16px" : "12px");
 });
 
-test("a liquidez fica no filtro, sem coluna", async ({ page }) => {
+test("liquidity is a filter without a table column", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/posicoes?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
-  expect(await optionsOf(page, "Liquidez")).toContain("Sem liquidez informada");
-  // A coluna saiu para compactar a tabela (spec 044); o filtro continua.
-  await expect(page.getByRole("columnheader", { name: "Liquidez" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
+  expect(await optionsOf(page, "Liquidity")).toContain("Liquidity not specified");
+
+  await expect(page.getByRole("columnheader", { name: "Liquidity" })).toHaveCount(0);
 });

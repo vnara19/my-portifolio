@@ -1,5 +1,9 @@
 "use client";
 
+/** Edit target weights and tolerance bands. Preview calculations are derived; only saving persists the plan. */
+
+import { englishLabel } from "@/lib/english-labels";
+
 import {
   CheckCircleIcon,
   ClockCounterClockwiseIcon,
@@ -46,7 +50,7 @@ const EMPTY_ROWS: AllocationRow[] = [];
 
 type Draft = Record<string, string>;
 
-/** `children` entra no fim da coluna principal, como o backup dos dados (spec 042). */
+
 export function TargetEditor({ editor, children }: { editor: TargetEditorData; children?: ReactNode }) {
   const [draft, setDraft] = useState<Draft>({});
   const [toleranceDraft, setToleranceDraft] = useState<string | null>(null);
@@ -56,8 +60,7 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
   const sequence = useRef(0);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  // A moeda sobre o total acompanha o rascunho das classes e da moeda de cada
-  // classe, sem campo próprio (spec 054).
+
   const derivedCurrency = deriveCurrencyTargets(toTargets(editor.items, draft));
   const valueOf = (item: TargetEditorItem) =>
     item.scope === "CURRENCY" ? (derivedCurrency.get(item.primaryLabel) ?? 0) * 100 : draftValue(item, draft);
@@ -106,7 +109,7 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
 
   useEffect(() => () => setPendingChanges(0), []);
 
-  // A aba da prévia só muda pelo clique do usuário; editar uma meta não troca o recorte.
+
   const setValue = useCallback((item: TargetEditorItem, text: string) => {
     setDraft((current) => ({ ...current, [item.key]: text }));
   }, []);
@@ -131,8 +134,7 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
       }
     });
 
-  // A prévia acompanha o rascunho com prioridade baixa: enquanto o deslizante é arrastado, o polegar e o
-  // campo respondem primeiro e a tabela de comprar e vender é recalculada em seguida, sem travar o gesto.
+
   const deferredDraft = useDeferredValue(draft);
   const deferredToleranceDraft = useDeferredValue(toleranceDraft);
   const preview = editor.preview;
@@ -158,16 +160,14 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
 
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Configuração</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Metas da carteira</h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-            Última alteração em <span className="text-foreground">{VERSION_DATE_FORMAT.format(editor.updatedAt)}</span>
+          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Settings</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio targets</h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">Last changed on <span className="text-foreground">{VERSION_DATE_FORMAT.format(editor.updatedAt)}</span>
           </p>
         </div>
       </header>
 
-      {/* Abaixo de xl a coluna é `minmax(0,1fr)`: com a trilha `auto` ela crescia até a largura mínima da tabela da
-          prévia (360 px + margens) e empurrava as metas para fora da tela; a tabela rola dentro do próprio painel (spec 074). */}
+
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.85fr)]">
         <div className="space-y-6">
           <ToleranceCard
@@ -238,10 +238,10 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
           })}
 
           {editor.versions.length > 0 ? (
-            <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-label="Versões">
+            <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-label="Versions">
               <div className="flex items-center gap-2">
                 <ClockCounterClockwiseIcon aria-hidden="true" className="text-primary" size={16} weight="duotone" />
-                <h2 className="text-base font-semibold tracking-[-0.025em]">Versões</h2>
+                <h2 className="text-base font-semibold tracking-[-0.025em]">Versions</h2>
               </div>
               <ol className="mt-4 space-y-2">
                 {editor.versions.map((version) => (
@@ -251,9 +251,8 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
                     className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
                   >
                     <DownloadSimpleIcon aria-hidden="true" className="-mx-px text-chart-up" size={12} weight="bold" />
-                    <span className="text-foreground">Backup importado</span>
-                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] text-muted-foreground">
-                      exportado em {VERSION_DATE_FORMAT.format(version.exportedAt)}
+                    <span className="text-foreground">Backup imported</span>
+                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] text-muted-foreground">exported on {VERSION_DATE_FORMAT.format(version.exportedAt)}
                     </span>
                     <span className="ml-auto font-mono text-[10px] text-muted-foreground">
                       {VERSION_DATE_FORMAT.format(version.importedAt)}
@@ -266,8 +265,8 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
           {children}
         </div>
 
-        {/* No celular, a prévia sai (spec 080): comprar e vender fica na Visão geral. */}
-        <aside className="hidden md:block xl:sticky xl:top-[148px] xl:self-start" aria-label="Prévia do rebalanceamento">
+
+        <aside className="hidden md:block xl:sticky xl:top-[148px] xl:self-start" aria-label="Rebalancing preview">
           <PreviewPanel
             scope={previewScope}
             onScopeChange={setPreviewScope}
@@ -293,20 +292,19 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
             )}
             <p className="text-xs text-foreground" aria-live="polite">
               {invalidGroups > 0
-                ? `${invalidGroups} ${invalidGroups === 1 ? "grupo não soma" : "grupos não somam"} 100%`
+                ? `${invalidGroups} ${invalidGroups === 1 ? "group does not add up to" : "groups do not add up to"} 100%`
                 : hasInvalidValue
                   ? toleranceInvalid
-                    ? `Use uma tolerância entre 0 e ${MAX_REBALANCE_TOLERANCE}`
-                    : "Há percentuais inválidos"
-                  : `${pendingCount} ${pendingCount === 1 ? "alteração" : "alterações"}`}
+                    ? `Use a tolerance between 0 and ${MAX_REBALANCE_TOLERANCE}`
+                    : "Some percentages are invalid"
+                  : `${pendingCount} ${pendingCount === 1 ? "change" : "changes"}`}
             </p>
             <button
               type="button"
               onClick={discard}
               disabled={isSaving}
               className="ml-auto h-8 rounded-lg px-3 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              Descartar
+            >Discard
             </button>
             <button
               type="button"
@@ -314,7 +312,7 @@ export function TargetEditor({ editor, children }: { editor: TargetEditorData; c
               disabled={!canSave}
               className="inline-flex h-8 items-center rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground outline-none transition-[background-color,transform] duration-150 hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/40 active:scale-[0.98] disabled:opacity-40"
             >
-              {isSaving ? "Salvando…" : "Salvar metas"}
+              {isSaving ? "Saving…" : "Save targets"}
             </button>
           </div>
         </div>
@@ -334,8 +332,7 @@ type GroupProps = {
   changedKeys: string[];
 };
 
-// Moeda sobre o total, calculada (spec 054): sem deslizante nem campo, com o
-// valor que sai das classes e da moeda dentro de cada classe.
+
 function DerivedCurrencyGroup({
   items,
   valueOf,
@@ -346,17 +343,17 @@ function DerivedCurrencyGroup({
   return (
     <div className="mt-5" data-testid="derived-currency">
       <StackedBar
-        segments={items.map((item) => ({ key: item.key, label: item.primaryLabel, value: valueOf(item) }))}
+        segments={items.map((item) => ({ key: item.key, label: englishLabel(item.primaryLabel), value: valueOf(item) }))}
       />
       <div className="mt-4 space-y-3">
         {items.map((item) => (
           <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-3">
             <span className="flex min-w-0 items-center gap-2">
               <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(item.primaryLabel) }} />
-              <span className="truncate text-xs text-foreground/85">{item.primaryLabel}</span>
+              <span className="truncate text-xs text-foreground/85">{englishLabel(item.primaryLabel)}</span>
             </span>
             <span
-              aria-label={`Meta calculada de ${item.primaryLabel}`}
+              aria-label={`Calculated target for ${englishLabel(item.primaryLabel)}`}
               className="pr-2 text-right font-mono text-xs text-foreground tabular-nums"
             >
               {formatInput(Math.round(valueOf(item) * 100) / 100)}%
@@ -414,7 +411,7 @@ function TargetGroup({
   );
 }
 
-// Memorizada para que arrastar um deslizante redesenhe só a própria linha, e não as demais metas.
+
 const TargetRow = memo(function TargetRow({
   item,
   label,
@@ -435,20 +432,20 @@ const TargetRow = memo(function TargetRow({
       <span className="col-start-1 row-start-1 flex min-w-0 items-center gap-2">
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(label) }} />
         <span className="truncate text-xs text-foreground/85">
-          {label}
+          {englishLabel(label)}
         </span>
       </span>
       <div className="col-span-2 col-start-1 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
         <StepSlider
           value={value}
           max={100}
-          label={`Meta de ${label}`}
+          label={`Target for ${englishLabel(label)}`}
           valueText={(current) => `${formatInput(current)}%`}
           onChange={(next) => onChange(item, formatInput(next))}
         />
       </div>
       <div className="col-start-2 row-start-1 sm:col-start-3">
-        <PercentInput item={item} text={text} changed={changed} label={label} onChange={onChange} />
+        <PercentInput item={item} text={text} changed={changed} label={englishLabel(label)} onChange={onChange} />
       </div>
     </div>
   );
@@ -468,20 +465,19 @@ function FixedIncomeMatrix({ items, sum, valueOf, textOf, onChange, changedKeys 
       <StackedBar
         segments={items.map((item) => ({
           key: item.key,
-          label: `${item.primaryLabel} · ${item.secondaryLabel}`,
+          label: `${englishLabel(item.primaryLabel)} · ${englishLabel(item.secondaryLabel)}`,
           value: valueOf(item),
         }))}
       />
-      {/* Abaixo de sm cada subclasse vira um bloco (nome e total em cima, três campos embaixo): na tabela, os campos
-          ficavam com ~28 px em 320 px e cortavam o número (spec 074). Do sm em diante é a tabela de sempre. */}
+
       <div className="mt-4 overflow-x-auto">
         <table className="w-full border-collapse text-left max-sm:block">
           <thead className="max-sm:hidden">
             <tr className="text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
-              <th className="py-2 pr-3">Subclasse</th>
+              <th className="py-2 pr-3">Subclass</th>
               {durations.map((duration) => (
                 <th key={duration} className="px-1.5 py-2 text-right">
-                  {duration}
+                  {englishLabel(duration)}
                 </th>
               ))}
               <th className="py-2 pl-3 text-right">Total</th>
@@ -499,7 +495,7 @@ function FixedIncomeMatrix({ items, sum, valueOf, textOf, onChange, changedKeys 
               return (
                 <tr key={subclass} className="max-sm:grid max-sm:grid-cols-3 max-sm:items-end max-sm:gap-x-2 max-sm:gap-y-1.5">
                   <td className="py-1.5 pr-3 text-xs text-foreground/85 max-sm:col-span-2 max-sm:row-start-1 max-sm:p-0">
-                    {subclass}
+                    {englishLabel(subclass)}
                   </td>
                   {rowItems.map((item) => (
                     <td key={item.key} className="px-1.5 py-1.5 max-sm:min-w-0 max-sm:p-0">
@@ -507,13 +503,13 @@ function FixedIncomeMatrix({ items, sum, valueOf, textOf, onChange, changedKeys 
                         aria-hidden="true"
                         className="mb-1 block text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase sm:hidden"
                       >
-                        {item.secondaryLabel}
+                        {englishLabel(item.secondaryLabel)}
                       </span>
                       <PercentInput
                         item={item}
                         text={textOf(item)}
                         changed={changedKeys.includes(item.key)}
-                        label={`${subclass} ${item.secondaryLabel}`}
+                        label={`${englishLabel(subclass)} ${englishLabel(item.secondaryLabel)}`}
                         onChange={onChange}
                       />
                     </td>
@@ -552,7 +548,7 @@ function PercentInput({
       <input
         inputMode="decimal"
         value={text}
-        aria-label={`Percentual de ${label}`}
+        aria-label={`Percentage of ${englishLabel(label)}`}
         aria-invalid={invalid}
         onChange={(event) => onChange(item, event.target.value)}
         onFocus={(event) => event.currentTarget.select()}
@@ -577,8 +573,7 @@ function SumBadge({ sum }: { sum: number }) {
         ok ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive",
       )}
     >
-      {ok ? <CheckCircleIcon aria-hidden="true" size={12} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={12} weight="fill" />}
-      Soma: {formatInput(sum)}%
+      {ok ? <CheckCircleIcon aria-hidden="true" size={12} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={12} weight="fill" />}Sum: {formatInput(sum)}%
       {ok ? null : difference > 0 ? ` · faltam ${formatInput(difference)}%` : ` · sobram ${formatInput(-difference)}%`}
     </span>
   );
@@ -604,15 +599,15 @@ function StackedBar({ segments }: { segments: { key: string; label: string; valu
 }
 
 const PREVIEW_SCOPES: { scope: AllocationGroupKey; label: string }[] = [
-  { scope: "ASSET_CLASS", label: "Classe" },
-  { scope: "CURRENCY", label: "Moeda" },
-  { scope: "STRATEGY", label: "Estratégia" },
-  { scope: "CLASS_CURRENCY", label: "Moeda/classe" },
-  { scope: "FIXED_INCOME", label: "Renda fixa" },
-  { scope: "VARIABLE_INCOME", label: "Renda variável" },
+  { scope: "ASSET_CLASS", label: "Class" },
+  { scope: "CURRENCY", label: "Currency" },
+  { scope: "STRATEGY", label: "Strategy" },
+  { scope: "CLASS_CURRENCY", label: "Currency/class" },
+  { scope: "FIXED_INCOME", label: "Fixed income" },
+  { scope: "VARIABLE_INCOME", label: "Equities" },
 ];
 
-// Memorizada: recebe linhas derivadas do rascunho adiado e não participa da renderização urgente do arraste.
+
 const PreviewPanel = memo(function PreviewPanel({
   scope,
   onScopeChange,
@@ -634,11 +629,10 @@ const PreviewPanel = memo(function PreviewPanel({
   return (
     <section className="premium-panel rounded-[24px] p-5 sm:p-6">
       <div>
-        <h2 className="flex items-baseline gap-2 text-base font-semibold tracking-[-0.025em]">
-          Prévia de comprar e vender
+        <h2 className="flex items-baseline gap-2 text-base font-semibold tracking-[-0.025em]">Buy and sell preview
           {monthLabel ? <span className="font-mono text-[11px] font-normal text-muted-foreground">{monthLabel}</span> : null}
         </h2>
-        {monthLabel ? null : <p className="mt-1 text-[11px] text-muted-foreground">Sem competência para simular.</p>}
+        {monthLabel ? null : <p className="mt-1 text-[11px] text-muted-foreground">No reporting month available for simulation.</p>}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
@@ -653,7 +647,7 @@ const PreviewPanel = memo(function PreviewPanel({
               entry.scope === scope ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {entry.label}
+            {englishLabel(entry.label)}
           </button>
         ))}
       </div>
@@ -663,9 +657,9 @@ const PreviewPanel = memo(function PreviewPanel({
           <thead>
             <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
               <th className="py-2.5 pr-2">Item</th>
-              <th className="py-2.5 pr-2 max-sm:pr-1.5 text-right">Atual</th>
-              <th className="py-2.5 pr-2 max-sm:pr-1.5 text-right">Meta</th>
-              <th className="py-2.5 text-right">Diferença</th>
+              <th className="py-2.5 pr-2 max-sm:pr-1.5 text-right">Current</th>
+              <th className="py-2.5 pr-2 max-sm:pr-1.5 text-right">Target</th>
+              <th className="py-2.5 text-right">Difference</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
@@ -677,7 +671,7 @@ const PreviewPanel = memo(function PreviewPanel({
 
               return (
                 <tr key={row.key} className={cn(targetChanged && "bg-warning/15")}>
-                  <td className="py-2.5 pr-2 max-sm:pr-1.5 text-xs text-foreground/85">{row.label}</td>
+                  <td className="py-2.5 pr-2 max-sm:pr-1.5 text-xs text-foreground/85">{englishLabel(row.label)}</td>
                   <td className="py-2.5 pr-2 max-sm:pr-1.5 text-right font-mono text-[11px] whitespace-nowrap text-muted-foreground">
                     {formatSharePercent(row.currentShare)}
                   </td>
@@ -723,7 +717,7 @@ function DirectionBadge({ direction, highlight }: { direction: AllocationRow["di
     return null;
   }
 
-  const label = direction === "SELL" ? "Vender" : direction === "BUY" ? "Comprar" : "Equilibrado";
+  const label = direction === "SELL" ? "Sell" : direction === "BUY" ? "Buy" : "Balanced";
 
   return (
     <span
@@ -737,7 +731,7 @@ function DirectionBadge({ direction, highlight }: { direction: AllocationRow["di
         highlight && "ring-1 ring-warning-border",
       )}
     >
-      {label}
+      {englishLabel(label)}
     </span>
   );
 }
@@ -756,15 +750,15 @@ const ToleranceCard = memo(function ToleranceCard({
   onChange: (text: string) => void;
 }) {
   return (
-    <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-label="Tolerância">
-      <h2 className="text-base font-semibold tracking-[-0.025em]">Tolerância</h2>
+    <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-label="Tolerance">
+      <h2 className="text-base font-semibold tracking-[-0.025em]">Tolerance</h2>
 
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_84px] items-center gap-3">
         <StepSlider
           value={value}
           max={MAX_REBALANCE_TOLERANCE}
           largeStep={5}
-          label="Faixa de tolerância"
+          label="Tolerance band"
           valueText={(current) => `${formatInput(current)} pontos percentuais`}
           onChange={(next) => onChange(formatInput(next))}
         />
@@ -772,7 +766,7 @@ const ToleranceCard = memo(function ToleranceCard({
           <input
             inputMode="decimal"
             value={text}
-            aria-label="Tolerância em pontos percentuais"
+            aria-label="Tolerance in percentage points"
             aria-invalid={invalid}
             onChange={(event) => onChange(event.target.value)}
             onFocus={(event) => event.currentTarget.select()}
@@ -809,7 +803,7 @@ function toTargets(items: TargetEditorItem[], draft: Draft): TargetValue[] {
   });
 }
 
-/** Metas da prévia, com a moeda sobre o total calculada como no servidor. */
+
 function previewTargets(items: TargetEditorItem[], draft: Draft): TargetValue[] {
   return withDerivedCurrency(toTargets(items, draft)).map((target) => ({
     ...target,
@@ -826,10 +820,9 @@ function isValidTolerance(value: number) {
   );
 }
 
-// Formatadores criados uma vez: `toLocaleString` com opções monta um formatador novo a cada chamada, e o
-// editor formata dezenas de valores a cada passo do deslizante.
-const INPUT_FORMAT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4, useGrouping: false });
-const VERSION_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+const INPUT_FORMAT = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 4, useGrouping: false });
+const VERSION_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { dateStyle: "short", timeStyle: "short" });
 
 function formatInput(value: number) {
   return INPUT_FORMAT.format(value);

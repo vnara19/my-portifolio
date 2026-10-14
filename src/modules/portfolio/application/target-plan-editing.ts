@@ -1,3 +1,5 @@
+
+/** Validate target percentages per group and preserve target identities when saving an active plan. */
 import { Prisma } from "@/generated/prisma/client";
 import { DEFAULT_TARGETS_LOCK_KEY } from "@/lib/advisory-locks";
 import { getUserDb, SCOPED_USER } from "@/lib/user-db";
@@ -21,7 +23,7 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
   const prisma = await getUserDb();
 
   if (!prisma) {
-    throw new TargetPlanError("O banco de dados não está disponível.");
+    throw new TargetPlanError("The database is unavailable.");
   }
 
   const active = await prisma.targetPlan.findFirst({
@@ -37,12 +39,12 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
   });
 
   if (!active) {
-    throw new TargetPlanError("Não existe um plano de metas ativo para editar.");
+    throw new TargetPlanError("There is no active target plan to edit.");
   }
 
   const submitted = new Map(input.targets.map((entry) => [entry.key, entry.percent]));
-  // Metas de renda fixa da lista fixa que o plano ainda não tem, como o
-  // prefixado (spec 079): entram no plano com o valor enviado.
+
+
   const existingKeys = new Set(active.targets.map((target) => target.key));
   const added = fixedIncomeTaxonomyTargets(SUBCLASSES_BY_CLASS["Renda Fixa"], REDEMPTIONS_BY_CLASS["Renda Fixa"])
     .filter((target) => !existingKeys.has(target.key) && submitted.has(target.key))
@@ -50,22 +52,21 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
   const planTargets = [...active.targets, ...added];
 
   if (submitted.size !== input.targets.length || submitted.size !== planTargets.length) {
-    throw new TargetPlanError("As metas enviadas não correspondem às categorias do plano.");
+    throw new TargetPlanError("The submitted targets do not match the plan categories.");
   }
 
   const submittedTargets = planTargets.map((target) => {
     const raw = submitted.get(target.key);
 
     if (raw === undefined) {
-      throw new TargetPlanError("As metas enviadas não correspondem às categorias do plano.");
+      throw new TargetPlanError("The submitted targets do not match the plan categories.");
     }
 
     const percent = parsePercent(raw);
     return { ...target, fraction: percent.div(100) };
   });
 
-  // A moeda sobre o total não é editada (spec 054): vem da moeda dentro de cada
-  // classe, ponderada pela meta da classe. O valor enviado é ignorado.
+
   const derived = deriveCurrencyTargets(
     submittedTargets.map((target) => ({ ...target, fraction: target.fraction.toNumber() })),
   );
@@ -77,7 +78,7 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
 
   const sums = new Map<string, Prisma.Decimal>();
   for (const target of parsed) {
-    // A soma da moeda calculada depende das outras metas, já conferidas.
+
     if (target.scope === "CURRENCY") {
       continue;
     }
@@ -88,7 +89,7 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
   const invalid = [...sums.entries()].filter(([, total]) => total.minus(1).abs().greaterThan(SUM_TOLERANCE));
   if (invalid.length > 0) {
     throw new TargetPlanError(
-      `${invalid.length === 1 ? "Um grupo não soma" : `${invalid.length} grupos não somam`} 100%. Ajuste antes de salvar.`,
+      `${invalid.length === 1 ? "One group does not add up to" : `${invalid.length} groups do not add up to`} 100%. Adjust before saving.`,
     );
   }
 
@@ -96,10 +97,10 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
   const changed = parsed.filter((target) => !target.fraction.equals(target.percentage));
 
   if (changed.length === 0 && tolerance.equals(active.tolerancePercent)) {
-    throw new TargetPlanError("Nada mudou nas metas.");
+    throw new TargetPlanError("No targets changed.");
   }
 
-  // As metas são uma só, editada no lugar: salvar não cria versões (spec 054).
+
   return prisma.$transaction(async (transaction) => {
     const addedKeys = new Set(added.map((target) => target.key));
 
@@ -136,19 +137,12 @@ export async function saveTargetPlan(input: { targets: { key: string; percent: s
 
 export type DefaultTargetPlanOutcome = "created" | "existing" | "no-positions";
 
-/**
- * Sem plano de metas ativo, cria as metas padrão a partir das categorias da
- * competência mais recente (spec 048), para a configuração e o rebalanceamento
- * já começarem prontos. Roda na checagem de abertura, ao abrir a configuração e
- * depois de restaurar um backup; o bloqueio consultivo evita dois planos
- * criados ao mesmo tempo. Editar as metas depois altera este mesmo plano
- * (spec 054), e tudo sai no backup.
- */
+
 export async function ensureDefaultTargetPlan(): Promise<DefaultTargetPlanOutcome> {
   const prisma = await getUserDb();
 
   if (!prisma) {
-    throw new TargetPlanError("O banco de dados não está disponível.");
+    throw new TargetPlanError("The database is unavailable.");
   }
 
   if (await prisma.targetPlan.findFirst({ where: { isActive: true }, select: { id: true } })) {
@@ -195,7 +189,7 @@ function parseTolerance(raw: string) {
 
   if (value === null || value.greaterThan(MAX_REBALANCE_TOLERANCE) || value.decimalPlaces() > 2) {
     throw new TargetPlanError(
-      `Use uma tolerância entre 0 e ${MAX_REBALANCE_TOLERANCE} pontos, com até duas casas decimais.`,
+      `Use a tolerance between 0 and ${MAX_REBALANCE_TOLERANCE} points, with at most two decimal places.`,
     );
   }
 
@@ -206,11 +200,11 @@ function parsePercent(raw: string) {
   const value = parseDecimal(raw);
 
   if (value === null) {
-    throw new TargetPlanError("Use apenas percentuais numéricos entre 0 e 100.");
+    throw new TargetPlanError("Use only numeric percentages between 0 and 100.");
   }
 
   if (value.greaterThan(100) || value.decimalPlaces() > 8) {
-    throw new TargetPlanError("Use percentuais entre 0 e 100, com até oito casas decimais.");
+    throw new TargetPlanError("Use percentages between 0 and 100, with at most eight decimal places.");
   }
 
   return value;

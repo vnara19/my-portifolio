@@ -1,9 +1,5 @@
-@AGENTS.md
+# Shared project instructions
 
-Este arquivo é apenas o ponto de entrada do Claude Code.
-Obtenha as orientações compartilhadas pelo AGENTS.md importado
-e siga suas referências para `.ai/` e os contextos específicos.
-
-O projeto possui apenas um `CLAUDE.md`, localizado na raiz.
-Não criar novos `CLAUDE.md`. Contextos adicionais devem ser
-representados por `AGENTS.md`.
+Read [AGENTS.md](AGENTS.md) first. It is the shared source of project instructions
+for Codex and Claude Code. Use English in current code comments, product copy,
+documentation and commit messages. Publish only after the user's explicit approval.

@@ -6,13 +6,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Peças estilizadas da lista de seleção, sobre o Combobox do Base UI.
- *
- * O campo (`ComboboxField`) é o próprio input: clicar nele abre as opções e
- * digitar filtra. O conteúdo (`ComboboxContent`) fica acima de diálogos e
- * painéis laterais e se ajusta à altura e à largura disponíveis.
- */
+
 const Combobox = ComboboxPrimitive.Root;
 
 const fieldSizes = {
@@ -60,7 +54,7 @@ function ComboboxField({
       />
       <ComboboxPrimitive.Trigger
         data-slot="combobox-trigger"
-        aria-label="Mostrar opções"
+        aria-label="Show options"
         className="absolute inset-y-0 right-0 grid w-7 place-items-center text-muted-foreground outline-none transition-colors hover:text-foreground data-popup-open:text-primary"
       >
         <CaretUpDownIcon aria-hidden="true" size={12} weight="bold" />

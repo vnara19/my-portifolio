@@ -12,7 +12,7 @@ import { getSelicForMonth } from "@/modules/quotes/application/selic-reference";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Cotações",
+  title: "Quotes",
 };
 
 export default async function QuotesPage({
@@ -34,7 +34,7 @@ export default async function QuotesPage({
       active="positions"
       months={months}
       selectedMonth={selected?.month ?? null}
-      context={{ kind: "quotes", label: selected ? `Cotações · ${formatMonthCompact(selected.referenceDate)}` : "Cotações" }}
+      context={{ kind: "quotes", label: selected ? `Quotes · ${formatMonthCompact(selected.referenceDate)}` : "Quotes" }}
     >
       <QuotesWorkspace month={month} summary={summary} history={history} selic={selic} />
     </AppShell>

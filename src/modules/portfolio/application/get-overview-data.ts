@@ -14,14 +14,7 @@ import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
 import { addMonths } from "@/modules/quotes/domain/calendar";
 
-/**
- * Início de "Variação em todo o período" (decisão do usuário em 2026-10-02,
- * spec 030): a primeira competência minimamente completa. Junho e julho de
- * 2023 têm 5 e 6 posições, a linha inconsistente de Bitcoin pendente e dois
- * meses sem competência logo depois; outubro de 2023 é o primeiro mês com as
- * 10 posições da carteira de então e abre uma sequência quase contínua. Pode
- * voltar para a primeira competência depois do passo pré-produção.
- */
+
 export const PERIOD_START = new Date(Date.UTC(2023, 9, 1));
 
 export type OverviewHistoryPoint = {
@@ -41,7 +34,7 @@ export type OverviewData = {
   btcRate: number | null;
   changeBrl: number | null;
   changePercent: number | null;
-  /** Mês do calendário comparado na variação no mês; nulo antes do histórico. */
+
   previousMonth: Date | null;
   previousMissing: boolean;
   change12mBrl: number | null;
@@ -49,7 +42,7 @@ export type OverviewData = {
   yearAgoMonth: Date;
   yearAgoMissing: boolean;
   periodStart: Date;
-  /** A competência selecionada é anterior ao início do período. */
+
   beforePeriodStart: boolean;
   changeSinceStartBrl: number | null;
   changeSinceStartPercent: number | null;
@@ -57,7 +50,7 @@ export type OverviewData = {
   institutionCount: number;
   offTargetTolerance: number;
   history: OverviewHistoryPoint[];
-  /** Patrimônio por tipo do ativo na competência (spec 068), do maior para o menor. */
+
   byType: { label: string; valueBrl: number; share: number }[];
   rebalanceGroups: AllocationGroup[];
   fixedIncomeDuration: FixedIncomeDuration;
@@ -78,7 +71,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       select: {
         referenceDate: true,
         status: true,
-        // Posições liquidadas (spec 076) ficam no histórico, fora do patrimônio.
+
         positions: {
           where: { quantity: { gt: 0 } },
           select: {
@@ -112,8 +105,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
         byCurrency[currency] = (byCurrency[currency] ?? 0) + position.totalBrl.toNumber();
 
         if (position.allocations.length === 0) {
-          byClass["Sem classificação"] =
-            (byClass["Sem classificação"] ?? 0) + position.totalBrl.toNumber();
+          byClass["Unclassified"] =
+            (byClass["Unclassified"] ?? 0) + position.totalBrl.toNumber();
           continue;
         }
 
@@ -132,9 +125,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       };
     });
 
-    // Comparações por meses do calendário (spec 030): sem a competência do mês
-    // de comparação, o card mostra "Histórico insuficiente" em vez de comparar
-    // com outra mais antiga.
+
     const selectedHistory = history[selectedIndex];
     const byTime = new Map(history.map((point) => [point.date.getTime(), point]));
     const previousMonth = addMonths(selected.referenceDate, -1);

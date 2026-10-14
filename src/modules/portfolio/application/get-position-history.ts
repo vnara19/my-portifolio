@@ -1,3 +1,5 @@
+
+/** Assemble user-scoped position, cost and transaction history without contacting market-data providers. */
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { readMonthQuoteValues, readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
@@ -16,10 +18,6 @@ import { emptyRecordedMonth, recordedByMonth } from "@/modules/portfolio/domain/
 import { autoIncomeParts, indexerOfSubclass, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { businessDaysBetween } from "@/modules/portfolio/domain/business-days";
 
-// Dados da página de uma posição (spec 016): a posição é a combinação de conta
-// e ativo, pelos identificadores, em todas as competências. O ativo em outras
-// contas entra para o recorte "Todas as contas" e para dizer onde ele estava
-// quando a posição falta na conta.
 
 export type PositionScopeView = {
   slots: HistorySlot[];
@@ -42,53 +40,51 @@ export type PositionHistoryView = {
   ticker: string | null;
   quoteSymbol: string | null;
   baseCurrency: string;
-  /** AAAA-MM-DD, quando informado na inclusão (spec 026). */
+
   maturityDate: string | null;
-  /** Prazo de liquidez do ativo, opcional (spec 039). */
+
   liquidity: string | null;
   institutionName: string;
   accountName: string;
   selectedMonth: string;
   monthStatus: PortfolioMonthStatus;
-  /** Dia de referência do aviso de vencimento, como na tabela de Posições. */
+
   referenceDay: string;
-  /** Câmbio da competência selecionada. */
+
   usdRate: number | null;
-  /** Total de cada classe na competência selecionada, para a parcela da posição. */
+
   classTotals: Record<string, number>;
   otherAccounts: OtherAccountHolding[];
   account: PositionScopeView;
-  /** Nulo quando o ativo nunca esteve em outra conta. */
+
   all: PositionScopeView | null;
   prices: PriceHistory | null;
-  /**
-   * Histórico de cotações do símbolo (spec 053): `pending` enquanto o job
-   * agendado não o carregou, `failed` quando a última tentativa falhou.
-   */
+
+
   history: { state: "ready" | "pending" | "failed"; error: string | null } | null;
-  /** Movimentações da posição nesta conta (spec 056), da mais recente para a mais antiga. */
+
   transactions: PositionTransactionView[];
-  /** Rendimento automático na competência selecionada (specs 060 e 079). */
+
   cdi: CdiView | null;
-  /** Rentabilidade das classificações, com ou sem o cálculo automático (spec 079). */
+
   rate: { parts: RatePart[]; automatic: boolean } | null;
 };
 
-/** Rentabilidade de uma classificação: % do CDI no pós-fixado, taxa ao ano no prefixado. */
+
 export type RatePart = { indexer: AutoIncomeIndexer; percent: number; weight: number };
 
 export type CdiView = {
   parts: RatePart[];
-  /** AAAA-MM-DD do início do cálculo no mês. */
+
   start: string;
   baseBrl: number;
-  /** Rendimento bruto calculado no mês, sem virar transação. */
+
   incomeBrl: number;
   balanceBrl: number;
-  /** Última taxa usada; nulo antes da primeira. */
+
   through: string | null;
   error: string | null;
-  /** Projeção bruta: no CDI, a última taxa diária mantida; no prefixado, a própria taxa. */
+
   projection: { until: string; businessDays: number; balanceBrl: number; dailyPercent: number; toMaturity: boolean } | null;
 };
 
@@ -97,22 +93,20 @@ export type PositionTransactionView = {
   accountId: string;
   accountLabel: string;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
-  /** Perna de uma transferência interna, como a liquidação de um título (spec 059). */
+
   transferId: string | null;
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   occurredOn: string;
   quantity: number;
   unitPriceBrl: number | null;
   amountBrl: number;
   note: string | null;
-  /** Competência em que foi registrada. */
+
   monthId: string;
-  /** AAAA-MM */
+  /** YYYY-MM */
   month: string;
-  /**
-   * Rendimento calculado pela taxa (spec 079): uma linha por mês, até o
-   * último dia que rendeu, só de leitura.
-   */
+
+
   automatic?: boolean;
 };
 
@@ -182,8 +176,7 @@ export async function getPositionHistory({
       return null;
     }
 
-    // O rendimento calculado de cada mês (specs 060 e 079) entra como uma
-    // movimentação de rendimento, só de leitura, no último dia que rendeu.
+
     const transactions = [...(await readTransactions(assetId)), ...automaticIncome(positions)].sort(
       (left, right) => right.occurredOn.localeCompare(left.occurredOn) || Number(Boolean(right.automatic)) - Number(Boolean(left.automatic)),
     );
@@ -193,9 +186,9 @@ export async function getPositionHistory({
         recordedByMonth(transactions.filter((entry) => entry.accountId === id).reverse()),
       ]),
     );
-    // O acompanhamento começa na primeira movimentação da conta: depois dela, um
-    // mês sem movimentações é um mês em que nada aconteceu, não uma fotografia
-    // estimada (spec 073).
+
+
+    // Preserve estimated cost basis (spec 073).
     const trackedSince = new Map(
       [...recordedByAccount].map(([id, byMonth]) => [id, [...byMonth.keys()].sort()[0] ?? null]),
     );
@@ -208,12 +201,12 @@ export async function getPositionHistory({
       return {
       month: monthKey(position.portfolioMonth.referenceDate),
       accountId: position.accountId,
-      // Só a instituição: a conta saiu da interface (spec 040).
+
       accountLabel: position.account.institution.name,
       quantity: position.quantity.toNumber(),
       openingQuantity: position.openingQuantity.toNumber(),
-      // A migração inicializou a base de todo o legado. Ter uma base não
-      // significa conhecer as operações daquele mês (spec 058).
+
+
       recorded,
       unitPriceBrl: position.unitPriceBrl?.toNumber() ?? null,
       totalBrl: position.totalBrl.toNumber(),
@@ -302,11 +295,7 @@ export async function getPositionHistory({
   }
 }
 
-/**
- * Rentabilidade das classificações da posição na competência (spec 079) ou,
- * fora dela, na última em que a posição aparece. Classificações iguais somam
- * os pesos.
- */
+
 function rateOf(
   positions: {
     accountId: string;
@@ -351,12 +340,7 @@ function rateParts(allocations: { subclass: string; weight: Prisma.Decimal | str
   return parts;
 }
 
-/**
- * Quadro do rendimento automático da posição na competência (specs 060 e
- * 079): o saldo bruto até o último dia que rendeu e, separada, a projeção até
- * o vencimento (ou por 12 meses), com a última taxa diária do CDI mantida e a
- * taxa prefixada, em dias úteis com os feriados nacionais.
- */
+
 async function readCdi(accountId: string, assetId: string, monthId: string, maturity: Date | null): Promise<CdiView | null> {
   const prisma = (await getUserDb())!;
   const position = await prisma.position.findFirst({
@@ -389,8 +373,8 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
   let projection: CdiView["projection"] = null;
 
   if (until && (latest || parts.every((part) => part.indexer === "PRE"))) {
-    // Fator diário da posição: a média dos fatores das classificações pelos
-    // pesos, em dias úteis com os feriados nacionais, como os bancos (spec 079).
+
+
     const total = parts.reduce((sum, part) => sum.plus(part.weight), new Prisma.Decimal(0));
     const daily = parts.reduce((sum, part) => {
       const rate = new Prisma.Decimal(part.ratePercent).div(100);
@@ -422,10 +406,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
   };
 }
 
-/**
- * Rendimento calculado de cada mês (specs 060 e 079) como uma movimentação de
- * rendimento, só de leitura: a soma do mês até o último dia que rendeu.
- */
+
 function automaticIncome(
   positions: {
     id: string;
@@ -456,7 +437,7 @@ function automaticIncome(
         quantity: income.abs().toNumber(),
         unitPriceBrl: null,
         amountBrl: income.toNumber(),
-        note: `Rendimento automático até ${toDateKey(day).split("-").reverse().join("/")}`,
+        note: `Automatic accrual through ${toDateKey(day).split("-").reverse().join("/")}`,
         monthId: position.portfolioMonthId,
         month: monthKey(position.portfolioMonth.referenceDate),
         automatic: true,
@@ -512,7 +493,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
 }
 
 async function readHistoryState(symbol: string): Promise<PositionHistoryView["history"]> {
-  // O cadastro dos símbolos é compartilhado; o cliente com escopo o lê sem filtro.
+
   const registry = await (await getUserDb())!.quoteSymbol.findUnique({
     where: { symbol },
     select: { historySyncedUntil: true, historyError: true },
@@ -530,7 +511,7 @@ async function readHistoryState(symbol: string): Promise<PositionHistoryView["hi
 async function getPriceHistory(symbol: string, today: string): Promise<PriceHistory> {
   const prisma = (await getUserDb())!;
   const symbols = symbol === "USD" ? ["USD"] : [symbol, "USD"];
-  // Uma cotação digitada pelo usuário vale por cima da compartilhada (spec 051).
+
   const [monthly, daily] = await Promise.all([
     readQuoteSeries(prisma, symbols),
     prisma.dailyQuote.findMany({

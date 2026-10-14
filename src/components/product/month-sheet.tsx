@@ -9,23 +9,14 @@ import type { MonthStripItem } from "@/components/product/month-strip";
 import { filterBadge } from "@/components/product/page-controls";
 import { formatCompetence, formatCompetenceLong, formatCompetenceMonth } from "@/lib/competence";
 
-// A competência da carteira no celular (abaixo de `sm`). A faixa de anos e meses
-// pede rolagem e alvos pequenos, então ela vira um botão de uma linha com o mês
-// escolhido, que abre a escolha numa folha de baixo para cima, como os filtros e o
-// `YearMonthPicker` das áreas pessoais (spec 096). Um mês por vez: escolher o mês
-// fecha a folha, sem botão de confirmar. Átomos em `tailwind-variants`.
+
 //
-// - Os anos vêm do mais recente ao mais antigo, como nas outras áreas; os meses, de
-//   Jan a Dez em quatro colunas. Mês sem registro aparece apagado, para a grade
-//   não mudar de forma de um ano para o outro.
-// - As marcas de alta e de queda da faixa continuam sob cada mês.
-// - O ano consultado só vale para a competência em que foi aberto, como na faixa:
-//   trocar de competência, ou reabrir a folha, volta ao ano dela.
+
 
 const sheetTrigger = tv({
   base: "flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border bg-card/60 px-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:hidden",
   variants: {
-    // Faixa restrita aos meses de uma posição: o destaque da trilha (specs 075 e 077).
+
     scoped: { true: "border-primary/30", false: "border-border" },
   },
   defaultVariants: { scoped: false },
@@ -42,7 +33,7 @@ const sheetMonth = tv({
   defaultVariants: { selected: false },
 });
 
-/** A marca de alta ou de queda sob o mês, a mesma da faixa do computador. */
+
 export const monthMarker = tv({
   base: "mt-1 h-0.5 w-4 rounded-full transition-colors",
   variants: {
@@ -60,9 +51,9 @@ export const monthMarker = tv({
 const MONTHS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 
 type MonthSheetProps = {
-  /** Do mais antigo ao mais recente. */
+
   items: readonly MonthStripItem[];
-  /** O mês selecionado, "AAAA-MM". */
+
   selected: string;
   onSelect: (month: string) => void;
   scoped?: boolean;
@@ -102,11 +93,11 @@ export function MonthSheet({ items, selected, onSelect, scoped = false }: MonthS
     <BottomSheet
       open={open}
       onOpenChange={changeOpen}
-      title="Competência"
+      title="Reporting month"
       testId="month-sheet"
       trigger={
         <BottomSheetTrigger
-          aria-label={`Competência: ${chosen?.name ?? formatCompetenceLong(selected)}`}
+          aria-label={`Reporting month: ${chosen?.name ?? formatCompetenceLong(selected)}`}
           data-testid="month-trigger"
           className={sheetTrigger({ scoped })}
         >
@@ -127,7 +118,7 @@ export function MonthSheet({ items, selected, onSelect, scoped = false }: MonthS
                 key={year}
                 type="button"
                 aria-pressed={viewed}
-                aria-label={holdsSelected && !viewed ? `${year}, competência selecionada` : String(year)}
+                aria-label={holdsSelected && !viewed ? `${year}, selected reporting month` : String(year)}
                 onClick={() => setBrowsing(year === selectedYear ? null : { year, from: selected })}
                 className={filterBadge({ active: viewed, marked: holdsSelected, class: ["h-11", "font-mono"] })}
               >
@@ -138,7 +129,7 @@ export function MonthSheet({ items, selected, onSelect, scoped = false }: MonthS
           })}
         </div>
 
-        <div role="group" aria-label={`Meses de ${viewYear}`} className="grid grid-cols-4 gap-2" data-testid="month-sheet-months">
+        <div role="group" aria-label={`Months in ${viewYear}`} className="grid grid-cols-4 gap-2" data-testid="month-sheet-months">
           {MONTHS.map((number) => {
             const month = `${viewYear}-${number}`;
             const item = byMonth.get(month);

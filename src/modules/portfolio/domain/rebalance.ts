@@ -1,9 +1,11 @@
+
+/** Compare current allocation with normalized targets and tolerance bands. Recommendations are projections, not recorded transactions. */
 export type RebalanceDirection = "SELL" | "BUY" | "BALANCED";
 
 export const DEFAULT_REBALANCE_TOLERANCE = 2;
 export const MAX_REBALANCE_TOLERANCE = 20;
 
-export const UNCLASSIFIED_LABEL = "Sem classificação";
+export const UNCLASSIFIED_LABEL = "Unclassified";
 export const FIXED_INCOME_CLASS = "Renda Fixa";
 export const VARIABLE_INCOME_CLASS = "Renda Variável";
 
@@ -73,26 +75,26 @@ export function buildAllocationGroups(
   return [
     {
       key: "ASSET_CLASS",
-      title: "Classe de ativos",
-      description: "Percentual sobre o patrimônio total da competência.",
+      title: "Asset class",
+      description: "Percentage of total portfolio value for the reporting month.",
       rows: buildFlatRows(aggregates.assetClass, totalBrl, targets, "ASSET_CLASS", tolerance, aggregates.unclassifiedBrl),
     },
     {
       key: "CURRENCY",
-      title: "Moeda geral",
-      description: "Percentual sobre o patrimônio total da competência.",
+      title: "Overall currency",
+      description: "Percentage of total portfolio value for the reporting month.",
       rows: buildFlatRows(aggregates.currency, totalBrl, targets, "CURRENCY", tolerance),
     },
     {
       key: "STRATEGY",
-      title: "Estratégia",
-      description: "Percentual sobre o patrimônio total da competência.",
+      title: "Strategy",
+      description: "Percentage of total portfolio value for the reporting month.",
       rows: buildFlatRows(aggregates.strategy, totalBrl, targets, "STRATEGY", tolerance),
     },
     {
       key: "CLASS_CURRENCY",
-      title: "Moeda por classe",
-      description: "Percentual sobre o total atual de cada classe.",
+      title: "Currency by class",
+      description: "Percentage of the current total for each class.",
       rows: buildNestedRows(aggregates.classCurrency, targets, "CLASS_CURRENCY", tolerance, (primary) => ({
         denominator: parentTotal(primary),
         targetBase: parentTargetBrl(primary),
@@ -100,8 +102,8 @@ export function buildAllocationGroups(
     },
     {
       key: "FIXED_INCOME",
-      title: "Renda fixa — subclasse e prazo",
-      description: `Percentual sobre o total atual de ${FIXED_INCOME_CLASS}.`,
+      title: "Fixed income — subclass and term",
+      description: `Percentage of the current total for ${FIXED_INCOME_CLASS}.`,
       rows: buildNestedRows(aggregates.fixedIncome, targets, "FIXED_INCOME", tolerance, () => ({
         denominator: parentTotal(FIXED_INCOME_CLASS),
         targetBase: parentTargetBrl(FIXED_INCOME_CLASS),
@@ -109,8 +111,8 @@ export function buildAllocationGroups(
     },
     {
       key: "VARIABLE_INCOME",
-      title: "Renda variável — subclasse",
-      description: `Percentual sobre o total atual de ${VARIABLE_INCOME_CLASS}.`,
+      title: "Equities — subclass",
+      description: `Percentage of the current total for ${VARIABLE_INCOME_CLASS}.`,
       rows: buildNestedRows(aggregates.variableIncome, targets, "VARIABLE_INCOME", tolerance, () => ({
         denominator: parentTotal(VARIABLE_INCOME_CLASS),
         targetBase: parentTargetBrl(VARIABLE_INCOME_CLASS),
@@ -135,8 +137,7 @@ function buildFlatRows(
   );
   const present = new Set(totals.map((entry) => entry.label));
 
-  // Meta sem posição na competência (spec 030): entra com valor atual zero e
-  // vira "Comprar" quando o ideal passa da tolerância.
+
   for (const [label, fraction] of targetByLabel) {
     if (fraction > 0 && !present.has(label)) {
       rows.push(toRow(label, label, 0, totalBrl, totalBrl, fraction, tolerance));
@@ -160,7 +161,7 @@ function buildNestedRows(
   const scoped = targets.filter((target) => target.scope === scope);
   const withTargets: NestedTotal[] = [
     ...totals,
-    // Meta sem posição na competência (spec 030), com valor atual zero.
+
     ...scoped
       .filter(
         (target) =>

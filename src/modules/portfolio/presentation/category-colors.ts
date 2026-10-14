@@ -1,6 +1,10 @@
-// Paleta Okabe-Ito, desenhada para ser distinguível com qualquer tipo de
-// daltonismo (spec 038), clareada onde o fundo escuro pedia. Cada grupo de
-// categorias que aparece junto num gráfico usa cores bem diferentes entre si.
+import { englishLabel } from "@/lib/english-labels";
+
+
+/** Color-blind-friendly Okabe-Ito palette. Preserve color identity for both stored taxonomy keys and English display labels. */
+
+// Use an accessible palette adjusted for the dark background (spec 038).
+
 const OKABE_ITO = {
   orange: "#e69f00",
   sky: "#56b4e9",
@@ -13,46 +17,50 @@ const OKABE_ITO = {
 } as const;
 
 const CATEGORY_COLORS: Record<string, string> = {
-  // Classes
+  // Asset classes
   Caixa: OKABE_ITO.sky,
   Cripto: OKABE_ITO.orange,
   "Renda Fixa": OKABE_ITO.green,
   "Renda Variável": OKABE_ITO.yellow,
   Reserva: OKABE_ITO.purple,
-  // Moedas
+  // Currencies
   BRL: OKABE_ITO.green,
   USD: OKABE_ITO.sky,
   BTC: OKABE_ITO.orange,
   Altcoins: OKABE_ITO.purple,
   EUR: OKABE_ITO.yellow,
-  // Estratégias
+
   Core: OKABE_ITO.sky,
   "Core-Satellite": OKABE_ITO.orange,
   Hedge: OKABE_ITO.grey,
   Satellite: OKABE_ITO.yellow,
-  // Subclasses da renda variável, que aparecem juntas no gráfico da alocação
-  // (spec 078): sem cores repetidas entre elas.
+
+
   "Ações EUA": OKABE_ITO.blue,
   "Ações BR": OKABE_ITO.green,
   "Ações - Ex: USA": OKABE_ITO.vermillion,
   "Imobiliário BR": OKABE_ITO.purple,
   Commoditie: OKABE_ITO.yellow,
-  // Prazos de resgate, como no gráfico da planilha: curto azul, médio laranja,
-  // longo cinza.
+
+  // Long-term assets use grey.
   Curto: OKABE_ITO.sky,
   Médio: OKABE_ITO.orange,
   Longo: OKABE_ITO.grey,
-  // Tipos de ativo (spec 068)
-  "ETF dos EUA": OKABE_ITO.yellow,
-  "Ação dos EUA": OKABE_ITO.vermillion,
-  "ETF da B3": OKABE_ITO.vermillion,
-  "Ação ou FII da B3": OKABE_ITO.purple,
+  // Asset types (spec 068)
+  "US ETF": OKABE_ITO.yellow,
+  "US stock": OKABE_ITO.vermillion,
+  "Brazilian ETF": OKABE_ITO.vermillion,
+  "Brazilian stock or REIT": OKABE_ITO.purple,
   "Tesouro Direto": OKABE_ITO.green,
-  "Renda fixa": OKABE_ITO.blue,
+  "Fixed income": OKABE_ITO.blue,
   Previdência: OKABE_ITO.purple,
-  "Caixa em reais": OKABE_ITO.sky,
-  "Caixa em dólar": OKABE_ITO.grey,
+  "BRL cash": OKABE_ITO.sky,
+  "USD cash": OKABE_ITO.grey,
 };
+
+for (const [key, color] of Object.entries(CATEGORY_COLORS)) {
+  CATEGORY_COLORS[englishLabel(key)] = color;
+}
 
 const FALLBACK_COLORS = [OKABE_ITO.blue, OKABE_ITO.vermillion, OKABE_ITO.purple, OKABE_ITO.yellow, OKABE_ITO.green];
 
@@ -63,7 +71,7 @@ export function categoryColor(label: string) {
     return CATEGORY_COLORS[label];
   }
 
-  if (label === "Sem classificação" || label === "Sem estratégia") {
+  if (label === "Unclassified" || label === "No strategy") {
     return UNCLASSIFIED_COLOR;
   }
 

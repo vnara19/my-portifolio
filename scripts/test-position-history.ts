@@ -10,12 +10,12 @@ import {
   type RecordedMovement,
 } from "../src/modules/portfolio/domain/position-transactions";
 
-// Cenários financeiros da spec 058, sem banco nem alterações de carteira.
+
 function observation(month: string, quantity: number, price: number | null, opening?: number, movements?: RecordedMovement[]): PositionObservation {
   return {
     month,
     accountId: "account",
-    accountLabel: "Conta",
+    accountLabel: "Account",
     quantity,
     openingQuantity: opening,
     unitPriceBrl: price,
@@ -36,7 +36,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   return { slots, summary: summarizeHistory(slots, months.at(-1)!.month, quoted) };
 }
 
-// A estimativa antiga continua funcionando, inclusive a curva de aplicado.
+// Legacy estimates retain the invested-capital curve.
 {
   const { slots, summary } = history([
     observation("2026-09", 10, 20),
@@ -52,7 +52,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(manual.summary.flowsBrl, null);
 }
 
-// Correção em outubro não altera a base de novembro; o desencaixe não é perda.
+
 {
   const { slots, summary } = history([
     observation("2026-10", 1300, null, 1000, [movement("CONTRIBUTION", 300, 300)]),
@@ -67,7 +67,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(slots[1].kind === "present" && slots[1].openingQuantity, 1200);
 }
 
-// Compra por R$25 é avaliada a R$30: custo 50, mercado 60, efeito de preço 10.
+
 {
   const { summary } = history([observation("2026-10", 2, 30, 0, [movement("CONTRIBUTION", 2, 50)])], true);
   assert.equal(summary.startValueBrl, 0);
@@ -79,7 +79,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.costSource, "known");
 }
 
-// Saldo inicial é base, nunca custo de aquisição ou aporte externo.
+
 {
   const { summary } = history([observation("2026-10", 10, 20, 0, [movement("OPENING", 10, 200)])], true);
   assert.equal(summary.startValueBrl, 200);
@@ -92,7 +92,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(tiny.summary.costSource, "unknown");
 }
 
-// Dividendo recebido fora da posição entra no retorno registrado, sem unidades.
+
 {
   const { summary } = history([observation("2026-10", 10, 30, 10, [movement("INCOME", 0, 5)])], true);
   assert.equal(summary.incomeBrl, 5);
@@ -102,7 +102,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.unexplainedBrl, 0);
 }
 
-// Rendimento capitalizado explica saldo, sem ser aporte nem efeito de cotação.
+
 {
   const { summary } = history([observation("2026-10", 1020, null, 1000, [movement("INCOME", 20, 20)])], false);
   assert.equal(summary.incomeBrl, 20);
@@ -111,7 +111,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.unexplainedBrl, 0);
 }
 
-// Liquidação mantém pernas internas, sem inflar aportes externos do destino.
+
 {
   const outgoing = movement("WITHDRAWAL", 10200, 10200, "2026-10-02", "transfer");
   const incoming = movement("CONTRIBUTION", 10200, 10200, "2026-10-02", "transfer");
@@ -126,7 +126,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.unexplainedBrl, 0);
 }
 
-// Venda reduz custo pelo preço médio, e seu preço executado explica o resultado.
+
 {
   const { summary } = history([
     observation("2026-09", 10, 20, 0, [movement("CONTRIBUTION", 10, 200, "2026-09-01")]),
@@ -139,7 +139,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.unexplainedBrl, 0);
 }
 
-// Zerar uma base desconhecida e comprar novamente permite conhecer o custo novo.
+
 {
   const { summary } = history([observation("2026-10", 2, 30, 10, [
     movement("CONTRIBUTION", 2, 50, "2026-10-03"),
@@ -150,7 +150,7 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(summary.costBasisBrl, 50);
 }
 
-// Fronteira para mês sem operações não inventa uma retirada por desencaixe.
+
 {
   const { slots, summary } = history([
     observation("2026-10", 1300, null, 1000, [movement("CONTRIBUTION", 300, 300)]),
@@ -161,4 +161,4 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(slots[1].kind === "present" && slots[1].step?.source, "mixed");
 }
 
-console.log("Histórico financeiro: 10 cenários passaram, sem banco.");
+console.log("Financial history: 10 scenarios passed without a database.");

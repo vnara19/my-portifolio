@@ -1,12 +1,11 @@
-// Tipos de ativo que a inclusão de posição sabe cadastrar (spec 026). Cada tipo
-// decide se o ativo tem ticker, qual provedor confere e cota esse ticker, a
-// moeda base e o rateio inicial. Sem dependências de banco, para servir ao
-// servidor e à interface.
+
+/** Asset kinds determine ticker verification, base currency, maturity support and default allocation. Provider chains match the quote job. */
+
+
+
+
 //
-// O roteamento segue o da atualização de cotações (`fetchCurrentQuotes`): o
-// provedor indicado é o primeiro da cadeia de cada grupo (spec 037), câmbio na
-// AwesomeAPI, cripto na CoinGecko, ativos com base USD no Finnhub e os da B3 no
-// Yahoo Finance; os seguintes da cadeia são reservas.
+
 
 export const ASSET_KINDS = [
   "us-etf",
@@ -29,24 +28,21 @@ export type AllocationSeed = { assetClass: string; subclass: string; duration: s
 export type AssetKindDefinition = {
   kind: AssetKind;
   label: string;
-  /** Resumo mostrado ao lado do tipo na lista. */
+
   hint: string;
-  /**
-   * `market`: ticker digitado e conferido no provedor; `usd`: cotado pelo
-   * dólar do mês, como Time Deposit e USDC; `null`: sem ticker, o valor
-   * informado já é o saldo em reais.
-   */
+
+
   ticker: "market" | "usd" | null;
   provider: QuoteProvider | null;
   instrumentType: string | null;
-  /** Vencimento opcional, para ativos sem ticker de mercado. */
+
   allowsMaturity: boolean;
 };
 
 export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   "us-etf": {
     kind: "us-etf",
-    label: "ETF dos EUA",
+    label: "US ETF",
     hint: "Finnhub · USD",
     ticker: "market",
     provider: "finnhub",
@@ -55,7 +51,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "us-stock": {
     kind: "us-stock",
-    label: "Ação dos EUA",
+    label: "US stock",
     hint: "Finnhub · USD",
     ticker: "market",
     provider: "finnhub",
@@ -64,7 +60,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "br-etf": {
     kind: "br-etf",
-    label: "ETF da B3",
+    label: "Brazilian ETF",
     hint: "Yahoo Finance · BRL",
     ticker: "market",
     provider: "yahoo",
@@ -73,7 +69,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "br-stock": {
     kind: "br-stock",
-    label: "Ação ou FII da B3",
+    label: "Brazilian stock or REIT",
     hint: "Yahoo Finance · BRL",
     ticker: "market",
     provider: "yahoo",
@@ -91,8 +87,8 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "fixed-income": {
     kind: "fixed-income",
-    label: "Renda fixa",
-    hint: "Saldo em R$",
+    label: "Fixed income",
+    hint: "BRL balance",
     ticker: null,
     provider: null,
     instrumentType: null,
@@ -101,7 +97,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   treasury: {
     kind: "treasury",
     label: "Tesouro Direto",
-    hint: "Cotação oficial · BRL",
+    hint: "Official quote · BRL",
     ticker: "market",
     provider: "tesouro",
     instrumentType: "TESOURO",
@@ -109,8 +105,8 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "brl-cash": {
     kind: "brl-cash",
-    label: "Caixa em reais",
-    hint: "Saldo em R$",
+    label: "BRL cash",
+    hint: "BRL balance",
     ticker: null,
     provider: null,
     instrumentType: null,
@@ -118,8 +114,8 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "usd-balance": {
     kind: "usd-balance",
-    label: "Caixa em dólar",
-    hint: "Cotado pelo USD",
+    label: "USD cash",
+    hint: "Valued using USD",
     ticker: "usd",
     provider: null,
     instrumentType: "FIAT",
@@ -128,19 +124,12 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
 };
 
 export const USD_SYMBOL = "USD";
-/** Moeda base das criptos que não são o BTC (spec 036). */
+
 export const ALTCOINS = "Altcoins";
 const RESERVED_SYMBOLS = new Set(["USD", "BRL"]);
 const B3_SUFFIX = ".SAO";
 
-/**
- * Símbolo de cotação a partir do ticker digitado, ou `null` quando o texto não
- * serve como ticker do tipo. Na B3 o símbolo guardado leva o sufixo `.SAO`, como
- * o `GPCA11.SAO` importado da planilha (formato do Alpha Vantage, convertido
- * para `.SA` no Yahoo Finance); o sufixo é acrescentado quando falta. O ticker
- * da B3 só vale completo, com quatro caracteres e um ou dois dígitos (PETR4,
- * B3SA3, GPCA11): "PETR" a meio da digitação não chega a consultar o provedor.
- */
+
 export function normalizeTicker(kind: AssetKind, raw: string): string | null {
   const definition = ASSET_KIND_DEFINITIONS[kind];
 
@@ -178,21 +167,17 @@ export function normalizeTicker(kind: AssetKind, raw: string): string | null {
 export function tickerHint(kind: AssetKind) {
   switch (ASSET_KIND_DEFINITIONS[kind].provider) {
     case "yahoo":
-      return "Como GPCA11 ou PETR4.";
+      return "For example, GPCA11 or PETR4.";
     case "coingecko":
-      return "Como ETH ou ADA.";
+      return "For example, ETH or ADA.";
     case "finnhub":
-      return "Como VOO ou AAPL.";
+      return "For example, VOO or AAPL.";
     default:
       return "";
   }
 }
 
-/**
- * Moeda base: a moeda de exposição do ativo. No cripto, o bitcoin tem a própria
- * moeda, como na planilha; as demais moedas ficam em USD, como a Solana, que é
- * o que a meta "Cripto em USD" acompanha.
- */
+
 export function baseCurrencyOf(kind: AssetKind, symbol: string | null) {
   switch (kind) {
     case "us-etf":
@@ -200,14 +185,14 @@ export function baseCurrencyOf(kind: AssetKind, symbol: string | null) {
     case "usd-balance":
       return "USD";
     case "crypto":
-      // Fora o BTC, as criptos contam como altcoins no recorte por moeda (spec 036).
+
       return symbol === "BTC" ? "BTC" : ALTCOINS;
     default:
       return "BRL";
   }
 }
 
-/** Rateio inicial do ativo novo, a 100%, ajustável no diálogo e depois no painel. */
+
 export function defaultAllocation(kind: AssetKind, symbol: string | null): AllocationSeed {
   switch (kind) {
     case "us-etf":
@@ -223,11 +208,11 @@ export function defaultAllocation(kind: AssetKind, symbol: string | null): Alloc
         duration: "-",
       };
     case "fixed-income":
-      // Subclasse e prazo da renda fixa variam por título e são escolhidos.
+
       return { assetClass: "Renda Fixa", subclass: "", duration: "" };
     case "treasury":
-      // A subclasse é a da planilha, pelo indexador do título (spec 068); o
-      // prefixado não tem subclasse própria e fica para o usuário escolher.
+
+
       return { assetClass: "Renda Fixa", subclass: treasurySubclass(symbol), duration: "" };
     case "brl-cash":
     case "usd-balance":
@@ -237,7 +222,7 @@ export function defaultAllocation(kind: AssetKind, symbol: string | null): Alloc
 
 const STABLECOINS = new Set(["USDT", "USDC", "DAI", "BUSD", "FDUSD", "TUSD", "USDE", "PYUSD"]);
 
-/** Subclasse de um título do Tesouro pelo símbolo, como TD:TESOURO-IPCA:2035-05-15. */
+
 function treasurySubclass(symbol: string | null) {
   const type = symbol?.split(":")[1] ?? "";
 
@@ -246,17 +231,14 @@ function treasurySubclass(symbol: string | null) {
   return "";
 }
 
-/**
- * Tipo de um ativo já cadastrado, para leitura no formulário da posição (spec
- * 043). O cadastro guarda o símbolo e a moeda, não o tipo escolhido na inclusão.
- */
+
 export function describeAsset(asset: { quoteSymbol: string | null; baseCurrency: string }) {
   if (!asset.quoteSymbol) {
-    return "Saldo em reais";
+    return "BRL balance";
   }
 
   if (asset.quoteSymbol === USD_SYMBOL) {
-    return "Caixa em dólar";
+    return "USD cash";
   }
 
   if (asset.quoteSymbol.startsWith("TD:")) return "Tesouro Direto";
@@ -265,10 +247,10 @@ export function describeAsset(asset: { quoteSymbol: string | null; baseCurrency:
     return "Cripto";
   }
 
-  return asset.quoteSymbol.endsWith(B3_SUFFIX) ? "Ativo da B3" : "Ativo dos EUA";
+  return asset.quoteSymbol.endsWith(B3_SUFFIX) ? "Brazilian asset" : "US asset";
 }
 
-/** Provedor que a atualização de cotações usa para um símbolo já cadastrado. */
+
 export function providerForQuote(instrumentType: string, baseCurrency: string): QuoteProvider {
   if (instrumentType === "TESOURO") return "tesouro";
   if (instrumentType === "FIAT") {
@@ -282,23 +264,17 @@ export function providerForQuote(instrumentType: string, baseCurrency: string): 
   return baseCurrency === "USD" ? "finnhub" : "yahoo";
 }
 
-/** Chave sem acentos, maiúsculas nem pontuação, como a da importação. */
+
 export function normalizeKey(value: string) {
   return value
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
-    .toLocaleLowerCase("pt-BR")
+    .toLocaleLowerCase("en-GB")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
 
-/**
- * Identidade do ativo, no formato da importação: ativos com ticker por nome e
- * ticker, inclusive os saldos em dólar, de ticker USD; os demais por
- * instituição e nome. O vencimento vai no fim da chave, para que dois títulos
- * de mesmo nome e prazos diferentes sejam ativos distintos, como dois Time
- * Deposit ou duas LCI BRB.
- */
+
 export function buildAssetKey({
   name,
   ticker,
@@ -318,11 +294,7 @@ export function buildAssetKey({
   return maturityDate ? `${base}:${maturityDate}` : base;
 }
 
-/**
- * Aviso de um ativo novo cuja chave já existe, no diálogo e no servidor. Sem
- * vencimento, informar um é o caminho para um título de mesmo nome com outro
- * prazo.
- */
+
 export function duplicateAssetMessage({
   name,
   kind,
@@ -334,23 +306,23 @@ export function duplicateAssetMessage({
   kind: AssetKind;
   symbol: string | null;
   maturityDate: string | null;
-  /** O ativo igual é novo, de outra posição ainda não salva. */
+
   pending?: boolean;
 }) {
   const definition = ASSET_KIND_DEFINITIONS[kind];
   const quotedBy =
-    definition.ticker === "market" ? ` com o ticker ${symbol}` : definition.ticker === "usd" ? " cotado pelo USD" : "";
-  // Sem ticker, o ativo é da instituição em que foi criado.
-  const scope = `${definition.ticker === null ? " nesta instituição" : ""}${maturityDate ? " com este vencimento" : ""}`;
-  const alternative = definition.allowsMaturity && !maturityDate ? " ou informe um vencimento" : "";
-  const subject = pending
-    ? `"${name}"${quotedBy} já é o ativo novo de outra posição${scope}`
-    : `O ativo "${name}"${quotedBy} já existe${scope}`;
+    definition.ticker === "market" ? ` with ticker ${symbol}` : definition.ticker === "usd" ? " valued using USD" : "";
 
-  return `${subject}. Escolha-o na lista${alternative}.`;
+  const scope = `${definition.ticker === null ? " at this institution" : ""}${maturityDate ? " with this maturity date" : ""}`;
+  const alternative = definition.allowsMaturity && !maturityDate ? " or enter a maturity date" : "";
+  const subject = pending
+    ? `"${name}"${quotedBy} is already the new asset for another position${scope}`
+    : `The asset "${name}"${quotedBy} already exists${scope}`;
+
+  return `${subject}. Select it from the list${alternative}.`;
 }
 
-/** Texto curto e limpo para nomes digitados: sem espaços repetidos. */
+
 export function cleanName(value: string) {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim();
 }

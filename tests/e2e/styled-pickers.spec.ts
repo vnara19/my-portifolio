@@ -3,47 +3,46 @@ import { expect, test } from "@playwright/test";
 import { continueForm, formTab, openAddForm, openEditableMonth, openEditForm } from "./support/position-form";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// A checagem de abertura grava no banco e pode criar competências; os
-// cenários usam a resposta fixa para não alterar os dados reais.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
 
-test("os filtros abrem com busca e marcam as opções", async ({ page, isMobile }) => {
+test("filters open with search and selection indicators", async ({ page, isMobile }) => {
   test.skip(isMobile, "No celular, os filtros ficam numa folha com chips (spec 077).");
   await page.goto("/posicoes?mes=2026-09");
-  await expect(page.getByText("21 de 21 posições")).toBeVisible();
+  await expect(page.getByText("21 of 21 positions")).toBeVisible();
 
-  const filter = page.getByRole("combobox", { name: "Instituição", exact: true });
+  const filter = page.getByRole("combobox", { name: "Institution", exact: true });
   await filter.click();
   await expect(page.getByRole("option").first()).toBeVisible();
   const total = await page.getByRole("option").count();
   expect(total).toBeGreaterThan(1);
 
-  await page.getByRole("combobox", { name: "Buscar em Instituição" }).fill("inte");
+  await page.getByRole("combobox", { name: "Search Institution" }).fill("inte");
   await expect(page.getByRole("option")).toHaveCount(1);
   await page.getByRole("option", { name: "Inter" }).click();
   await expect(page.getByRole("option", { name: "Inter" })).toHaveAttribute("aria-selected", "true");
   await expect(page).toHaveURL(/inst=Inter/);
-  await expect(page.getByRole("combobox", { name: /Instituição 1 selecionado/ })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: /Institution 1 selected/ })).toBeVisible();
 
-  // Limpar fecha a lista e devolve o foco ao filtro, sem perdê-lo na página.
-  await page.getByRole("button", { name: "Limpar seleção" }).click();
+
+  await page.getByRole("button", { name: "Clear selection" }).click();
   await expect(page).not.toHaveURL(/inst=/);
   await expect(page.getByRole("option")).toHaveCount(0);
   await expect(filter).toBeFocused();
-  await expect(page.getByText("21 de 21 posições")).toBeVisible();
+  await expect(page.getByText("21 of 21 positions")).toBeVisible();
 });
 
-test("as listas da nova posição abrem ao clicar e filtram ao digitar", async ({ page }) => {
-  test.skip(!(await openEditableMonth(page)), "O mês mais recente e o anterior estão fechados nos dados reais.");
+test("new-position pickers open on click and filter while typing", async ({ page }) => {
+  test.skip(!(await openEditableMonth(page)), "The latest and previous months are closed in the fixture data.");
   const dialog = await openAddForm(page);
 
-  // O tipo vem primeiro (spec 040); a conta não aparece.
-  const kind = dialog.getByRole("combobox", { name: "Tipo do ativo" });
+
+  const kind = dialog.getByRole("combobox", { name: "Asset type" });
   await kind.click();
   await page.getByRole("option", { name: /Renda fixa/ }).click();
-  const institution = dialog.getByRole("combobox", { name: "Instituição" });
+  const institution = dialog.getByRole("combobox", { name: "Institution" });
   await institution.click();
   await expect(institution).toHaveAttribute("aria-expanded", "true");
   expect(await page.getByRole("option").count()).toBeGreaterThan(5);
@@ -53,43 +52,43 @@ test("as listas da nova posição abrem ao clicar e filtram ao digitar", async (
   await expect(institution).toHaveValue("C6");
   await expect(institution).toHaveAttribute("aria-expanded", "false");
 
-  // Apagar o texto abre a lista sem trocar o valor; sair do campo volta a mostrá-lo.
+
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.press("Backspace");
   await expect(institution).toHaveValue("");
   await expect(institution).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("Tab");
-  // A estratégia agora é o próximo controle: o foco abre sua própria lista.
-  // Escape fecha só essa lista antes de conferir a instituição restaurada.
+
+
   await page.keyboard.press("Escape");
   await expect(dialog).toBeVisible();
   await expect(institution).toHaveValue("C6");
 
-  // Os atributos da posição são escolhidos antes de avançar ao ativo (spec 066).
-  const strategy = dialog.getByRole("combobox", { name: "Estratégia", exact: true });
-  await expect(strategy).toHaveValue("Sem estratégia");
+
+  const strategy = dialog.getByRole("combobox", { name: "Strategy", exact: true });
+  await expect(strategy).toHaveValue("No strategy");
   await strategy.click();
-  await expect(page.getByRole("option", { name: "Sem estratégia" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("option", { name: "No strategy" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("option", { name: "Core", exact: true }).click();
   await expect(strategy).toHaveValue("Core");
   await expect(strategy).toBeFocused();
 
-  await expect(dialog.getByRole("textbox", { name: "Nome do ativo" })).toHaveCount(0);
-  await continueForm(dialog, "Ativo");
-  // O nome do ativo continua texto livre, agora na etapa do ativo.
-  await expect(dialog.getByRole("combobox", { name: "Ativo", exact: true })).toHaveCount(0);
-  await dialog.getByRole("textbox", { name: "Nome do ativo" }).fill("CDB Teste");
+  await expect(dialog.getByRole("textbox", { name: "Asset name" })).toHaveCount(0);
+  await continueForm(dialog, "Asset");
 
-  // Com a lista fechada, Escape fecha o diálogo, como num select nativo.
+  await expect(dialog.getByRole("combobox", { name: "Asset", exact: true })).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: "Asset name" }).fill("CDB Teste");
+
+
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 });
 
-test("a estratégia da posição abre a lista e o Escape fecha só a lista", async ({ page }) => {
-  test.skip(!(await openEditableMonth(page)), "O mês mais recente e o anterior estão fechados nos dados reais.");
-  // O Bitcoin 01 pode estar em mais de uma conta; o cenário usa o da Ledger.
+test("the strategy picker opens and Escape closes only the picker", async ({ page }) => {
+  test.skip(!(await openEditableMonth(page)), "The latest and previous months are closed in the fixture data.");
+
   const dialog = await openEditForm(page, "Bitcoin 01", "Ledger");
-  const strategy = dialog.getByRole("combobox", { name: "Estratégia", exact: true });
+  const strategy = dialog.getByRole("combobox", { name: "Strategy", exact: true });
 
   await strategy.click();
   await expect(page.getByRole("option")).toHaveCount(5);
@@ -98,7 +97,7 @@ test("a estratégia da posição abre a lista e o Escape fecha só a lista", asy
   await expect(strategy).toHaveAttribute("aria-expanded", "false");
   await expect(dialog).toBeVisible();
 
-  // Apagar o texto não troca a estratégia; o Escape devolve o valor.
+
   await strategy.click();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.press("Backspace");
@@ -113,35 +112,35 @@ test("a estratégia da posição abre a lista e o Escape fecha só a lista", asy
   await page.keyboard.press("Enter");
   await expect(strategy).toHaveValue("Hedge");
 
-  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
 });
 
-test("o rateio usa a lista fixa da planilha, com subclasse e resgate dependentes da classe", async ({ page }) => {
-  test.skip(!(await openEditableMonth(page)), "O mês mais recente e o anterior estão fechados nos dados reais.");
+test("allocation uses stable legacy taxonomy with class-dependent subclass and term", async ({ page }) => {
+  test.skip(!(await openEditableMonth(page)), "The latest and previous months are closed in the fixture data.");
   const dialog = await openEditForm(page, "Bitcoin 01", "Ledger");
-  await formTab(dialog, "Rateio").click();
+  await formTab(dialog, "Allocation").click();
 
-  const assetClass = dialog.getByRole("combobox", { name: "Classe da classificação 1", exact: true });
-  const subclass = dialog.getByRole("combobox", { name: "Subclasse da classificação 1", exact: true });
-  const redemption = dialog.getByRole("combobox", { name: "Resgate da classificação 1", exact: true });
-  await expect(assetClass).toHaveValue("Cripto");
+  const assetClass = dialog.getByRole("combobox", { name: "Class of allocation 1", exact: true });
+  const subclass = dialog.getByRole("combobox", { name: "Subclass of allocation 1", exact: true });
+  const redemption = dialog.getByRole("combobox", { name: "Redemption term of allocation 1", exact: true });
+  await expect(assetClass).toHaveValue("Crypto");
   await assetClass.click();
-  await expect(page.getByRole("option")).toHaveText(["Caixa", "Cripto", "Renda Fixa", "Renda Variável", "Reserva"]);
-  await expect(page.getByRole("option", { name: "Cripto" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("option")).toHaveText(["Cash", "Crypto", "Fixed income", "Equities", "Reserve"]);
+  await expect(page.getByRole("option", { name: "Crypto" })).toHaveAttribute("aria-selected", "true");
 
-  // Nada de valor livre (spec 068): digitar outra classe não oferece "Usar".
+
   await page.keyboard.type("Classe nova");
   await expect(page.getByRole("option", { name: /Usar/ })).toHaveCount(0);
-  await expect(page.getByText("Nenhuma opção com esse nome")).toBeVisible();
-  // Sair do campo sem escolher volta ao valor anterior. O Tab abre a lista da
-  // subclasse, e o Escape fecha só essa lista.
+  await expect(page.getByText("No option with this name")).toBeVisible();
+
+
   await page.keyboard.press("Tab");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeVisible();
-  await expect(assetClass).toHaveValue("Cripto");
+  await expect(assetClass).toHaveValue("Crypto");
 
-  // A subclasse mostra só as da classe, sem criar outra.
+
   await subclass.click();
   await expect(page.getByRole("option")).toHaveText(["BTC", "Altcoin", "Stablecoin"]);
   await page.keyboard.press("ControlOrMeta+a");
@@ -149,26 +148,26 @@ test("o rateio usa a lista fixa da planilha, com subclasse e resgate dependentes
   await expect(page.getByRole("option", { name: /Usar/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(subclass).toHaveValue("BTC");
-  await expect(redemption).toHaveValue("Nenhum");
+  await expect(redemption).toHaveValue("None");
 
-  // Trocar a classe limpa o que não vale nela e oferece as opções dela.
+
   await assetClass.click();
-  await page.getByRole("option", { name: "Renda Fixa", exact: true }).click();
+  await page.getByRole("option", { name: "Fixed income", exact: true }).click();
   await expect(subclass).toHaveValue("");
   await expect(redemption).toHaveValue("");
   await subclass.click();
-  await expect(page.getByRole("option")).toHaveText(["Pós-fixado", "IPCA"]);
+  await expect(page.getByRole("option")).toHaveText(["Floating-rate", "IPCA"]);
   await page.keyboard.press("Escape");
   await redemption.click();
-  await expect(page.getByRole("option")).toHaveText(["Curto", "Médio", "Longo"]);
+  await expect(page.getByRole("option")).toHaveText(["Short-term", "Medium-term", "Long-term"]);
   await page.keyboard.press("Escape");
 
-  // O caixa é sempre curto: o resgate já vem escolhido.
-  await assetClass.click();
-  await page.getByRole("option", { name: "Caixa", exact: true }).click();
-  await expect(redemption).toHaveValue("Curto");
 
-  // Com a lista fechada, Escape fecha o formulário sem salvar.
+  await assetClass.click();
+  await page.getByRole("option", { name: "Cash", exact: true }).click();
+  await expect(redemption).toHaveValue("Short-term");
+
+
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 });

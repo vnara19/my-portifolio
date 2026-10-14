@@ -9,20 +9,9 @@ import { BottomSheet, BottomSheetClose, BottomSheetTrigger, sheetButton } from "
 import { filterBadge } from "@/components/product/page-controls";
 import { formatCompetenceLong, formatCompetenceMonth, summarizeCompetences } from "@/lib/competence";
 
-// A escolha da competência das áreas pessoais (spec 096). Um mês por vez ou vários,
-// de qualquer ano; a seleção é da página (URL e filtros), e aqui só se desenha e se
-// responde ao toque. Átomos em `tailwind-variants`.
+
 //
-// - Computador (de `sm` para cima): um cartão só. O controle dos anos tem um marcador
-//   que desliza de um ano ao outro; embaixo, a régua dos doze meses, em que meses
-//   seguidos marcados viram uma faixa contínua, como um intervalo. Os meses ficam sempre
-//   embaixo dos anos, em qualquer largura, para a leitura ser uma hierarquia: ano, depois mês.
-// - Celular (abaixo de `sm`): um botão com o resumo da seleção abre a mesma escolha
-//   numa folha de baixo, como os filtros. Com um mês só, a folha fecha ao escolher.
-// - Trocar de ano só muda o que está na tela; a seleção continua onde estava, e o ano
-//   que guarda meses marcados leva um ponto.
-// - "Ano todo" marca ou desmarca os doze meses do ano aberto de uma vez.
-// - Mês com pendência leva uma marca de atenção, e sem lançamentos continua escolhível.
+
 
 const picker = tv({
   slots: {
@@ -33,8 +22,8 @@ const picker = tv({
     actions: "flex items-center gap-1",
     body: "mt-3 flex flex-col gap-2.5",
     segmented: "relative inline-flex w-fit shrink-0 gap-0.5 rounded-xl border border-border bg-background/50 p-1",
-    // Do tamanho do conteúdo, como o controle dos anos: doze células de 48 px que só
-    // encolhem, por igual, quando o cartão é mais estreito que a régua.
+
+
     rail: "flex w-fit max-w-full rounded-xl border border-border bg-background/50 p-1",
     trigger:
       "flex h-11 w-full items-center justify-between gap-3 rounded-xl border px-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:hidden",
@@ -76,8 +65,7 @@ const yearButton = tv({
   defaultVariants: { open: false },
 });
 
-// Uma célula da régua. O marcado ganha a cor da marca; um vizinho marcado "cola" nele,
-// sem canto arredondado do lado em que se encontram, e os dois formam uma faixa só.
+
 const cell = tv({
   base: "relative flex h-9 w-12 min-w-0 touch-manipulation flex-col items-center justify-center gap-1 border border-transparent font-mono text-[11px] font-medium outline-none transition-colors duration-150 select-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/50",
   variants: {
@@ -110,35 +98,33 @@ export function YearMonthPicker({
   selected,
   multiple,
   pendingMonths,
-  resultLabel = "Pronto",
+  resultLabel = "Ready",
   onSelect,
   onToggleYear,
   onToggleMultiple,
 }: {
-  /** As competências oferecidas, de qualquer ano e em qualquer ordem; só os anos importam. */
+
   months: readonly string[];
-  /** Os meses selecionados, "AAAA-MM"; o último é o que a tela mostra primeiro. */
+
   selected: readonly string[];
   multiple: boolean;
-  /** Meses com lançamentos pendentes de qualquer pessoa (spec 097). */
+
   pendingMonths: ReadonlySet<string>;
-  /** Texto do botão que fecha a folha do celular, como "Ver 12 lançamentos". */
+
   resultLabel?: string;
   onSelect: (month: string) => void;
-  /** Marca os doze meses do ano, ou os desmarca quando já estão todos marcados. */
+
   onToggleYear: (year: number) => void;
   onToggleMultiple: () => void;
 }) {
-  // Os anos, do mais recente ao mais antigo, como os selos de ano de Recebimentos e
-  // Previdência; os meses, de janeiro a dezembro.
+
+
   const years = [...new Set(months.map((month) => Number(month.slice(0, 4))))].sort((a, b) => b - a);
   const anchorYear = Number((selected.at(-1) ?? months[0] ?? "").slice(0, 4)) || years[0];
   const [pinned, setPinned] = useState<{ year: number; from: string } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // O ano aberto à mão vale para a seleção em que foi aberto. Com um mês só, trocar
-  // de mês (clique, teclado ou histórico) leva a tela ao ano dele; com vários, a
-  // tela fica no ano em que o usuário está marcando.
+
   const key = multiple ? "multiple" : (selected[0] ?? "");
 
   if (pinned !== null && pinned.from !== key) {
@@ -158,7 +144,7 @@ export function YearMonthPicker({
 
     onSelect(month);
 
-    // Com um mês só, escolher já é o fim da conversa: a folha fecha.
+
     if (closeSheet && !multiple) {
       setSheetOpen(false);
     }
@@ -171,11 +157,11 @@ export function YearMonthPicker({
       <BottomSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        title="Competência"
+        title="Reporting month"
         testId="family-month-sheet"
         trigger={
-          <BottomSheetTrigger aria-label={`Competência: ${summary}`} data-testid="family-month-trigger" className={slots.trigger()}>
-            <span className={slots.triggerLabel()}>Competência</span>
+          <BottomSheetTrigger aria-label={`Reporting month: ${summary}`} data-testid="family-month-trigger" className={slots.trigger()}>
+            <span className={slots.triggerLabel()}>Reporting month</span>
             <span className={slots.triggerValue()}>
               <span className="truncate">{summary}</span>
               <CaretDownIcon aria-hidden="true" className="shrink-0 text-muted-foreground" size={13} weight="bold" />
@@ -188,7 +174,7 @@ export function YearMonthPicker({
       </BottomSheet>
 
       <fieldset className={slots.card()} data-testid="family-month-picker" data-multiple={multiple || undefined}>
-        <legend className="sr-only">Competência</legend>
+        <legend className="sr-only">Reporting month</legend>
         <CardBody {...shared} summary={summary} onChoose={(month) => choose(month, false)} />
       </fieldset>
     </div>
@@ -208,14 +194,14 @@ type BodyProps = {
 };
 
 function yearLabel(year: number, count: number, open: boolean) {
-  return count > 0 && !open ? `${year}, ${count} ${count === 1 ? "mês selecionado" : "meses selecionados"}` : String(year);
+  return count > 0 && !open ? `${year}, ${count} ${count === 1 ? "selected month" : "selected months"}` : String(year);
 }
 
 function monthLabel(month: string, pending: boolean) {
-  return `${formatCompetenceLong(month)}${pending ? ", com pendências" : ""}`;
+  return `${formatCompetenceLong(month)}${pending ? ", with pending items" : ""}`;
 }
 
-/** O cartão do computador: cabeçalho com o resumo e as ações, anos e régua dos meses. */
+
 function CardBody({
   years,
   viewYear,
@@ -239,8 +225,7 @@ function CardBody({
     <>
       <div className={slots.head()}>
         <div className="flex items-baseline gap-3">
-          <p aria-hidden="true" className={slots.label()}>
-            Competência
+          <p aria-hidden="true" className={slots.label()}>Reporting month
           </p>
           <p aria-hidden="true" className={slots.summary()} data-testid="family-month-summary">
             {summary}
@@ -250,22 +235,20 @@ function CardBody({
           <button
             type="button"
             aria-pressed={wholeYear}
-            aria-label={`Ano todo de ${viewYear}`}
+            aria-label={`Full year ${viewYear}`}
             onClick={() => onToggleYear(viewYear)}
             className={action({ pressed: wholeYear })}
-          >
-            Ano todo
+          >Full year
           </button>
           <button
             type="button"
-            aria-label="Selecionar vários meses"
+            aria-label="Select multiple months"
             aria-pressed={multiple}
-            title={multiple ? "Usar seleção única de mês" : "Selecionar vários meses"}
+            title={multiple ? "Select a single month" : "Select multiple months"}
             onClick={onToggleMultiple}
             className={action({ pressed: multiple })}
           >
-            <ListChecksIcon aria-hidden="true" size={14} weight={multiple ? "bold" : "regular"} />
-            Vários meses
+            <ListChecksIcon aria-hidden="true" size={14} weight={multiple ? "bold" : "regular"} />Multiple months
             {multiple && selected.length > 1 ? (
               <span aria-hidden="true" data-testid="multi-month-count" className="font-mono text-[10px] font-semibold">
                 {selected.length}
@@ -307,7 +290,7 @@ function CardBody({
           </div>
         </LayoutGroup>
 
-        <div role="group" aria-label={`Meses de ${viewYear}`} className={slots.rail()} data-testid="family-month-badges">
+        <div role="group" aria-label={`Months in ${viewYear}`} className={slots.rail()} data-testid="family-month-badges">
           {yearMonths.map((month, index) => {
             const on = chosen.has(month);
             const pending = pendingMonths.has(month);
@@ -337,7 +320,7 @@ function CardBody({
   );
 }
 
-/** A folha do celular: selos grandes de toque, anos, meses em quatro colunas. */
+
 function SheetBody({ years, viewYear, selected, multiple, pendingMonths, onOpenYear, onChoose, onToggleYear, onToggleMultiple }: BodyProps) {
   const slots = picker();
   const chosen = new Set(selected);
@@ -350,21 +333,19 @@ function SheetBody({ years, viewYear, selected, multiple, pendingMonths, onOpenY
         <button
           type="button"
           aria-pressed={wholeYear}
-          aria-label={`Ano todo de ${viewYear}`}
+          aria-label={`Full year ${viewYear}`}
           onClick={() => onToggleYear(viewYear)}
           className={filterBadge({ active: wholeYear, class: "h-11" })}
-        >
-          Ano todo
+        >Full year
         </button>
         <button
           type="button"
-          aria-label="Selecionar vários meses"
+          aria-label="Select multiple months"
           aria-pressed={multiple}
           onClick={onToggleMultiple}
           className={filterBadge({ active: multiple, class: ["h-11", "gap-1.5"] })}
         >
-          <ListChecksIcon aria-hidden="true" size={14} weight={multiple ? "bold" : "regular"} />
-          Vários meses
+          <ListChecksIcon aria-hidden="true" size={14} weight={multiple ? "bold" : "regular"} />Multiple months
           {multiple && selected.length > 1 ? (
             <span aria-hidden="true" data-testid="multi-month-count" className="font-mono text-[10px] font-semibold">
               {selected.length}
@@ -394,7 +375,7 @@ function SheetBody({ years, viewYear, selected, multiple, pendingMonths, onOpenY
         })}
       </div>
 
-      <div role="group" aria-label={`Meses de ${viewYear}`} className={slots.sheetMonths()} data-testid="family-month-badges">
+      <div role="group" aria-label={`Months in ${viewYear}`} className={slots.sheetMonths()} data-testid="family-month-badges">
         {yearMonths.map((month) => {
           const pending = pendingMonths.has(month);
 

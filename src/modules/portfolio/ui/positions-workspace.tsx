@@ -1,5 +1,9 @@
 "use client";
 
+/** Investment table and responsive filters. Keep grouping keys stable while translating built-in category labels. */
+
+import { englishLabel } from "@/lib/english-labels";
+
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -67,9 +71,9 @@ import { PositionFormDialog, type PositionFormTarget } from "@/modules/portfolio
 const QUICK_CLASSES = ["Caixa", "Cripto", "Renda Fixa", "Renda Variável", "Reserva"];
 const GROUP_OPTIONS = ["instituicao", "classe", "tipo"] as const;
 const GROUP_LABELS: Record<(typeof GROUP_OPTIONS)[number], string> = {
-  instituicao: "Instituição",
-  classe: "Classe",
-  tipo: "Tipo",
+  instituicao: "Institution",
+  classe: "Class",
+  tipo: "Type",
 };
 const list = parseAsArrayOf(parseAsString).withDefault([]);
 
@@ -81,12 +85,11 @@ const helper = createColumnHelper<typeof features, MonthPosition>();
 
 type ColumnMeta = { align: "left" | "right"; calculated: boolean; hide: string };
 
-// Cotação, moeda e liquidez saíram da tabela para compactá-la (spec 044); ficam
-// na linha expandida e nos filtros.
+
 const COLUMN_META: Record<string, ColumnMeta> = {
   assetName: { align: "left", calculated: false, hide: "" },
   institutionName: { align: "left", calculated: false, hide: "hidden sm:table-cell" },
-  // O tipo ganha coluna só em telas largas; nas demais, fica sob o nome do ativo.
+
   assetType: { align: "left", calculated: false, hide: "hidden 2xl:table-cell" },
   strategy: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
   classes: { align: "left", calculated: false, hide: "hidden lg:table-cell" },
@@ -98,24 +101,24 @@ const COLUMN_META: Record<string, ColumnMeta> = {
 };
 
 const columns = helper.columns([
-  helper.accessor("assetName", { header: "Ativo" }),
-  helper.accessor("institutionName", { header: "Instituição" }),
-  helper.accessor((row) => typeOf(row), { id: "assetType", header: "Tipo" }),
-  helper.accessor((row) => strategyOf(row), { id: "strategy", header: "Estratégia" }),
+  helper.accessor("assetName", { header: "Asset" }),
+  helper.accessor("institutionName", { header: "Institution" }),
+  helper.accessor((row) => typeOf(row), { id: "assetType", header: "Type" }),
+  helper.accessor((row) => strategyOf(row), { id: "strategy", header: "Strategy" }),
   helper.accessor((row) => classesOf(row).join(", "), { id: "classes", header: "Classes" }),
-  // Sem vencimento ordena depois de qualquer data, nos dois sentidos de ordem.
+
   helper.accessor((row) => row.maturityDate ?? undefined, {
     id: "maturityDate",
-    header: "Vencimento",
+    header: "Maturity",
     sortUndefined: "last",
   }),
-  helper.accessor("quantity", { header: "Quantidade" }),
-  helper.accessor("totalBrl", { header: "Total R$" }),
-  helper.accessor((row) => row.totalUsd ?? -1, { id: "totalUsd", header: "Total US$" }),
+  helper.accessor("quantity", { header: "Quantity" }),
+  helper.accessor("totalBrl", { header: "Total BRL" }),
+  helper.accessor((row) => row.totalUsd ?? -1, { id: "totalUsd", header: "Total USD" }),
   helper.accessor("share", { header: "%" }),
 ]);
 
-// Seta de expansão e colunas; as ações ficam na página da posição.
+
 const COLUMN_COUNT = columns.length + 1;
 
 type FormState = { open: boolean; target: PositionFormTarget | null; key: number };
@@ -175,7 +178,7 @@ export function PositionsWorkspace({
       }
     });
 
-  // Uma remoção feita na página da posição volta para cá com o desfazer (spec 080).
+
   useEffect(() => {
     const handed = takeHandedOffToast();
 
@@ -197,8 +200,8 @@ export function PositionsWorkspace({
   };
   const positions = month?.positions ?? [];
   const filtered = filterPositions(positions, filters);
-  // Filtros em cascata da esquerda para a direita (spec 044): cada filtro só
-  // oferece o que existe com os filtros à esquerda dele.
+
+
   const options = filterOptions(positions, filters);
   const sorting = parseSorting(query.ordem);
 
@@ -244,14 +247,14 @@ export function PositionsWorkspace({
   const occupied = new Set(month.positions.map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
-    { key: "classe", label: "Classe", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
-    { key: "subclasse", label: "Subclasse", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
-    { key: "tipo", label: "Tipo", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
-    { key: "inst", label: "Instituição", options: options.institutions, selected: filters.institutions, onChange: (next) => void setQuery({ inst: next }) },
-    { key: "estrategia", label: "Estratégia", options: options.strategies, selected: filters.strategies, onChange: (next) => void setQuery({ estrategia: next }) },
-    { key: "moeda", label: "Moeda", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
-    { key: "venc", label: "Vencimento", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
-    { key: "liq", label: "Liquidez", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
+    { key: "classe", label: "Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
+    { key: "subclasse", label: "Subclass", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
+    { key: "tipo", label: "Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
+    { key: "inst", label: "Institution", options: options.institutions, selected: filters.institutions, onChange: (next) => void setQuery({ inst: next }) },
+    { key: "estrategia", label: "Strategy", options: options.strategies, selected: filters.strategies, onChange: (next) => void setQuery({ estrategia: next }) },
+    { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
+    { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
+    { key: "liq", label: "Liquidity", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
   ];
   const activeCount = month.positions.length - liquidatedCount;
 
@@ -291,8 +294,7 @@ export function PositionsWorkspace({
   const clearFilters = () =>
     void setQuery({ classe: null, subclasse: null, tipo: null, inst: null, estrategia: null, moeda: null, venc: null, liq: null, q: null });
 
-  // A linha abre a página da posição (spec 016), com a query da tabela para a
-  // volta reabrir os mesmos filtros.
+
   const openPosition = (position: MonthPosition, href: string) => {
     setOpeningId(position.id);
     startOpening(() => router.push(href));
@@ -321,11 +323,11 @@ export function PositionsWorkspace({
 
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Posições</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Carteira do mês</h1>
+          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Positions</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Monthly portfolio</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground" data-testid="positions-count">
-            {activeCount} {activeCount === 1 ? "posição" : "posições"}
-            {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidada" : "liquidadas"}` : ""}
+            {activeCount} {activeCount === 1 ? "position" : "positions"}
+            {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidated" : "liquidated"}` : ""}
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
@@ -334,28 +336,23 @@ export function PositionsWorkspace({
             {month.usdRate ? ` · US$ ${formatUsd(month.totalBrl / month.usdRate)}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {/* As cotações do mês ficam só aqui, em Posições, e não no topo: a
-                ilha do topo mostra o caminho Posições → Cotações (spec 048). */}
+
             <Link
               href={`/posicoes/cotacoes?mes=${toMonthParam(month.referenceDate)}`}
-              aria-label="Cotações do mês"
+              aria-label="Monthly quotes"
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <CurrencyCircleDollarIcon aria-hidden="true" className="text-primary" size={16} weight="duotone" />
-              Cotações
+              <CurrencyCircleDollarIcon aria-hidden="true" className="text-primary" size={16} weight="duotone" />Quotes
             </Link>
-            {/* Só o mês aberto aceita edição (spec 034); um mês fechado é aberto
-                pelo cadeado da linha do tempo. */}
+
             {canEdit ? (
               <button type="button" onClick={() => openForm({ mode: "add" })} className={headerPrimaryButtonClass}>
-                <PlusIcon aria-hidden="true" size={14} weight="bold" />
-                Adicionar posição
+                <PlusIcon aria-hidden="true" size={14} weight="bold" />Add position
               </button>
             ) : null}
             {month.isLatest && catalog.clone.allowed && cloneTarget ? (
               <button type="button" disabled={isSaving} onClick={cloneMonth} className={headerPrimaryButtonClass}>
-                <CopyIcon aria-hidden="true" size={14} weight="bold" />
-                Criar {formatMonthCompact(cloneTarget)} a partir de {monthLabel}
+                <CopyIcon aria-hidden="true" size={14} weight="bold" />Create {formatMonthCompact(cloneTarget)}starting from {monthLabel}
               </button>
             ) : null}
           </div>
@@ -366,15 +363,13 @@ export function PositionsWorkspace({
         <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
           <LockKeyIcon aria-hidden="true" className="text-muted-foreground" size={16} weight="duotone" />
           <p data-testid="month-locked" className="text-xs text-muted-foreground">
-            {monthLabel} está fechado. Para editar, abra o mês pelo cadeado na linha do tempo.
+            {monthLabel}is closed. Open the month using the timeline lock button to edit.
           </p>
         </div>
       ) : null}
 
-      {/* No celular (spec 077), as classes rolam numa linha só, a busca ocupa a
-          linha com o botão Filtros, e os filtros e o agrupamento abrem numa folha
-          de baixo para cima. No computador, tudo continua na própria linha. */}
-      <section aria-label="Filtros" className="mt-6 space-y-3">
+
+      <section aria-label="Filters" className="mt-6 space-y-3">
         <div className="-mx-5 flex items-center gap-2 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden">
           {QUICK_CLASSES.filter((assetClass) => options.classes.includes(assetClass)).map((assetClass) => {
             const active = filters.classes.includes(assetClass);
@@ -393,7 +388,7 @@ export function PositionsWorkspace({
                 )}
               >
                 <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(assetClass) }} />
-                {assetClass}
+                {englishLabel(assetClass)}
               </button>
             );
           })}
@@ -401,7 +396,7 @@ export function PositionsWorkspace({
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative flex h-10 min-w-0 flex-1 items-center sm:h-8 sm:min-w-[200px] sm:max-w-[280px]">
-            <span className="sr-only">Buscar posição</span>
+            <span className="sr-only">Search positions</span>
             <MagnifyingGlassIcon
               aria-hidden="true"
               className="pointer-events-none absolute left-3 text-muted-foreground sm:left-2.5"
@@ -411,7 +406,7 @@ export function PositionsWorkspace({
               type="search"
               value={filters.search}
               onChange={(event) => void setQuery({ q: event.target.value || null })}
-              placeholder="Buscar posição"
+              placeholder="Search positions"
               className="h-10 w-full rounded-xl border border-border bg-card/60 pr-2.5 pl-9 text-xs text-foreground outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-8 sm:rounded-lg sm:pl-8"
             />
           </label>
@@ -421,7 +416,7 @@ export function PositionsWorkspace({
             groups={filterGroups}
             grouping={{
               value: query.agrupar,
-              options: [{ value: null, label: "Nenhum" }, ...GROUP_OPTIONS.map((option) => ({ value: option, label: GROUP_LABELS[option] }))],
+              options: [{ value: null, label: "None" }, ...GROUP_OPTIONS.map((option) => ({ value: option, label: GROUP_LABELS[option] }))],
               onChange: (value) => void setQuery({ agrupar: value as (typeof GROUP_OPTIONS)[number] | null }),
             }}
             resultCount={sortedPositions.length}
@@ -429,14 +424,14 @@ export function PositionsWorkspace({
           />
 
           <div className="hidden sm:contents">
-            <MultiSelectFilter label="Classe" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
-            <MultiSelectFilter label="Subclasse" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
-            <MultiSelectFilter label="Tipo" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
-            <MultiSelectFilter label="Instituição" options={options.institutions} selected={filters.institutions} onChange={(next) => void setQuery({ inst: next })} />
-            <MultiSelectFilter label="Estratégia" options={options.strategies} selected={filters.strategies} onChange={(next) => void setQuery({ estrategia: next })} />
-            <MultiSelectFilter label="Moeda" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
-            <MultiSelectFilter label="Vencimento" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
-            <MultiSelectFilter label="Liquidez" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
+            <MultiSelectFilter label="Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
+            <MultiSelectFilter label="Subclass" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
+            <MultiSelectFilter label="Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
+            <MultiSelectFilter label="Institution" options={options.institutions} selected={filters.institutions} onChange={(next) => void setQuery({ inst: next })} />
+            <MultiSelectFilter label="Strategy" options={options.strategies} selected={filters.strategies} onChange={(next) => void setQuery({ estrategia: next })} />
+            <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
+            <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
+            <MultiSelectFilter label="Liquidity" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
 
             {activeFilterCount > 0 ? (
               <button
@@ -444,17 +439,16 @@ export function PositionsWorkspace({
                 onClick={clearFilters}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
               >
-                <XIcon aria-hidden="true" size={12} weight="bold" />
-                Limpar filtros
+                <XIcon aria-hidden="true" size={12} weight="bold" />Clear filters
               </button>
             ) : null}
 
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
-                <span className="px-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Agrupar</span>
+                <span className="px-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Group by</span>
                 {([null, ...GROUP_OPTIONS] as const).map((option) => (
                   <button
-                    key={option ?? "nenhum"}
+                    key={option ?? "none"}
                     type="button"
                     aria-pressed={query.agrupar === option}
                     onClick={() => void setQuery({ agrupar: option })}
@@ -465,7 +459,7 @@ export function PositionsWorkspace({
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {option === null ? "Nenhum" : GROUP_LABELS[option]}
+                    {option === null ? "None" : GROUP_LABELS[option]}
                   </button>
                 ))}
               </div>
@@ -474,7 +468,7 @@ export function PositionsWorkspace({
         </div>
       </section>
 
-      <section className="premium-panel mt-5 overflow-hidden rounded-[24px]" aria-label="Posições da competência">
+      <section className="premium-panel mt-5 overflow-hidden rounded-[24px]" aria-label="Positions for the reporting month">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <thead>
@@ -484,7 +478,7 @@ export function PositionsWorkspace({
                   className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase"
                 >
                   <th className="w-9 py-3 pr-0 pl-3 sm:pl-4">
-                    <span className="sr-only">Expandir</span>
+                    <span className="sr-only">Expand</span>
                   </th>
                   {headerGroup.headers.map((header) => {
                     const meta = COLUMN_META[header.column.id];
@@ -506,7 +500,7 @@ export function PositionsWorkspace({
                           )}
                         >
                           {meta.calculated ? (
-                            <span title="Calculado" className="font-mono normal-case text-muted-foreground/60">
+                            <span title="Calculated" className="font-mono normal-case text-muted-foreground/60">
                               ƒ
                             </span>
                           ) : null}
@@ -526,8 +520,7 @@ export function PositionsWorkspace({
             <tbody className="divide-y divide-border/55">
               {sortedPositions.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                    Nenhuma posição corresponde aos filtros.
+                  <td colSpan={COLUMN_COUNT} className="px-6 py-10 text-center text-sm text-muted-foreground">No positions match the filters.
                   </td>
                 </tr>
               ) : groups ? (
@@ -539,7 +532,7 @@ export function PositionsWorkspace({
                           {query.agrupar === "classe" ? (
                             <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(group.label) }} />
                           ) : null}
-                          <span className="text-xs font-semibold text-foreground">{group.label}</span>
+                          <span className="text-xs font-semibold text-foreground">{englishLabel(group.label)}</span>
                           <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
                           <span className="ml-auto font-mono text-xs text-foreground">{formatBrl(group.totalBrl)}</span>
                         </div>
@@ -557,18 +550,18 @@ export function PositionsWorkspace({
                 <td colSpan={COLUMN_COUNT} className="px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                     <span className="text-muted-foreground">
-                      {sortedPositions.length} de {month.positions.length} posições
+                      {sortedPositions.length} of {month.positions.length} positions
                     </span>
-                    <FooterValue label="Total filtrado" value={formatBrl(filteredTotal)} />
+                    <FooterValue label="Filtered total" value={formatBrl(filteredTotal)} />
                     {month.usdRate ? (
-                      <FooterValue label="Em dólar" value={`US$ ${formatUsd(filteredTotal / month.usdRate)}`} />
+                      <FooterValue label="In USD" value={`US$ ${formatUsd(filteredTotal / month.usdRate)}`} />
                     ) : null}
                     <FooterValue
-                      label="Da carteira"
+                      label="Portfolio share"
                       value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)}
                     />
                     {matchedTotal !== null ? (
-                      <FooterValue label="Parcela nas classes selecionadas" value={formatBrl(matchedTotal)} emphasis />
+                      <FooterValue label="Share in selected classes" value={formatBrl(matchedTotal)} emphasis />
                     ) : null}
                   </div>
                 </td>
@@ -625,8 +618,7 @@ function PositionRow({
   const [first, ...others] = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const detailsId = `detalhes-${position.id}`;
 
-  // A linha inteira abre a posição; o nome do ativo é o link real, para o
-  // teclado, o leitor de tela e o clique com Ctrl ou Cmd.
+
   const openFromRow = (event: MouseEvent<HTMLTableRowElement>) => {
     if (event.defaultPrevented || event.button !== 0) {
       return;
@@ -666,7 +658,7 @@ function PositionRow({
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            aria-label={`${expanded ? "Recolher" : "Expandir"} ${position.assetName}`}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${position.assetName}`}
             onClick={() => onToggle(position)}
             className="grid size-6 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
           >
@@ -697,12 +689,11 @@ function PositionRow({
             <span
               data-testid="position-liquidated"
               className="ml-2 inline-flex items-center rounded-full border border-border px-1.5 py-px align-middle text-[9px] font-semibold tracking-[0.08em] text-muted-foreground uppercase"
-            >
-              Liquidada
+            >Liquidated
             </span>
           ) : null}
           <p className="mt-1 font-mono text-[9px] text-muted-foreground">
-            {position.ticker ?? "SALDO"}
+            {position.ticker ?? "BALANCE"}
             <span className="font-sans 2xl:hidden"> · {typeOf(position)}</span>
           </p>
           {position.maturityDate ? (
@@ -733,8 +724,8 @@ function PositionRow({
                 <button
                   type="button"
                   onClick={() => onToggle(position)}
-                  aria-label={`Ver as ${others.length + 1} classificações de ${position.assetName}`}
-                  title={`Mais ${others.length} ${others.length === 1 ? "classificação" : "classificações"}`}
+                  aria-label={`View the ${others.length + 1} classifications for ${position.assetName}`}
+                  title={`More ${others.length} ${others.length === 1 ? "classification" : "classifications"}`}
                   className="shrink-0 rounded-md bg-white/[0.05] px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   …+{others.length}
@@ -764,7 +755,7 @@ function PositionRow({
           </span>
           {isPartial ? (
             <p className="mt-0.5 font-mono text-[9px] whitespace-nowrap text-muted-foreground">
-              de {formatBrl(position.totalBrl)}
+              of {formatBrl(position.totalBrl)}
             </p>
           ) : null}
         </Cell>
@@ -788,7 +779,7 @@ function PositionRow({
   );
 }
 
-/** Linha expandida: o rateio completo e os dados que não cabem nas colunas. */
+
 function PositionDetails({
   position,
   usdRate,
@@ -800,30 +791,30 @@ function PositionDetails({
 }) {
   const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Instituição", value: position.institutionName },
-    { label: "Estratégia", value: strategyOf(position) },
-    { label: "Moeda", value: <span className="font-mono">{position.baseCurrency}</span> },
+    { label: "Institution", value: position.institutionName },
+    { label: "Strategy", value: strategyOf(position) },
+    { label: "Currency", value: <span className="font-mono">{position.baseCurrency}</span> },
     {
-      label: "Cotação",
+      label: "Quote",
       value: (
-        <span className="font-mono">{position.unitPriceBrl === null ? "Saldo, sem cotação" : formatPriceBrl(position.unitPriceBrl)}</span>
+        <span className="font-mono">{position.unitPriceBrl === null ? "Balance, without a quote" : formatPriceBrl(position.unitPriceBrl)}</span>
       ),
     },
-    { label: "Quantidade", value: <QuantityText position={position} /> },
-    { label: "Liquidez", value: position.liquidity ?? "Não informada" },
+    { label: "Quantity", value: <QuantityText position={position} /> },
+    { label: "Liquidity", value: position.liquidity ?? "Not specified" },
     {
-      label: "Vencimento",
+      label: "Maturity",
       value: position.maturityDate ? (
         <span className="inline-flex items-center gap-2">
           <span className="font-mono">{formatDay(parseDay(position.maturityDate))}</span>
           <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} />
         </span>
       ) : (
-        "Não informado"
+        "Not specified"
       ),
     },
     {
-      label: "Total em dólar",
+      label: "Total in USD",
       value: <span className="font-mono">{usdRate ? `US$ ${formatUsd(position.totalBrl / usdRate)}` : "—"}</span>,
     },
   ];
@@ -831,9 +822,9 @@ function PositionDetails({
   return (
     <div className="grid gap-5 rounded-2xl border border-border/60 bg-background/30 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div>
-        <p className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Rateio</p>
+        <p className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Allocation</p>
         {allocations.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">Sem rateio.</p>
+          <p className="mt-2 text-xs text-muted-foreground">No allocation.</p>
         ) : (
           <ul className="mt-2.5 space-y-2" data-testid="position-details-allocations">
             {allocations.map((allocation) => (
@@ -854,7 +845,7 @@ function PositionDetails({
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
         {details.map((detail) => (
           <div key={detail.label} className="min-w-0">
-            <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{detail.label}</dt>
+            <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(detail.label)}</dt>
             <dd className="mt-1 truncate text-foreground/85">{detail.value}</dd>
           </div>
         ))}
@@ -867,7 +858,7 @@ function QuantityText({ position }: { position: MonthPosition }) {
   return (
     <span className="font-mono text-xs text-foreground/85">
       {position.quoteSymbol
-        ? position.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 8 })
+        ? position.quantity.toLocaleString("en-GB", { maximumFractionDigits: 8 })
         : formatBrl(position.quantity)}
     </span>
   );
@@ -893,7 +884,7 @@ function Cell({ id, children }: { id: string; children: ReactNode }) {
 function FooterValue({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-2">
-      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{label}</span>
+      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
       <span className={cn("font-mono text-sm", emphasis ? "text-primary" : "text-foreground")}>{value}</span>
     </span>
   );
@@ -906,11 +897,11 @@ function parseSorting(value: string): SortingState {
 }
 
 function formatUsd(value: number) {
-  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatWeightPercent(weight: number) {
-  return `${weight.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  return `${weight.toLocaleString("en-GB", { maximumFractionDigits: 1 })}%`;
 }
 
 function parseDay(value: string) {
@@ -918,20 +909,15 @@ function parseDay(value: string) {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-/**
- * Competência sem posições. No mês aberto, ou sem competência nenhuma, como o
- * usuário novo (spec 055), oferece incluir a primeira posição ali mesmo ou
- * restaurar um backup; `?incluir=1`, vindo da Visão Geral, já abre o
- * formulário. Um mês fechado sem posições só avisa.
- */
+
 function EmptyPositions({ month, catalog }: { month: MonthPositions | null; catalog: EditingCatalog }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [form, setForm] = useState<FormState>({ open: false, target: null, key: 0 });
   const [toast, setToast] = useState<EditToastState | null>(null);
   const [isStarting, startStarting] = useTransition();
-  // Pedido de incluir que espera a competência aberta: `?incluir=1`, ou o
-  // clique antes de a primeira competência existir.
+
+
   const [pendingAdd, setPendingAdd] = useState(() => searchParams.get("incluir") === "1");
   const sequence = useRef(0);
   const dismissToast = useCallback(() => setToast(null), []);
@@ -955,7 +941,7 @@ function EmptyPositions({ month, catalog }: { month: MonthPositions | null; cata
         <span className="grid size-12 place-items-center rounded-2xl border border-border bg-card text-primary">
           <TableIcon aria-hidden="true" size={22} weight="duotone" />
         </span>
-        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Nenhuma posição nesta competência</h1>
+        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">No positions in this reporting month</h1>
       </div>
     );
   }
@@ -981,7 +967,7 @@ function EmptyPositions({ month, catalog }: { month: MonthPositions | null; cata
 
   return (
     <>
-      <EmptyPortfolio title="Nenhuma posição ainda" onAdd={add} adding={isStarting || (pendingAdd && !editable)} />
+      <EmptyPortfolio title="No positions yet" onAdd={add} adding={isStarting || (pendingAdd && !editable)} />
       {month ? (
         <PositionFormDialog
           open={formOpen}

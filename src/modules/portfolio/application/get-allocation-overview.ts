@@ -50,7 +50,7 @@ export async function getAllocationOverview(
         select: {
           referenceDate: true,
           status: true,
-          // Posições liquidadas (spec 076) ficam fora da alocação.
+
           positions: {
             where: { quantity: { gt: 0 } },
             select: {
@@ -109,8 +109,7 @@ export async function getActivePlan(): Promise<{ targets: TargetValue[]; toleran
     },
   });
 
-  // A moeda sobre o total é sempre a calculada pela moeda de cada classe
-  // (spec 054), mesmo num plano gravado antes dessa regra.
+
   return {
     targets: withDerivedCurrency(
       (plan?.targets ?? []).map((target) => ({

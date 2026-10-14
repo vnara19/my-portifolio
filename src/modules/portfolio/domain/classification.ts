@@ -1,7 +1,6 @@
-// Classificação fixa do rateio (spec 068): as classes, subclasses e prazos de
-// resgate da planilha, dependentes entre si. As metas de alocação e o comprar
-// e vender agrupam por esses valores, por isso o usuário escolhe numa lista e
-// não digita texto livre. Sem dependências de banco, para o servidor e a tela.
+
+
+
 
 import { NO_REDEMPTION } from "@/modules/portfolio/domain/redemption";
 
@@ -9,10 +8,7 @@ export const ASSET_CLASSES = ["Caixa", "Cripto", "Renda Fixa", "Renda Variável"
 
 export type AssetClass = (typeof ASSET_CLASSES)[number];
 
-/**
- * Subclasses de cada classe, na ordem da planilha, mais o prefixado na renda
- * fixa e no caixa (spec 079).
- */
+
 export const SUBCLASSES_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Caixa: ["Pós-fixado", "Prefixado", "Stablecoin"],
   Cripto: ["BTC", "Altcoin", "Stablecoin"],
@@ -21,11 +17,7 @@ export const SUBCLASSES_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Reserva: ["Commoditie"],
 };
 
-/**
- * Prazos de resgate de cada classe: a renda fixa escolhe entre curto, médio e
- * longo (as metas de renda fixa são por subclasse e prazo); o caixa é sempre
- * curto; as demais não têm prazo.
- */
+
 export const REDEMPTIONS_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Caixa: ["Curto"],
   Cripto: [NO_REDEMPTION],
@@ -46,10 +38,7 @@ export function redemptionsOf(assetClass: string): readonly string[] {
   return isAssetClass(assetClass) ? REDEMPTIONS_BY_CLASS[assetClass] : [];
 }
 
-/**
- * Classificação ajustada à classe escolhida: mantém subclasse e resgate quando
- * valem na classe nova e, quando só há uma opção, já a escolhe.
- */
+
 export function fitClassification(row: { assetClass: string; subclass: string; duration: string }) {
   const subclasses = subclassesOf(row.assetClass);
   const redemptions = redemptionsOf(row.assetClass);
@@ -61,26 +50,23 @@ export function fitClassification(row: { assetClass: string; subclass: string; d
   };
 }
 
-/** Mensagem para uma classificação fora da lista, ou `null` quando vale. */
+
 export function classificationIssue(row: { assetClass: string; subclass: string; duration: string }) {
   if (!isAssetClass(row.assetClass)) {
-    return `A classe "${row.assetClass}" não está na lista.`;
+    return `The class "${row.assetClass}" is not in the list.`;
   }
 
   if (!SUBCLASSES_BY_CLASS[row.assetClass].includes(row.subclass)) {
-    return `A subclasse "${row.subclass}" não pertence a ${row.assetClass}.`;
+    return `The subclass "${row.subclass}" does not belong to ${row.assetClass}.`;
   }
 
   if (!REDEMPTIONS_BY_CLASS[row.assetClass].includes(row.duration)) {
-    return `O resgate "${row.duration}" não vale para ${row.assetClass}.`;
+    return `The redemption term "${row.duration}" is not valid for ${row.assetClass}.`;
   }
 
   return null;
 }
 
-// Tipo do ativo (spec 068): a visão macro da carteira, como "X% em Tesouro
-// Direto" ou "Y% em ETF dos EUA". Independe da classificação do rateio. Os
-// tipos da inclusão de posição são os mesmos, mais a previdência.
 
 export const ASSET_TYPES = [
   "us-etf",
@@ -98,26 +84,23 @@ export const ASSET_TYPES = [
 export type AssetType = (typeof ASSET_TYPES)[number];
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  "us-etf": "ETF dos EUA",
-  "us-stock": "Ação dos EUA",
-  "br-etf": "ETF da B3",
-  "br-stock": "Ação ou FII da B3",
-  crypto: "Cripto",
+  "us-etf": "US ETF",
+  "us-stock": "US stock",
+  "br-etf": "Brazilian ETF",
+  "br-stock": "Brazilian stock or REIT",
+  crypto: "Crypto",
   treasury: "Tesouro Direto",
-  "fixed-income": "Renda fixa",
-  pension: "Previdência",
-  "brl-cash": "Caixa em reais",
-  "usd-balance": "Caixa em dólar",
+  "fixed-income": "Fixed income",
+  pension: "Pension",
+  "brl-cash": "BRL cash",
+  "usd-balance": "USD cash",
 };
 
 export function isAssetType(value: string | null | undefined): value is AssetType {
   return value !== null && value !== undefined && (ASSET_TYPES as readonly string[]).includes(value);
 }
 
-/**
- * Tipo do ativo: o escolhido, ou, nos ativos antigos ainda sem tipo, o
- * deduzido do símbolo, da moeda e do nome.
- */
+
 export function assetTypeOf(asset: {
   assetType: string | null;
   quoteSymbol: string | null;

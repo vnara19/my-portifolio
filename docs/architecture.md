@@ -1,247 +1,56 @@
-# Decisões de arquitetura e funcionamento
+# Architecture and behavior
 
-Estado: base aprovada; implementação incremental autorizada.
-Origem: decisões explícitas do usuário na conversa de descoberta.
-Registrado em: 2026-09-21.
-Última atualização: 2026-10-07 (áreas, concessões e menu lateral).
+## Runtime
 
-Este documento é a fonte principal das decisões consolidadas abaixo.
-O diagnóstico do sistema existente permanece em
-[Análise do Excel](../.ai/context/excel-analysis.md).
+Next.js App Router, React and TypeScript provide the application. Prisma with the
+PostgreSQL driver adapter connects to Neon. Better Auth stores users, credentials,
+sessions and rate limits in PostgreSQL. Registration is restricted by an email
+allowlist. The interface is English and dark-only.
 
-## Decisões confirmadas
+Vercel hosts the application. GitHub stores source and triggers deployments:
+`dev` → Preview → Neon `development`; `main` → Production → Neon `production`.
+Production releases require user approval. Provider jobs run in GitHub Actions.
+No credential or service owned by the original collaborator is required.
 
-### Interface e backend no mesmo projeto Next.js
+## Product boundaries
 
-Manter a interface e as funções de servidor no mesmo projeto Next.js,
-com cálculos e integrações separados das telas. A organização interna
-e as bibliotecas específicas ainda serão definidas.
+The product is investment-only: Overview, Positions, Quotes and Settings. Removed
+family, payroll and standalone pension screens/routes are not exposed. Their
+historical database tables and data remain untouched. A pension asset may remain
+part of the investment portfolio. Salary tracking and a TradingView-inspired
+redesign require separate specifications.
 
-### Ambiente de desenvolvimento
+## User data
 
-Executar Next.js diretamente no computador e PostgreSQL em Docker
-durante o desenvolvimento. Esta decisão não define o empacotamento
-nem a hospedagem de produção.
+All portfolio reads and writes pass through user-scoped database access. Public
+provider quotes are shared by symbol; a manual quote is user-specific. Editing
+requires an open reporting month. Liquidating a position records a full withdrawal
+and preserves history; deleting a record has a different meaning.
 
-Atualizado em 2026-10-03: testes que gravam usam um schema próprio no mesmo
-Postgres, indicado em `?schema=` na `DATABASE_URL`
-([spec 042](../.ai/specs/042-data-backup.md)).
+Keep legacy classification keys and backup IDs stable. `englishLabel` translates
+built-in display labels without changing stored categories. API field names,
+route/query keys and official CSV headers are contracts, not interface copy.
 
-### Evolução do histórico
+## Precision and calculations
 
-Guardar preços diários e posições mensais revisadas, evoluindo o
-modelo da planilha. Uma atualização de preço não representa uma
-mudança de quantidade.
+Use decimal arithmetic for investment valuation and integer cents where required.
+Use an average-cost basis for withdrawals and realized returns. Internal transfers
+do not count as fresh capital. Automatic accrual uses CDI or annual fixed rates,
+252 business days and the Brazilian holiday calendar. Preserve known balances when
+rates are incomplete. English formatting does not change currency or market rules.
 
-Atualizado em 2026-10-02: a atualização de cotações e a criação do mês
-são processos distintos. As cotações ficam em histórico diário por
-símbolo e são atualizadas ao abrir o aplicativo, quando a última tentativa
-tem mais de uma hora, ou pela seta do topo; a competência do mês corrente
-é reprecificada a cada atualização
-([spec 020](../.ai/specs/020-daily-quotes.md)). Também ao abrir, antes
-das cotações, o aplicativo cria a competência do mês corrente e todas as
-que faltarem, copiando a anterior, com a cotação do último dia de cada mês
-disponível no histórico
-([spec 021](../.ai/specs/021-automatic-month-rollover.md)). Desde
-2026-10-06, ele pergunta antes de criar
-([spec 078](../.ai/specs/078-overview-allocation-tabs-and-touch-charts.md)). Não haverá
-agendamento nem tentativa de atualizar com o aplicativo desligado.
+## Updates
 
-Atualizado em 2026-10-04: a atualização das cotações saiu da abertura do
-aplicativo e passou a um job agendado, que roda sem o aplicativo aberto e
-busca só os símbolos devidos ([spec 053](../.ai/specs/053-scheduled-quote-sync.md)).
-As posições ganharam movimentações (aporte, retirada, rendimento e saldo
-inicial) sobre a base de cada mês, sem correção em cascata entre competências
-([specs 056 a 059](../.ai/specs/056-position-transactions.md)), e a renda fixa
-a percentual do CDI é calculada pelo job a partir do CDI diário
-([spec 060](../.ai/specs/060-cdi-fixed-income.md)).
+Navigation reads database prices; it does not fetch every provider. The job uses a
+PostgreSQL execution lock, fetches due symbols and retries failures with backoff.
+Current quotes become due after 50 minutes. Historical failures retry after one day.
+Selic is informational and does not directly reprice positions. CDI data feeds
+eligible automatic-accrual positions. UI update age refers to a successful quote
+write relevant to that user's symbols.
 
-Atualizado em 2026-10-03: só há atualização automática; a seta do topo e o
-botão da página de cotações saíram, a pedido do usuário. As cotações
-automáticas, o histórico diário e as execuções são compartilhados entre os
-usuários, e a cotação digitada à mão, quando a busca falha, fica com quem a
-digitou ([spec 051](../.ai/specs/051-shared-automatic-quotes.md)).
+## Backups
 
-Atualizado em 2026-10-02: cada mês guarda, para cada ativo, a cotação de
-fechamento, a mais recente do mês; gráficos e valorização usam essa cotação,
-e as anteriores não são apagadas. Ao incluir um ativo novo, o fechamento
-mensal dos últimos três anos é buscado uma vez, conforme os limites de cada
-provedor ([spec 028](../.ai/specs/028-quote-rules.md) e
-[spec 029](../.ai/specs/029-asset-price-history.md)). O mês corrente pode
-ser finalizado, e editá-lo passa a pedir a confirmação dos meses passados
-([spec 032](../.ai/specs/032-finalize-current-month.md)). Preencher meses
-passados que faltam não é funcionalidade do aplicativo: é o
-[passo pré-produção](../.ai/context/pre-deploy.md).
-
-### Importação do Excel
-
-Usar o próprio Excel como fonte da carga inicial. Preservar os dados de
-origem e apresentar inconsistências encontradas para revisão, sem aplicar
-correções silenciosas.
-
-A identidade do ativo é independente da custódia. Bitcoin, USDC e qualquer
-outro ativo mantido em instituições ou contas diferentes gera posições
-separadas. Relatórios podem consolidar essas posições pelo ativo, sem apagar a
-origem de cada saldo.
-
-A linha inconsistente de Bitcoin de junho de 2023 permanece pendente. A carga
-inicial deve preservá-la como evidência, mas não deve criar uma posição
-financeira corrigida por suposição.
-
-Atualizado em 2026-10-02: a tela de revisão dos achados foi removida a
-pedido do usuário ([spec 022](../.ai/specs/022-quotes-page.md)). Os dados de
-origem e os achados continuam preservados nas tabelas da importação.
-
-Atualizado em 2026-10-03: o histórico das posições passa a vir da preparação
-única do [passo pré-produção](../.ai/specs/041-history-preparation.md), feita
-com o usuário a partir das tabelas exportadas da planilha: meses sem lacunas,
-cotação de fechamento de cada mês buscada nos provedores e cada unificação de
-ativo confirmada por ele. O Bitcoin de junho de 2023 recebeu, por resposta
-dele, a quantidade de julho.
-
-Atualizado em 2026-10-03: a importação do Excel saiu do aplicativo, com os
-roteiros, as tabelas `import_batches`, `import_source_rows` e `import_issues`
-e os campos de origem das linhas ([spec 047](../.ai/specs/047-json-only-data.md)).
-A planilha continua preservada como referência; os dados entram e saem só
-pelo backup em JSON.
-
-### Backup dos dados
-
-Decidido em 2026-10-03: o aplicativo exporta todos os dados num arquivo JSON
-versionado e restaura um arquivo desses substituindo tudo, numa transação, só
-depois de mostrar o resumo e pedir confirmação
-([spec 042](../.ai/specs/042-data-backup.md)).
-
-Atualizado em 2026-10-03: o backup é a forma oficial de carregar e levar os
-dados, inclusive para o banco de produção. Cada restauração fica registrada em
-`data_imports` e aparece nas versões da configuração. O formato e o roteiro
-para mudá-lo junto com o modelo estão em [Formato do backup](backup-format.md)
-([spec 047](../.ai/specs/047-json-only-data.md)).
-
-### Acesso e usuários
-
-Decisão inicial, de 2026-09-21: a primeira versão funcionava somente no
-computador local e não possuía autenticação.
-
-Atualizado em 2026-10-03: com o app publicado na Vercel, o usuário pediu login
-no próprio app, e as cotações automáticas passaram a ser compartilhadas entre
-os usuários ([spec 050](../.ai/specs/050-login-and-user-data.md) e
-[spec 051](../.ai/specs/051-shared-automatic-quotes.md)). O login usa e-mail e
-senha com Better Auth e sessões no Postgres; cada usuário tem a própria
-carteira, isolada por `user_id` e por chaves estrangeiras compostas, e o
-código acessa os dados pelo cliente com escopo (`src/lib/user-db.ts`). As
-escolhas feitas pelo agente na ausência do usuário estão na spec 050, a
-confirmar.
-
-Atualizado em 2026-10-07: o app passa a ter áreas, agrupadas por assunto
-(Finanças: Investimentos e Gastos familiares). Investimentos é a área-base, de
-todo usuário com login; as áreas pessoais pedem uma concessão ligada ao id do
-usuário (`module_grants`), gravada só pelo servidor (migração ou
-`pnpm auth:access`). Papéis (`role_grants`, hoje `ADMIN`) servem a ações
-administrativas e não dão leitura dos dados de outro usuário. Páginas, rotas,
-ações, consultas, backup e roteiros conferem a concessão no servidor; sem ela,
-a área responde 404 ([spec 081](../.ai/specs/081-module-access-and-area-navigation.md)).
-O plugin Admin do Better Auth não foi adotado.
-
-### Organização do código
-
-Organizar o sistema por módulos funcionais, mantendo rotas e componentes de
-página como pontos de composição. Regras financeiras e casos de uso ficam fora
-da interface e do acesso ao banco; integrações com Prisma e provedores de
-cotação implementam essas fronteiras.
-
-As primeiras áreas previstas são importação, carteira, cotações, alocação e
-previdência. Desde 2026-10-07, há também `access` (áreas, concessões e papéis)
-e `family-expenses` (Gastos familiares), cada um com domínio, aplicação e
-interface próprios; em seguida, `income` (Recebimentos) e `pension`
-(Previdência, que só lê a carteira e os holerites), specs 088 e 089. Cada fatia deve introduzir apenas as abstrações necessárias ao
-comportamento implementado, com nomes explícitos, funções pequenas e testes
-concentrados nas regras financeiras de maior risco.
-
-Instituição e conta são entidades distintas. Uma instituição pode conter uma
-ou mais contas, e cada posição pertence a uma conta. Essa separação deve
-existir mesmo quando a carga inicial tiver apenas uma conta conhecida na
-instituição.
-
-### Direção visual
-
-A interface usa exclusivamente tema escuro. Sua direção é a de uma fintech
-moderna, premium e confiável: superfícies grafite, contraste alto, cor de
-destaque contida, tipografia precisa, números legíveis e densidade adequada a
-dados financeiros. Profundidade, transições e estados interativos devem ser
-discretos e funcionais.
-
-Não haverá alternância para tema claro. O produto deve evitar aparência de
-landing page, efeitos decorativos excessivos e valores financeiros fictícios.
-
-A interface não deve narrar o andamento da implementação, roadmap técnico ou
-estado das specs. Esses registros pertencem a `.ai/` e à conversa. Cada tela
-do aplicativo deve ajudar o usuário a consultar, revisar ou administrar dados
-financeiros reais.
-
-### Navegação e competência selecionada
-
-A navegação principal fica no topo, em abas: Visão Geral e Posições, com a
-configuração da carteira em um acesso próprio. A aba de alocação foi
-incorporada à Visão Geral na reestruturação da UX. Até 2026-10-07 não havia barra lateral.
-
-Atualizado em 2026-10-07, a pedido do usuário: com mais de uma área liberada,
-há barra lateral no computador (recolhível) e menu hambúrguer no celular para
-trocar de área; as abas do topo continuam sendo as páginas de cada área. Quem
-tem só Investimentos segue sem barra lateral
-([spec 081](../.ai/specs/081-module-access-and-area-navigation.md)).
-
-Um seletor global de competência governa todas as telas de Investimentos e
-fica registrado na URL; Gastos familiares tem as próprias competências e
-filtros, que não mexem no mês da carteira
-([spec 082](../.ai/specs/082-family-expenses-ledger.md)). O propósito do produto é percorrer o histórico mês a mês e comparar a
-alocação atual com a meta, obtendo a ação correspondente. Após a carga
-inicial, o aplicativo é a fonte da verdade; não haverá sincronização
-contínua com a planilha.
-
-## Questões ainda em aberto
-
-- Regras finais de correção e auditoria após a importação inicial.
-- Fontes gratuitas de cotações e prioridade entre provedores: definidas em
-  2026-10-02 na [spec 037](../.ai/specs/037-quote-provider-chains.md), com
-  cadeias de reserva por grupo de ativo.
-- Biblioteca dos gráficos, a definir junto da primeira visão analítica.
-- Hospedagem e empacotamento fora do ambiente de desenvolvimento.
-
-## Base técnica aprovada
-
-Esta combinação reduz decisões durante a primeira implementação e mantém
-as regras financeiras independentes da interface:
-
-- TypeScript em todo o projeto;
-- Next.js com App Router;
-- Server Components para leituras e Server Actions para mutações da
-  interface; Route Handlers somente quando houver um consumidor HTTP ou
-  integração externa, ou quando uma operação longa não puder ocupar a fila
-  de Server Actions do cliente, como a atualização de cotações
-  ([spec 020](../.ai/specs/020-daily-quotes.md));
-- PostgreSQL no Docker Compose durante o desenvolvimento;
-- ORM tipado com migrações versionadas, com Prisma como primeira opção;
-- valores financeiros e percentuais em tipos decimais exatos no banco;
-- Tailwind CSS e shadcn/ui para a interface;
-- Zod nas fronteiras de entrada e nos dados recebidos dos provedores;
-- Playwright para os poucos fluxos completos de maior risco financeiro.
-
-Usar pnpm como gerenciador do projeto. Fixar versões estáveis das
-dependências e manter as migrações do banco no Git. A biblioteca de
-gráficos será escolhida quando a primeira visão for especificada.
-
-A fundação usa Node.js 24.20.0, Next.js 16, PostgreSQL 18 e Prisma 7.10.
-O Prisma 8 disponível durante a criação ainda era uma versão candidata;
-por isso, a versão estável 7 foi escolhida e fixada.
-
-## Sequência inicial
-
-1. Fundação técnica e interface-base.
-2. Importação auditável do Excel.
-3. Atualização mensal manual e cotações sob demanda.
-4. Patrimônio, classificações e metas.
-5. Rebalanceamento.
-6. Previdência.
-
-As specs em `../.ai/specs/` são a fonte do escopo e do estado de cada fatia.
+Restore validates input, summarizes it, then applies a user-scoped transactional
+replacement. Existing version-5 exports remain compatible. Financial backups are
+local/private data and never source-controlled. Export a new backup before risky
+production data changes.

@@ -1,3 +1,5 @@
+
+/** Scheduled quote sync reserves execution with a PostgreSQL lock. Fetch only due symbols, retain backoff after failures and preserve independent rate updates. */
 import {
   Prisma,
   QuoteRefreshStatus,
@@ -31,12 +33,6 @@ import { syncCdi, type CdiRatesFetcher, type CdiReport } from "@/modules/portfol
 import { syncSelicReference, type SelicSyncReport } from "@/modules/quotes/application/selic-reference";
 import type { SelicFetcher } from "@/modules/quotes/infrastructure/bcb-selic";
 
-// Job agendado das cotações (spec 053): atualização periódica e histórica das
-// cotações automáticas. A inclusão de um ticker guarda só o preço atual
-// conferido (spec 063). Roda fora da navegação, pelo roteiro `pnpm quotes:sync`, pela
-// função do Neon ou pelo GitHub Actions, sempre com esta mesma função. Sem
-// dependências do Next.js nem de sessão: trabalha com o cliente sem escopo,
-// sobre os símbolos de todos os usuários.
 
 export type QuoteFetcher = (requests: QuoteRequest[]) => Promise<QuoteResult[]>;
 export type HistoryLoader = typeof loadSymbolHistory;
@@ -59,9 +55,9 @@ export type QuoteSyncOutcome =
       succeeded: string[];
       failed: { symbol: string; errorCode: string; errorMessage: string }[];
       histories: HistoryReport[];
-      /** Meta Selic informativa, com cadência própria de 24 horas (spec 064). */
+
       selic?: SelicSyncReport;
-      /** Rendimento automático (spec 079): CDI buscado e posições recalculadas. */
+
       cdi?: CdiReport;
     }
   | { state: "unavailable"; message: string };
@@ -80,10 +76,8 @@ type Claim =
   | { state: "idle" }
   | { state: "busy"; runId: string };
 
-// O bloqueio consultivo (QUOTE_REFRESH_LOCK_KEY) serializa a reserva de uma
-// execução e dura só a transação curta que cria a execução, o que funciona pelo
-// pooler do Neon. Uma execução que continua RUNNING depois de 10 minutos foi
-// interrompida.
+
+// Recover reservations left by an interrupted run.
 const STALE_RUN_MS = 10 * 60 * 1000;
 
 export async function syncQuotes({
@@ -104,7 +98,7 @@ export async function syncQuotes({
   fetchCdiRates?: CdiRatesFetcher;
 } = {}): Promise<QuoteSyncOutcome> {
   if (!prisma) {
-    return { state: "unavailable", message: "O banco de dados não está configurado." };
+    return { state: "unavailable", message: "The database is not configured." };
   }
 
   const startedClock = Date.now();
@@ -112,14 +106,14 @@ export async function syncQuotes({
   const today = calendarDay(now);
   const currentMonth = monthOf(today);
   const claim = await claimRun(prisma, now, today, currentMonth);
-  // Informação de referência independente das posições: a Selic nunca altera
-  // um saldo (spec 064).
+
+
   const runSelic = () =>
     syncSelicReference(prisma, { now, ...(fetchSelicRate ? { fetchRate: fetchSelicRate } : {}) }).catch(
       (error: unknown): SelicSyncReport => ({ state: "failed", observedOn: null, message: describeProviderError(error).message }),
     );
-  // Rendimento automático (spec 079): o CDI do dia e o saldo de cada posição
-  // com a flag ligada, pós-fixada ou prefixada, a cada execução.
+
+
   const runCdi = () =>
     syncCdi(prisma, { now, ...(fetchCdiRates ? { fetchRates: fetchCdiRates } : {}) }).catch(
       (error: unknown): CdiReport => ({
@@ -149,8 +143,8 @@ export async function syncQuotes({
   };
 
   if (claim.quoteSymbols.length > 0 || claim.unregistered.length > 0) {
-    // Fica fora do try para que, se a gravação falhar, cada símbolo consultado
-    // ainda apareça como falha na execução.
+
+
     try {
       const requests = claim.quoteSymbols.map(
         (symbol): QuoteRequest => ({
@@ -168,7 +162,7 @@ export async function syncQuotes({
             symbol,
             "configuration",
             "MISSING_QUOTE_METADATA",
-            `Não há histórico de ${symbol} para escolher o provedor da cotação.`,
+            `No history exists for ${symbol} to select the quote provider.`,
           ),
         ),
       );
@@ -209,7 +203,7 @@ export async function syncQuotes({
         ),
       };
     } catch (error) {
-      console.error("A atualização de cotações falhou.", error);
+      console.error("The quote update failed.", error);
       await recordFailedRun(prisma, claim.runId, results, clock()).catch(() => undefined);
     }
   }
@@ -224,8 +218,7 @@ export async function syncQuotes({
   outcome.selic = await runSelic();
   outcome.cdi = await runCdi();
 
-  // Uma execução só de histórico serviu de reserva contra execuções
-  // simultâneas; sem cotações, ela não entra no histórico de execuções.
+
   if (claim.quoteSymbols.length === 0 && claim.unregistered.length === 0) {
     await prisma.quoteRefreshRun.delete({ where: { id: claim.runId } }).catch(() => undefined);
     outcome.status = outcome.histories.some((report) => report.status === "FAILED")
@@ -236,12 +229,7 @@ export async function syncQuotes({
   return outcome;
 }
 
-/**
- * Reserva a execução e escolhe os símbolos devidos, dentro do bloqueio: os
- * símbolos em uso (posições da competência mais recente de cada usuário) que
- * faltam no cadastro são cadastrados; dos cadastrados, entram os de cotação
- * vencida e os de histórico por carregar. Sem nada devido, não cria execução.
- */
+
 async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMonth: Date): Promise<Claim> {
   return prisma.$transaction(
     async (transaction) => {
@@ -251,7 +239,7 @@ async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMon
         data: {
           status: QuoteRefreshStatus.FAILED,
           finishedAt: now,
-          errorMessage: "A execução foi interrompida antes de terminar.",
+          errorMessage: "The execution was interrupted before completion.",
         },
       });
 
@@ -282,8 +270,8 @@ async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMon
       const historySymbols = registry
         .filter((symbol) => isHistoryDue(symbol, currentMonth, now))
         .slice(0, MAX_HISTORIES_PER_RUN);
-      // Um símbolo sem cadastro possível só é relatado quando a execução já
-      // vai acontecer, para não criar execuções de hora em hora só com ele.
+
+
       const reportUnregistered = quoteSymbols.length > 0 ? unregistered : [];
 
       if (quoteSymbols.length === 0 && historySymbols.length === 0) {
@@ -324,11 +312,7 @@ async function symbolsInUse(transaction: Transaction, monthIds: string[]) {
   return [...new Set(positions.map((position) => position.asset.quoteSymbol!))].sort();
 }
 
-/**
- * Cadastra os símbolos em uso que faltam, como os de um backup restaurado, com
- * o tipo e a moeda da cotação mais recente e a moeda da CoinGecko do ativo mais
- * antigo. Devolve os que não têm cotação nenhuma para tirar o tipo.
- */
+
 async function registerMissingSymbols(transaction: Transaction, inUse: string[]) {
   if (inUse.length === 0) {
     return [];
@@ -378,8 +362,7 @@ async function registerMissingSymbols(transaction: Transaction, inUse: string[])
     }
   }
 
-  // O símbolo reservado TD identifica Tesouro mesmo depois de restaurar um
-  // backup sem cotações. O provedor ainda confere o identificador na fonte.
+
   for (const symbol of missing) {
     if (symbol.startsWith("TD:") && providerIds.has(symbol) && !metadata.has(symbol)) {
       metadata.set(symbol, { instrumentType: "TESOURO", baseCurrency: "BRL" });
@@ -450,8 +433,7 @@ async function saveResults(
     const symbols = successes.map((success) => success.symbol);
     const prices = successes.map((success) => success.price.toString());
 
-    // Guarda o dia do preço informado pela fonte, que pode ser anterior ao da
-    // busca. Uma consulta no domingo não cria um pregão fictício no domingo.
+
     await transaction.$executeRaw`
       INSERT INTO "daily_quotes" (
         "id", "symbol", "quote_date", "instrument_type", "base_currency", "value_brl", "provider", "fetched_at", "run_id"
@@ -474,8 +456,7 @@ async function saveResults(
         "fetched_at" = EXCLUDED."fetched_at",
         "run_id" = EXCLUDED."run_id"`;
 
-    // A cotação buscada substitui as digitadas à mão naquele mês, de todos os
-    // usuários (spec 028): elas valiam só enquanto a busca falhava.
+
     await transaction.manualQuote.deleteMany({ where: { referenceDate: currentMonth, symbol: { in: symbols } } });
 
     await transaction.quoteSymbol.updateMany({
@@ -513,7 +494,7 @@ async function saveResults(
           "carried_from" = EXCLUDED."carried_from"
         WHERE "market_quotes"."quote_date" IS NULL OR EXCLUDED."quote_date" >= "market_quotes"."quote_date"`;
 
-      // Reprecifica as posições do mês corrente de cada usuário.
+
       await transaction.$executeRaw`
         UPDATE "positions" AS "p"
         SET "unit_price_brl" = "q"."value_brl",
@@ -565,16 +546,12 @@ async function saveResults(
       finishedAt,
       repricedMonth: currentMonthIds.length > 0 ? currentMonth : null,
       errorMessage:
-        failures.length === 0 ? null : `${failures.length} de ${completed.length} cotações não foram atualizadas.`,
+        failures.length === 0 ? null : `${failures.length} of ${completed.length} quotes were not updated.`,
     },
   });
 }
 
-/**
- * Histórico de cada símbolo devido: só os meses sem fechamento conhecido. Sem
- * meses faltando, só registra a conferência, sem consultar provedor. A falha de
- * um símbolo fica no cadastro e não impede os outros.
- */
+
 async function syncHistories(
   prisma: PrismaClient,
   symbols: QuoteSymbol[],
@@ -626,7 +603,7 @@ async function syncHistories(
   return reports;
 }
 
-/** Dia mais recente com cotação própria de cada mês (AAAA-MM) da janela. */
+
 async function closingDaysOf(prisma: PrismaClient, symbol: string, currentMonth: Date) {
   const from = addMonths(currentMonth, -48);
   const [daily, monthly] = await Promise.all([
@@ -653,7 +630,7 @@ async function closingDaysOf(prisma: PrismaClient, symbol: string, currentMonth:
     keep(toDateKey(quote.quoteDate));
   }
 
-  // As importadas do Excel não têm dia: são o fechamento do mês.
+
   for (const quote of monthly) {
     keep(toDateKey(quote.quoteDate ?? lastDayOf(quote.referenceDate)));
   }
@@ -661,9 +638,7 @@ async function closingDaysOf(prisma: PrismaClient, symbol: string, currentMonth:
   return days;
 }
 
-// Encerra como falha uma execução cuja gravação não terminou. A transação
-// principal foi desfeita, então os resultados são regravados aqui: cada símbolo
-// consultado vira uma falha com o motivo, para o aviso indicar cada um.
+
 async function recordFailedRun(
   prisma: PrismaClient,
   runId: string,
@@ -679,11 +654,11 @@ async function recordFailedRun(
           symbol: result.symbol,
           provider: result.provider,
           status: QuoteUpdateStatus.FAILED,
-          // Sem o valor: ele pode ter sido a causa da falha na gravação.
+
           valueBrl: null,
           errorCode: result.status === "FAILED" ? result.errorCode : "NOT_SAVED",
           errorMessage:
-            result.status === "FAILED" ? result.errorMessage : "A cotação foi obtida, mas não pôde ser gravada.",
+            result.status === "FAILED" ? result.errorMessage : "The quote was fetched but could not be saved.",
           fetchedAt: finishedAt,
         })),
       });
@@ -695,8 +670,8 @@ async function recordFailedRun(
         status: QuoteRefreshStatus.FAILED,
         finishedAt,
         errorMessage: results
-          ? "As cotações foram consultadas, mas não puderam ser gravadas."
-          : "Não foi possível consultar as cotações.",
+          ? "Quotes were fetched but could not be saved."
+          : "Could not fetch the quotes.",
       },
     });
   });
@@ -715,7 +690,7 @@ async function fetchSafely(fetchQuotes: QuoteFetcher, requests: QuoteRequest[]) 
   }
 }
 
-// Garante exatamente um resultado válido por símbolo pedido.
+
 function completeResults(requests: QuoteRequest[], fetched: QuoteResult[], today: string) {
   const bySymbol = new Map<string, QuoteResult>();
 
@@ -729,7 +704,7 @@ function completeResults(requests: QuoteRequest[], fetched: QuoteResult[], today
     const result = bySymbol.get(request.symbol);
 
     if (!result) {
-      return quoteFailure(request.symbol, "provider", "MISSING_RESULT", "O provedor não devolveu este ativo.");
+      return quoteFailure(request.symbol, "provider", "MISSING_RESULT", "The provider did not return this asset.");
     }
 
     if (result.status === "SUCCESS" && !(Number.isFinite(result.valueBrl) && result.valueBrl > 0)) {
@@ -737,12 +712,12 @@ function completeResults(requests: QuoteRequest[], fetched: QuoteResult[], today
         request.symbol,
         result.provider,
         "INVALID_VALUE",
-        "O provedor devolveu um valor que não é um preço válido.",
+        "The provider returned an invalid price.",
       );
     }
 
     if (result.status === "SUCCESS" && result.quoteDate && (!isTreasuryDay(result.quoteDate) || result.quoteDate > today)) {
-      return quoteFailure(request.symbol, result.provider, "INVALID_DATE", "O provedor devolveu uma data de preço inválida ou futura.");
+      return quoteFailure(request.symbol, result.provider, "INVALID_DATE", "The provider returned an invalid or future quote date.");
     }
 
     return result;

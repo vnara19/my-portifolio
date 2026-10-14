@@ -1,5 +1,9 @@
 "use client";
 
+/** Global toast provider keeps notices visible across tab changes. Low-priority announcements preserve accessible controls. */
+
+import { englishLabel } from "@/lib/english-labels";
+
 import { Toast } from "@base-ui/react/toast";
 import {
   CheckCircleIcon,
@@ -24,8 +28,7 @@ export type AppToastData = {
   footnote?: string;
 };
 
-// Gerenciador global: qualquer parte da interface pode publicar um aviso, e o
-// provedor fica no layout raiz para os avisos sobreviverem à troca de abas.
+
 export const appToasts = Toast.createToastManager<AppToastData>();
 
 const TIMEOUTS: Record<AppToastTone, number> = {
@@ -55,9 +58,8 @@ export function showAppToast({
     description,
     data,
     timeout: TIMEOUTS[tone],
-    // Prioridade alta no Base UI esconde o aviso visível dos leitores de tela e
-    // anuncia uma cópia; com prioridade baixa o aviso e o botão de fechar
-    // continuam acessíveis, anunciados pela região educada do viewport.
+
+
     priority: "low",
   });
 }
@@ -88,7 +90,7 @@ function ToastList() {
         swipeDirection={["up", "right"]}
         data-testid="app-toast"
         className={cn(
-          // Pilha ancorada no topo, adaptada do exemplo de posição do Base UI.
+
           "[--gap:0.625rem] [--peek:0.5rem] [--scale:calc(max(0,1-(var(--toast-index)*0.06)))] [--shrink:calc(1-var(--scale))] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))]",
           "absolute top-0 right-0 left-0 z-[calc(1000-var(--toast-index))] mx-auto h-[var(--height)] w-full origin-top overflow-hidden rounded-2xl border bg-card/95 shadow-2xl backdrop-blur-xl select-none",
           "[transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--peek))+(var(--shrink)*var(--height))))_scale(var(--scale))]",
@@ -118,7 +120,7 @@ function ToastList() {
               >
                 {items.map((item) => (
                   <li key={item.label} className="text-xs leading-snug">
-                    <span className="font-mono font-semibold text-foreground">{item.label}</span>
+                    <span className="font-mono font-semibold text-foreground">{englishLabel(item.label)}</span>
                     {item.detail ? <span className="text-muted-foreground"> · {item.detail}</span> : null}
                     {item.reason ? <span className="block text-[11px] text-muted-foreground/80">{item.reason}</span> : null}
                   </li>
@@ -130,7 +132,7 @@ function ToastList() {
             ) : null}
           </div>
           <Toast.Close
-            aria-label="Fechar aviso"
+            aria-label="Dismiss notice"
             className="-mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <XIcon aria-hidden="true" size={12} weight="bold" />

@@ -1,3 +1,5 @@
+
+/** Fallback chains: FX uses AwesomeAPI, PTAX and Yahoo; crypto uses CoinGecko, Coinbase, Yahoo and Binance; US assets use Finnhub, Yahoo and Alpha Vantage; B3 uses Yahoo, brapi and Alpha Vantage. */
 import type {
   QuoteProviderConfiguration,
   QuoteRequest,
@@ -17,21 +19,18 @@ import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { fetchTreasuryQuotes } from "@/modules/quotes/infrastructure/treasury";
 
-// Cotações de hoje por cadeia de provedores (spec 037). Cada grupo tenta o
-// primeiro provedor e passa ao seguinte só os símbolos que falharam; a falha
-// final lista o motivo de cada provedor tentado.
+
 //
-// - câmbio: AwesomeAPI → PTAX do Banco Central → Yahoo Finance;
-// - cripto: CoinGecko → Coinbase → Yahoo Finance → Binance. A Binance fica por
-//   último: ela recusa (HTTP 451) a região dos EUA onde roda o job do Neon;
-// - ativos em dólar (EUA): Finnhub → Yahoo Finance → Alpha Vantage;
-// - demais (B3): Yahoo Finance → brapi, com BRAPI_TOKEN → Alpha Vantage.
+
+// Crypto fallback: CoinGecko → Coinbase → Yahoo Finance → Binance.
+
+
 //
-// O Alpha Vantage gratuito tem 25 consultas por dia e fica por último.
+
 
 type Step = {
   provider: string;
-  /** Falso quando falta a chave; o passo é pulado sem contar como falha. */
+
   enabled: boolean;
   fetch: (requests: QuoteRequest[]) => Promise<QuoteResult[]>;
 };
@@ -54,7 +53,7 @@ export async function fetchCurrentQuotes(
   const results: QuoteResult[] = [];
   results.push(...await fetchTreasuryQuotes(treasury, { today }));
 
-  // O dólar serve ao câmbio, aos ativos em dólar e aos pares em USDT.
+
   const needsUsd = fiat.some((request) => request.symbol === "USD") || usdAssets.length > 0 || crypto.length > 0;
   const usd = needsUsd ? await fetchUsdChain(configuration, today) : null;
 
@@ -65,7 +64,7 @@ export async function fetchCurrentQuotes(
       results.push({ ...usd, symbol: "USD" });
     } else {
       results.push(
-        quoteFailure(request.symbol, "awesome-api", "UNSUPPORTED_CURRENCY", `A moeda ${request.symbol} ainda não possui integração.`),
+        quoteFailure(request.symbol, "awesome-api", "UNSUPPORTED_CURRENCY", `The currency ${request.symbol} is not integrated yet.`),
       );
     }
   }
@@ -77,7 +76,7 @@ export async function fetchCurrentQuotes(
         request.symbol,
         provider,
         "MISSING_USD_QUOTE",
-        usd?.status === "FAILED" ? `Sem o dólar do dia: ${usd.errorMessage}` : "Sem o dólar do dia.",
+        usd?.status === "FAILED" ? `Today's USD rate is unavailable: ${usd.errorMessage}` : "Today's USD rate is unavailable.",
       ),
     );
 
@@ -155,7 +154,7 @@ export async function fetchCurrentQuotes(
   return results.sort((left, right) => left.symbol.localeCompare(right.symbol));
 }
 
-/** Dólar do dia: AwesomeAPI, PTAX do Banco Central e Yahoo Finance, nessa ordem. */
+
 async function fetchUsdChain(configuration: QuoteProviderConfiguration, today: string): Promise<QuoteResult> {
   const [result] = await runChain(
     [{ symbol: "USD", instrumentType: "FIAT", baseCurrency: "USD" }],
@@ -216,14 +215,14 @@ async function runChain(requests: QuoteRequest[], steps: Step[]): Promise<QuoteR
     done.push(
       failure
         ? quoteFailure(request.symbol, failure.provider, failure.code, failure.messages.join(" "))
-        : quoteFailure(request.symbol, "configuration", "MISSING_API_KEY", "Nenhum provedor configurado para este ativo."),
+        : quoteFailure(request.symbol, "configuration", "MISSING_API_KEY", "No provider is configured for this asset."),
     );
   }
 
   return done;
 }
 
-/** Um provedor de um símbolo por vez, com a falha de cada um isolada. */
+
 async function perSymbol(
   requests: QuoteRequest[],
   provider: string,

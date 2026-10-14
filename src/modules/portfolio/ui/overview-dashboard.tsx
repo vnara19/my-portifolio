@@ -21,11 +21,9 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
 
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">
-            Visão geral
+          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Overview
           </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">
-            Patrimônio consolidado
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio overview
           </h1>
         </div>
         <DevQuoteSyncButton />
@@ -41,8 +39,7 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
         aria-labelledby="evolution-title"
       >
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">
-            Evolução do patrimônio
+          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio value over time
           </h2>
         </div>
 
@@ -56,8 +53,7 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
         </div>
       </section>
 
-      {/* Sempre à vista: evolução e tipo de ativo. O resto depende do recorte
-          escolhido nas abas da alocação (spec 078). */}
+
       <div className="mt-6">
         <AssetTypeBreakdown rows={overview.byType} />
       </div>

@@ -14,7 +14,7 @@ import { TargetEditor } from "@/modules/portfolio/ui/target-editor";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Configuração da carteira",
+  title: "Portfolio settings",
 };
 
 export default async function SettingsPage({
@@ -27,8 +27,7 @@ export default async function SettingsPage({
   const { months, selected } = await getMonthContext(mes);
   let result = await getTargetEditor(selected?.referenceDate);
 
-  // Sem metas, a página já abre com as metas padrão (spec 048), tiradas das
-  // categorias da carteira; sem posições, fica o convite para restaurar.
+
   if (result.state === "missing" && (await ensureDefaultTargetPlan().catch(() => null)) === "created") {
     result = await getTargetEditor(selected?.referenceDate);
   }
@@ -45,8 +44,8 @@ export default async function SettingsPage({
           <AccountPanel name={user.name} email={user.email} />
         </TargetEditor>
       ) : (
-        // Sem metas, como num banco vazio, ou sem conseguir lê-las, o backup
-        // continua disponível para restaurar os dados (spec 042).
+
+
         <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-7">
           <div className="flex min-h-[40dvh] flex-col items-center justify-center text-center">
             <span
@@ -61,15 +60,12 @@ export default async function SettingsPage({
                 <GearSixIcon aria-hidden="true" size={22} weight="duotone" />
               )}
             </span>
-            <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Metas da carteira</h1>
+            <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Portfolio targets</h1>
             {result.state === "error" ? (
-              <p role="alert" className="mt-3 max-w-xl text-sm text-muted-foreground">
-                Não foi possível ler as metas. {result.message}
+              <p role="alert" className="mt-3 max-w-xl text-sm text-muted-foreground">Could not load the targets. {result.message}
               </p>
             ) : (
-              <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-                Ainda não há posições. Restaure um backup ou inclua posições em Posições: as metas padrão são
-                criadas a partir das categorias da carteira.
+              <p className="mt-3 max-w-xl text-sm text-muted-foreground">There are no positions yet. Restore a backup or add positions under Positions: default targets are created from portfolio categories.
               </p>
             )}
           </div>

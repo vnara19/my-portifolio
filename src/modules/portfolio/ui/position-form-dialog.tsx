@@ -1,5 +1,9 @@
 "use client";
 
+/** Guided identification, balance, allocation and review steps. Picker values preserve database keys while labels are displayed in English. */
+
+import { englishLabel } from "@/lib/english-labels";
+
 import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import {
@@ -67,33 +71,26 @@ import {
   type TickerCheckResponse,
 } from "@/modules/quotes/domain/ticker-check";
 
-// Formulário único da posição (specs 043 e 066): inclusão guiada por etapas
-// obrigatórias e edição com três abas. Geral identifica a posição; Ativo,
-// o que depende do tipo; Rateio, a divisão entre classificações. Na edição,
-// tipo, instituição e ticker são só leitura, e nome, vencimento e liquidez,
-// que são do ativo, valem para todos os meses. Na inclusão, os dados da etapa
-// atual precisam estar completos antes de avançar à conferência e salvar.
-// Salvar grava na hora, com desfazer; só um mês aberto aceita edição (spec 034).
 
 export type PositionFormMonth = { id: string; label: string; isCurrent: boolean; quotes: MonthQuote[]; referenceDate: Date };
 export type PositionFormTarget = { mode: "add" } | { mode: "edit"; position: MonthPosition };
 
 type TabKey = "geral" | "ativo" | "rateio" | "revisar";
-/** Classificação do rateio; `rate` é a rentabilidade dela (spec 079), % do CDI ou % ao ano. */
+
 type AllocationRow = { key: number; assetClass: string; subclass: string; duration: string; weight: string; rate: string };
 
 function rateText(rate: number | null | undefined) {
-  return rate === null || rate === undefined ? "" : String(rate).replace(".", ",");
+  return rate === null || rate === undefined ? "" : String(rate);
 }
 type Issue = { tab: TabKey; message: string };
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "geral", label: "Geral" },
-  { key: "ativo", label: "Ativo" },
-  { key: "rateio", label: "Rateio" },
+  { key: "geral", label: "Overall" },
+  { key: "ativo", label: "Asset" },
+  { key: "rateio", label: "Allocation" },
 ];
 const NEW_INSTITUTION = "nova:";
-const DEFAULT_ACCOUNT_NAME = "Principal";
+const DEFAULT_ACCOUNT_NAME = "Main";
 const CHECK_DEBOUNCE_MS = 500;
 
 const popupClass =
@@ -111,13 +108,13 @@ export function PositionFormDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Continua definido depois de fechar, para o conteúdo não sumir na animação. */
+
   target: PositionFormTarget | null;
-  /** Muda a cada abertura e recomeça o formulário. */
+
   formKey: number;
   catalog: EditingCatalog;
   month: PositionFormMonth;
-  /** Conta e ativo (`conta:ativo`) que já têm posição na competência. */
+
   occupied: Set<string>;
   onSaved: (result: EditActionResult) => void;
 }) {
@@ -164,29 +161,29 @@ function PositionForm({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
-  // Geral.
+  // General settings.
   const [kind, setKind] = useState<AssetKind | null>(null);
   const [institutionValue, setInstitutionValue] = useState<string | null>(null);
   const [createdInstitution, setCreatedInstitution] = useState<{ key: string; name: string } | null>(null);
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
-  // A inclusão cadastra o saldo atual, sem exigir uma escolha contábil (spec 066).
+
   const initialKind = "OPENING" as const;
   const [strategy, setStrategy] = useState(editing?.strategy ?? "");
-  // Ativo.
+  // Asset details.
   const [tickerText, setTickerText] = useState("");
   const [coinChoice, setCoinChoice] = useState<{ symbol: string; id: string } | null>(null);
   const [coinCandidates, setCoinCandidates] = useState<{ symbol: string; coins: CoinCandidate[] } | null>(null);
   const [manualPrice, setManualPrice] = useState("");
-  // Tesouro (spec 070): a posição pode ser informada pelo valor em reais, como o
-  // saldo que o banco mostra; a quantidade de títulos sai pelo preço.
+
+
   const [valueKind, setValueKind] = useState<"quantity" | "amount">("quantity");
   const [maturity, setMaturity] = useState(editing?.maturityDate ?? "");
   const [liquidity, setLiquidity] = useState(editing?.liquidity ?? "");
-  // Tipo do ativo (spec 068): na edição, escolhido numa lista fixa; na
-  // inclusão, é o próprio tipo escolhido na primeira etapa.
+
+
   const [assetType, setAssetType] = useState<AssetType | null>(editing?.assetType ?? null);
-  // Rateio: na inclusão, segue o tipo e o ativo escolhidos até ser mexido.
+
   const [rows, setRows] = useState<AllocationRow[] | null>(() =>
     editing
       ? editing.allocations.map((allocation, index) => ({
@@ -200,16 +197,14 @@ function PositionForm({
       : null,
   );
   const [nextRowKey, setNextRowKey] = useState(100);
-  // Rendimento automático (spec 079): na renda fixa e no caixa em reais. A
-  // rentabilidade é de cada classificação Pós-fixado (% do CDI) ou Prefixado
-  // (% ao ano); a flag é da posição.
+
+
   const [autoIncome, setAutoIncome] = useState(editing?.autoIncome ?? false);
   const [appliedOn, setAppliedOn] = useState(() => defaultAppliedOn(month.referenceDate));
 
   const quoteOf = (symbol: string) => month.quotes.find((entry) => entry.symbol === symbol)?.valueBrl ?? null;
 
-  // Instituição: existente ou nova, criada ao salvar com a conta "Principal"
-  // (spec 040); a conta não aparece na interface.
+
   const institutionOptions: PickerOption[] = [
     ...catalog.institutions.map((institution) => ({ value: institution.id, label: institution.name })),
     ...(createdInstitution
@@ -231,7 +226,7 @@ function PositionForm({
       return;
     }
 
-    // Um nome igual sem acentos, maiúsculas ou pontuação é a mesma instituição.
+
     const existing = catalog.institutions.find((institution) => normalizeKey(institution.name) === key);
 
     if (existing) {
@@ -249,7 +244,7 @@ function PositionForm({
     setValueKind("quantity");
 
     if (next === "treasury") {
-      // A lista de títulos já começa a carregar enquanto o usuário escolhe a instituição.
+
       void prefetchTreasuryCatalog().catch(() => undefined);
     }
 
@@ -258,8 +253,7 @@ function PositionForm({
     }
   };
 
-  // Ativo da inclusão: a identidade é a mesma que o servidor calcula, e um
-  // ativo existente com a mesma chave é reaproveitado (spec 040).
+
   const definition = kind ? ASSET_KIND_DEFINITIONS[kind] : null;
   const typedName = cleanName(assetName);
   const symbol =
@@ -300,13 +294,13 @@ function PositionForm({
     (response?.status === "unavailable" || (response?.status === "found" && !month.isCurrent));
   const manualPriceValue = parseLocaleNumber(manualPrice);
   const treasury = !editing && kind === "treasury";
-  // No Tesouro novo, o preço oficial vem sugerido e pode ser trocado pelo seu.
+
   const officialTreasuryPrice =
     treasury && isNewAsset && response?.status === "found" && month.isCurrent ? response.priceBrl : null;
   const showPriceField = needsManualPrice || officialTreasuryPrice !== null;
   const ownTreasuryPrice = officialTreasuryPrice !== null && manualPriceValue !== null && manualPriceValue > 0;
 
-  // Cotação para a prévia do total e para saber se o ativo pode ser salvo.
+
   let price: number | null = null;
   let missingQuoteSymbol: string | null = null;
   let tickerIssue: string | null = null;
@@ -321,9 +315,9 @@ function PositionForm({
     missingQuoteSymbol = price ? null : USD_SYMBOL;
   } else if (definition?.ticker === "market") {
     if (!symbol) {
-      tickerIssue = "Informe um ticker válido.";
+      tickerIssue = "Enter a valid ticker.";
     } else if (!tickerCheckAllowsSaving(response)) {
-      tickerIssue = check.state === "checking" || check.state === "idle" ? "Aguarde a conferência do ticker." : "Confira o ticker.";
+      tickerIssue = check.state === "checking" || check.state === "idle" ? "Wait for ticker verification." : "Verify the ticker.";
     } else if (response.status === "known" || (response.status === "found" && month.isCurrent)) {
       price = ownTreasuryPrice ? manualPriceValue : response.priceBrl;
     } else if (needsManualPrice) {
@@ -336,18 +330,18 @@ function PositionForm({
   const amountMode = treasury && valueKind === "amount";
   const valueLabel =
     !editing && !kind
-      ? "Quantidade ou saldo"
+      ? "Quantity or balance"
       : amountMode
-        ? "Valor da posição (R$)"
+        ? "Position value (BRL)"
         : treasury
-          ? "Quantidade de títulos"
+          ? "Number of securities"
           : quoteSymbol === USD_SYMBOL
-            ? "Saldo (US$)"
+            ? "Balance (USD)"
             : quoted
-              ? "Quantidade"
-              : "Saldo (R$)";
+              ? "Quantity"
+              : "Balance (BRL)";
   const parsedValue = parseLocaleNumber(value);
-  // Valor da posição em reais e, no Tesouro pelo valor, os títulos que ele compra.
+
   const positionTotal =
     parsedValue === null ? null : amountMode ? parsedValue : quoted ? (price === null ? null : parsedValue * price) : parsedValue;
   const impliedQuantity = amountMode && parsedValue !== null && price ? parsedValue / price : null;
@@ -355,7 +349,7 @@ function PositionForm({
     account?.accountId && catalogAsset && occupied.has(`${account.accountId}:${catalogAsset.id}`),
   );
 
-  // Rateio da inclusão: o do ativo existente ou o padrão do tipo.
+
   const derivedRows: AllocationRow[] =
     catalogAsset && catalogAsset.allocations.length > 0
       ? catalogAsset.allocations.map((allocation, index) => ({
@@ -371,8 +365,8 @@ function PositionForm({
         : [{ key: 0, assetClass: "", subclass: "", duration: "", weight: "100", rate: "" }];
   const allocationRows = rows ?? derivedRows;
   const weightSum = allocationRows.reduce((total, row) => total + (parseLocaleNumber(row.weight) ?? 0), 0);
-  // A classificação vem da lista fixa (spec 068); uma antiga, fora dela, só
-  // continua se a posição editada já a tinha.
+
+
   const knownRow = (row: AllocationRow) =>
     classificationIssue(row) === null ||
     Boolean(
@@ -391,21 +385,20 @@ function PositionForm({
   const balanced = Math.abs(weightSum - 100) <= 0.01;
 
   const changeRows = (change: (current: AllocationRow[]) => AllocationRow[]) => setRows(change(allocationRows));
-  // Classe, subclasse e resgate dependem uns dos outros: trocar a classe limpa
-  // o que não vale nela e já escolhe a única opção, quando há só uma.
+
+
   const updateRow = (key: number, field: keyof Omit<AllocationRow, "key">, text: string) =>
     changeRows((current) =>
       current.map((row) => {
         if (row.key !== key) return row;
         const changed = { ...row, [field]: text };
         const next = field === "assetClass" ? { ...changed, ...fitClassification(changed) } : changed;
-        // Outro indexador, outra taxa: o % do CDI não vale como % ao ano.
+
         return indexerOfSubclass(next.subclass) === indexerOfSubclass(row.subclass) ? next : { ...next, rate: "" };
       }),
     );
 
-  // Rentabilidade por classificação (spec 079): cada classificação Pós-fixado
-  // ou Prefixado de uma renda fixa ou caixa em reais tem a sua.
+
   const incomeType = editing ? (editing.quoteSymbol ? null : editing.assetType) : isNewAsset ? kind : null;
   const rowIndexer = (row: AllocationRow): AutoIncomeIndexer | null =>
     supportsAutoIncome(incomeType) ? indexerOfSubclass(row.subclass) : null;
@@ -417,45 +410,45 @@ function PositionForm({
 
   if (!editing) {
     if (!kind) {
-      issues.push({ tab: "geral", message: "Escolha o tipo do ativo." });
+      issues.push({ tab: "geral", message: "Choose the asset type." });
     }
     if (!institutionName) {
-      issues.push({ tab: "geral", message: "Escolha a instituição." });
+      issues.push({ tab: "geral", message: "Choose the institution." });
     }
   }
   if (!typedName) {
-    issues.push({ tab: editing ? "geral" : "ativo", message: "Informe o nome do ativo." });
+    issues.push({ tab: editing ? "geral" : "ativo", message: "Enter the asset name." });
   }
   if (!editing && (parsedValue === null || parsedValue < 0)) {
     issues.push({
       tab: "ativo",
-      message: !editing && !kind ? "Informe a quantidade ou o saldo." : quoted && quoteSymbol !== USD_SYMBOL ? "Informe a quantidade." : "Informe o saldo.",
+      message: !editing && !kind ? "Enter the quantity or balance." : quoted && quoteSymbol !== USD_SYMBOL ? "Enter the quantity." : "Enter the balance.",
     });
   }
   if (duplicate) {
-    issues.push({ tab: "ativo", message: "Este ativo já tem posição nesta instituição." });
+    issues.push({ tab: "ativo", message: "This asset already has a position at this institution." });
   }
   if (!editing && kind) {
     if (tickerIssue && !catalogAsset) {
       issues.push({ tab: "ativo", message: tickerIssue });
     }
     if (needsManualPrice && (manualPriceValue === null || manualPriceValue <= 0)) {
-      issues.push({ tab: "ativo", message: treasury ? "Informe o preço do título em R$." : "Informe a cotação em R$." });
+      issues.push({ tab: "ativo", message: treasury ? "Enter the security price in BRL." : "Enter the quote in BRL." });
     }
     if (officialTreasuryPrice !== null && manualPrice.trim() !== "" && !ownTreasuryPrice) {
-      issues.push({ tab: "ativo", message: "Informe um preço do título válido ou deixe em branco para usar o oficial." });
+      issues.push({ tab: "ativo", message: "Enter a valid security price or leave blank to use the official price." });
     }
     if (missingQuoteSymbol) {
       issues.push({
         tab: "ativo",
-        message: `Não há cotação de ${missingQuoteSymbol} nesta competência. Informe-a na página de cotações antes.`,
+        message: `No quote exists for ${missingQuoteSymbol} in this reporting month. Enter it on the Quotes page first.`,
       });
     }
   }
   if (!rowsComplete) {
-    issues.push({ tab: "rateio", message: "Escolha classe, subclasse e resgate da lista e informe o peso de cada classificação." });
+    issues.push({ tab: "rateio", message: "Choose a class, subclass and redemption term from the list and enter each allocation weight." });
   } else if (!balanced) {
-    issues.push({ tab: "rateio", message: `O rateio soma ${formatWeight(weightSum)}%; precisa somar 100%.` });
+    issues.push({ tab: "rateio", message: `The allocation adds up to ${formatWeight(weightSum)}%; it must total 100%.` });
   }
 
   const badRate = allocationRows.findIndex((row) => {
@@ -464,17 +457,17 @@ function PositionForm({
   });
 
   if (badRate >= 0) {
-    issues.push({ tab: "rateio", message: `Revise a rentabilidade da classificação ${badRate + 1}.` });
+    issues.push({ tab: "rateio", message: `Review the rate of return for classification ${badRate + 1}.` });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowIndexer(row))) {
     issues.push({
       tab: "rateio",
-      message: "Com o rendimento automático, cada classificação precisa ser pós-fixada ou prefixada.",
+      message: "With automatic accrual, every classification must be floating-rate or fixed-rate.",
     });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowRate(row))) {
-    issues.push({ tab: "rateio", message: "Informe a rentabilidade para calcular o rendimento automaticamente." });
+    issues.push({ tab: "rateio", message: "Enter the rate of return to calculate accrual automatically." });
   }
   if (wantsAutoIncome && !editing && !appliedOn) {
-    issues.push({ tab: "rateio", message: "Informe o dia da aplicação." });
+    issues.push({ tab: "rateio", message: "Enter the investment date." });
   }
 
   const tabsWithIssues = new Set(issues.map((issue) => issue.tab));
@@ -562,17 +555,17 @@ function PositionForm({
       if (result.ok) {
         onSaved(result);
       } else {
-        if (!editing && /conferência do ticker .* expirou/i.test(result.message)) {
+        if (!editing && /Ticker verification for .* has expired/i.test(result.message)) {
           check.refresh();
           setTab("ativo");
-          setError("A conferência venceu. Estamos atualizando a cotação; confira os dados e continue. Seu preenchimento foi preservado.");
+          setError("Verification expired. We are refreshing the quote; review the details and continue. Your entries have been preserved.");
         } else setError(result.message);
       }
     });
   };
 
   const strategyOptions: PickerOption[] = [
-    { value: "", label: "Sem estratégia" },
+    { value: "", label: "No strategy" },
     ...catalog.strategies.map((entry) => ({ value: entry, label: entry })),
   ];
   const market = !editing && definition?.ticker === "market";
@@ -585,16 +578,16 @@ function PositionForm({
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {editing ? `Editar ${editing.assetName}` : "Adicionar posição"}
+            {editing ? `Edit ${editing.assetName}` : "Add position"}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
-              ? `${editing.institutionName} · ${month.label}`
-              : `${month.label} · preencha cada etapa e confira antes de salvar.`}
+              ? `${editing.institutionName} · ${englishLabel(month.label)}`
+              : `${englishLabel(month.label)} · complete each step and review before saving.`}
           </Dialog.Description>
         </div>
         <Dialog.Close
-          aria-label="Fechar"
+          aria-label="Close"
           className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <XIcon aria-hidden="true" size={14} weight="bold" />
@@ -603,7 +596,7 @@ function PositionForm({
 
       <Tabs.Root value={tab} onValueChange={(next) => setTab(next as TabKey)} className="flex min-h-0 flex-1 flex-col">
         {editing ? <Tabs.List
-          aria-label="Seções da posição"
+          aria-label="Position sections"
           className="relative mx-5 mt-4 grid shrink-0 grid-cols-3 rounded-xl border border-border bg-background/40 p-1 sm:mx-6"
         >
           <Tabs.Indicator className="absolute top-1 bottom-1 left-[var(--active-tab-left)] w-[var(--active-tab-width)] rounded-lg bg-white/[0.07] transition-[left,width] duration-200 ease-out" />
@@ -615,14 +608,14 @@ function PositionForm({
                 key={entry.key}
                 value={entry.key}
                 disabled={locked}
-                title={locked ? "Escolha o tipo do ativo na aba Geral para liberar." : undefined}
+                title={locked ? "Choose the asset type in the General tab to enable this." : undefined}
                 data-locked={locked ? "" : undefined}
                 className="relative z-10 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-active:text-foreground data-disabled:cursor-not-allowed data-disabled:text-muted-foreground/50 data-disabled:hover:text-muted-foreground/50"
               >
                 {locked ? (
                   <LockSimpleIcon aria-hidden="true" size={12} weight="bold" className="shrink-0" />
                 ) : null}
-                {entry.label}
+                {englishLabel(entry.label)}
                 {entry.key === "rateio" && !locked ? (
                   <span
                     className={cn(
@@ -634,106 +627,105 @@ function PositionForm({
                   </span>
                 ) : null}
                 {showIssues && !locked && tabsWithIssues.has(entry.key) ? (
-                  <span aria-label="com pendências" className="size-1.5 rounded-full bg-warning-foreground" />
+                  <span aria-label="with pending items" className="size-1.5 rounded-full bg-warning-foreground" />
                 ) : null}
               </Tabs.Tab>
             );
           })}
-        </Tabs.List> : <FlowSteps steps={["Posição", "Ativo", "Rateio", "Conferir"]} current={flowStep} />}
+        </Tabs.List> : <FlowSteps steps={["Position", "Asset", "Allocation", "Review"]} current={flowStep} />}
 
         {!editing && catalogAsset ? (
           <div className="mx-5 mt-3 sm:mx-6" data-asset-existing="">
             <StatusLine tone="success">
-              {`${catalogAsset.name} já existe: a posição usa este ativo e o rateio da posição mais recente dele.`}
+              {`${catalogAsset.name} already exists: the position uses this asset and the allocation from its latest position.`}
             </StatusLine>
           </div>
         ) : null}
 
-        {/* Altura mínima: trocar de aba não faz o diálogo pular de tamanho. */}
+
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
           <Tabs.Panel value="geral" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Identifique sua posição" description="Escolha onde ela está e como você quer identificá-la." /> : null}
+            {!editing ? <FlowHeading title="Identify your position" description="Choose where it is held and how to identify it." /> : null}
             {editing ? (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Tipo do ativo">
+                <Field label="Asset type">
                   <Picker
-                    aria-label="Tipo do ativo"
+                    aria-label="Asset type"
                     options={ASSET_TYPES.map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
                     value={assetType}
                     onValueChange={(next) => setAssetType(next as AssetType)}
                   />
                 </Field>
-                <ReadOnly label="Instituição" value={editing.institutionName} />
+                <ReadOnly label="Institution" value={editing.institutionName} />
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Tipo do ativo">
+                <Field label="Asset type">
                   <Picker
-                    aria-label="Tipo do ativo"
+                    aria-label="Asset type"
                     options={ASSET_KINDS.map((entry) => ({
                       value: entry,
-                      label: ASSET_KIND_DEFINITIONS[entry].label,
+                      label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
                       hint: ASSET_KIND_DEFINITIONS[entry].hint,
                     }))}
                     value={kind}
                     onValueChange={chooseKind}
-                    placeholder="Escolha o tipo"
+                    placeholder="Choose the type"
                   />
                 </Field>
-                <Field label="Instituição">
+                <Field label="Institution">
                   <Picker
-                    aria-label="Instituição"
+                    aria-label="Institution"
                     options={institutionOptions}
                     value={institutionValue}
                     onValueChange={setInstitutionValue}
                     onCreate={createInstitution}
-                    placeholder="Selecione ou digite"
-                    emptyMessage="Digite para criar uma instituição"
+                    placeholder="Select or type"
+                    emptyMessage="Type to create an institution"
                   />
                 </Field>
               </div>
             )}
 
             {editing ? <>
-            <Field label="Nome do ativo">
+            <Field label="Asset name">
               <input
-                aria-label="Nome do ativo"
+                aria-label="Asset name"
                 value={assetName}
                 onChange={(event) => setAssetName(event.target.value)}
                 autoComplete="off"
-                placeholder={market ? "Como ETF - VOO" : "Como CDB Banco X 110%"}
+                placeholder={market ? "For example, ETF - VOO" : "For example, Bank X CDB 110%"}
                 className={inputClass}
               />
             </Field>
             {editing ? (
-              <p className="-mt-1.5 text-[11px] text-muted-foreground">Tipo e nome são do ativo e valem para todos os meses.</p>
+              <p className="-mt-1.5 text-[11px] text-muted-foreground">The asset type and name apply to every month.</p>
             ) : null}
 
             </> : null}
             <div className="grid grid-cols-2 gap-3">
               {editing ? <ReadOnly label={valueLabel} value={value} mono /> : null}
-              <Field label="Estratégia">
-                <Picker aria-label="Estratégia" options={strategyOptions} value={strategy} onValueChange={setStrategy} />
+              <Field label="Strategy">
+                <Picker aria-label="Strategy" options={strategyOptions} value={strategy} onValueChange={setStrategy} />
               </Field>
             </div>
-            {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Para mudar a quantidade ou o saldo, use Movimentar.</p> : null}
+            {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Use Transactions to change the quantity or balance.</p> : null}
 
           </Tabs.Panel>
 
           <Tabs.Panel value="ativo" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Informe o ativo e o saldo atual" description="A cotação é conferida automaticamente. Depois, informe a quantidade ou o saldo desta posição." /> : null}
+            {!editing ? <FlowHeading title="Enter the asset and current balance" description="The quote is verified automatically. Then enter the quantity or balance for this position." /> : null}
             {!editing && !kind ? (
-              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">
-                Escolha o tipo do ativo na aba Geral.
+              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type in the General tab.
               </p>
             ) : (
               <>
                 {editing ? (
                   <div className="grid grid-cols-2 gap-3">
-                    <ReadOnly label="Ticker" value={editing.ticker ?? "Sem ticker · saldo"} mono />
-                    <ReadOnly label="Moeda base" value={editing.baseCurrency} mono />
+                    <ReadOnly label="Ticker" value={editing.ticker ?? "No ticker · balance"} mono />
+                    <ReadOnly label="Base currency" value={editing.baseCurrency} mono />
                     {editing.unitPriceBrl !== null ? (
-                      <ReadOnly label={`Cotação de ${month.label}`} value={formatPriceBrl(editing.unitPriceBrl)} mono />
+                      <ReadOnly label={`Quote for ${englishLabel(month.label)}`} value={formatPriceBrl(editing.unitPriceBrl)} mono />
                     ) : null}
                   </div>
                 ) : null}
@@ -741,7 +733,7 @@ function PositionForm({
                 {market && kind ? (
                   <>
                     {kind === "treasury" ? (
-                      <Field label="Título do Tesouro">
+                      <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
                           setTickerText(bond.symbol);
                           setMaturity(bond.maturityDate);
@@ -769,9 +761,9 @@ function PositionForm({
                       isCurrent={month.isCurrent}
                     />
                     {coins && coins.length > 1 && symbol ? (
-                      <Field label={`Moeda · ${coins.length} com o símbolo ${symbol}`}>
+                      <Field label={`Currency · ${coins.length} with symbol ${symbol}`}>
                         <Picker
-                          aria-label="Moeda na CoinGecko"
+                          aria-label="CoinGecko coin"
                           options={coins.map((coin) => ({ value: coin.id, label: coin.name, hint: coin.id }))}
                           value={chosenCoinId ?? checkedCoinId ?? coins[0].id}
                           onValueChange={(id) => setCoinChoice({ symbol, id })}
@@ -780,9 +772,9 @@ function PositionForm({
                     ) : null}
                     {showPriceField ? (
                       <div className="space-y-1.5">
-                        <Field label={treasury ? "Preço do título (R$)" : "Cotação em R$"}>
+                        <Field label={treasury ? "Security price (BRL)" : "Quote in BRL"}>
                           <input
-                            aria-label={treasury ? "Preço do título" : "Cotação em R$"}
+                            aria-label={treasury ? "Security price" : "Quote in BRL"}
                             inputMode="decimal"
                             value={manualPrice}
                             onChange={(event) => setManualPrice(event.target.value)}
@@ -797,8 +789,8 @@ function PositionForm({
                         {officialTreasuryPrice !== null ? (
                           <p className="text-[11px] leading-5 text-muted-foreground" data-testid="treasury-price-hint">
                             {ownTreasuryPrice
-                              ? `Vale o seu preço, só para você neste mês. O oficial é ${formatPriceBrl(officialTreasuryPrice)}.`
-                              : `Preço oficial: ${formatPriceBrl(officialTreasuryPrice)}. Deixe em branco para usá-lo ou digite o seu.`}
+                              ? `Your price applies only to your portfolio this month. The official price is ${formatPriceBrl(officialTreasuryPrice)}.`
+                              : `Official price: ${formatPriceBrl(officialTreasuryPrice)}. Leave blank to use it or enter your own price.`}
                           </p>
                         ) : null}
                       </div>
@@ -806,15 +798,15 @@ function PositionForm({
                   </>
                 ) : null}
 
-                {!editing ? <Field label="Nome do ativo"><input aria-label="Nome do ativo" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={market ? "Como ETF - VOO" : "Como CDB Banco X"} className={inputClass} /></Field> : null}
+                {!editing ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={market ? "For example, ETF - VOO" : "For example, Bank X CDB"} className={inputClass} /></Field> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
                   {treasury ? (
-                    <Field label="Informar a posição por">
+                    <Field label="Enter the position using">
                       <Picker
-                        aria-label="Informar a posição por"
+                        aria-label="Enter the position using"
                         options={[
-                          { value: "quantity", label: "Quantidade de títulos" },
-                          { value: "amount", label: "Valor da posição (R$)", hint: "saldo no banco" },
+                          { value: "quantity", label: "Number of securities" },
+                          { value: "amount", label: "Position value (BRL)", hint: "account balance" },
                         ]}
                         value={valueKind}
                         onValueChange={(next) => setValueKind(next as "quantity" | "amount")}
@@ -824,20 +816,19 @@ function PositionForm({
                   <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field>
                   {impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
-                      {formatNumberText(impliedQuantity, 6)} títulos <span className="text-[11px] text-muted-foreground">pelo preço de {formatPriceBrl(price ?? 0)}</span>
+                      {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
                   ) : quoted && !amountMode && positionTotal !== null ? (
-                    <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "pelo seu preço" : "pela cotação conferida"}</span></p>
+                    <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && baseCurrency ? <ReadOnly label="Moeda base" value={baseCurrency} mono /> : null}
+                {!editing && baseCurrency ? <ReadOnly label="Base currency" value={baseCurrency} mono /> : null}
 
-                {/* Na inclusão, o vencimento faz parte da identidade do ativo:
-                    um título de mesmo nome e outro prazo é um ativo novo. */}
+
                 {canEditMaturity ? (
-                  <Field label="Vencimento (opcional)">
+                  <Field label="Maturity (optional)">
                     <DatePicker
-                      aria-label="Vencimento"
+                      aria-label="Maturity"
                       value={maturity}
                       min="2000-01-01"
                       max="2100-12-31"
@@ -846,24 +837,23 @@ function PositionForm({
                     />
                   </Field>
                 ) : null}
-                {treasuryMaturity ? <ReadOnly label="Vencimento do título" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
+                {treasuryMaturity ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
                 {editing || isNewAsset ? (
-                  <Field label="Liquidez (opcional)">
+                  <Field label="Liquidity (optional)">
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
                 ) : catalogAsset ? (
-                  <ReadOnly label="Liquidez do ativo" value={catalogAsset.liquidity ?? "Não informada"} />
+                  <ReadOnly label="Asset liquidity" value={catalogAsset.liquidity ?? "Not specified"} />
                 ) : null}
               </>
             )}
           </Tabs.Panel>
 
           <Tabs.Panel value="rateio" className="outline-none">
-            {!editing ? <FlowHeading title="Defina o rateio" description="Confirme a classificação que será usada nas metas da carteira. Os pesos precisam somar 100%." /> : null}
+            {!editing ? <FlowHeading title="Set the allocation" description="Confirm the classification used for portfolio targets. Weights must add up to 100%." /> : null}
             {editing ? (
-              <p className="text-[11px] leading-5 text-muted-foreground">
-                Divida a posição entre classificações. A soma dos pesos precisa dar 100%.
+              <p className="text-[11px] leading-5 text-muted-foreground">Split the position across classifications. Weights must add up to 100%.
               </p>
             ) : null}
             <div className="mt-3 space-y-2.5">
@@ -871,13 +861,12 @@ function PositionForm({
                 <div key={row.key} className="rounded-xl border border-border/70 bg-background/30 p-3" data-allocation-row>
                   <div className="flex items-center gap-2">
                     <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(row.assetClass) }} />
-                    <span className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
-                      Classificação {index + 1}
+                    <span className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Classification {index + 1}
                     </span>
                     {allocationRows.length > 1 ? (
                       <button
                         type="button"
-                        aria-label={`Remover classificação ${index + 1}`}
+                        aria-label={`Remove classification ${index + 1}`}
                         onClick={() => changeRows((current) => current.filter((entry) => entry.key !== row.key))}
                         className="ml-auto grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50"
                       >
@@ -886,36 +875,36 @@ function PositionForm({
                     ) : null}
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_88px]">
-                    <Field label="Classe">
+                    <Field label="Class">
                       <AllocationPicker
-                        label={`Classe da classificação ${index + 1}`}
+                        label={`Allocation class ${index + 1}`}
                         values={ASSET_CLASSES}
                         value={row.assetClass}
                         onChange={(next) => updateRow(row.key, "assetClass", next)}
                       />
                     </Field>
-                    <Field label="Subclasse">
+                    <Field label="Subclass">
                       <AllocationPicker
-                        label={`Subclasse da classificação ${index + 1}`}
+                        label={`Allocation subclass ${index + 1}`}
                         values={subclassesOf(row.assetClass)}
                         value={row.subclass}
                         onChange={(next) => updateRow(row.key, "subclass", next)}
-                        placeholder={row.assetClass ? "Escolha" : "Escolha a classe"}
+                        placeholder={row.assetClass ? "Choose" : "Choose the class"}
                         disabled={!row.assetClass}
                       />
                     </Field>
-                    <Field label="Resgate">
+                    <Field label="Redemption term">
                       <RedemptionPicker
-                        label={`Resgate da classificação ${index + 1}`}
+                        label={`Allocation redemption term ${index + 1}`}
                         values={redemptionsOf(row.assetClass)}
                         value={row.duration}
                         onChange={(next) => updateRow(row.key, "duration", next)}
                         disabled={!row.assetClass}
                       />
                     </Field>
-                    <Field label="Peso (%)">
+                    <Field label="Weight (%)">
                       <input
-                        aria-label={`Peso da classificação ${index + 1}`}
+                        aria-label={`Allocation weight ${index + 1}`}
                         inputMode="decimal"
                         value={row.weight}
                         onChange={(event) => updateRow(row.key, "weight", event.target.value)}
@@ -952,8 +941,7 @@ function PositionForm({
               }}
               className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <PlusIcon aria-hidden="true" size={13} weight="bold" />
-              Adicionar classificação
+              <PlusIcon aria-hidden="true" size={13} weight="bold" />Add classification
             </button>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
               <div
@@ -964,8 +952,7 @@ function PositionForm({
             <p
               aria-live="polite"
               className={cn("mt-2 text-xs font-medium", balanced ? "text-primary" : "text-warning-foreground")}
-            >
-              Soma: {formatWeight(weightSum)}%
+            >Sum: {formatWeight(weightSum)}%
               {balanced ? "" : weightSum < 100 ? ` · faltam ${formatWeight(100 - weightSum)}%` : ` · sobram ${formatWeight(weightSum - 100)}%`}
             </p>
             {incomeAvailable ? (
@@ -979,29 +966,28 @@ function PositionForm({
             ) : null}
           </Tabs.Panel>
           {!editing ? <Tabs.Panel value="revisar" className="space-y-5 outline-none">
-            <FlowHeading title="Confira sua nova posição" description="Revise os dados e o saldo atual antes de cadastrar. Você pode voltar para fazer ajustes." />
+            <FlowHeading title="Review your new position" description="Review the details and current balance before saving. You can go back to make adjustments." />
             <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border/60 pb-5">
-              <ReviewValue label="Ativo" value={typedName} />
-              <ReviewValue label="Instituição" value={institutionName ?? "—"} />
-              <ReviewValue label="Tipo" value={definition?.label ?? "—"} />
+              <ReviewValue label="Asset" value={typedName} />
+              <ReviewValue label="Institution" value={institutionName ?? "—"} />
+              <ReviewValue label="Type" value={definition?.label ?? "—"} />
               <ReviewValue label={valueLabel} value={value} mono />
               {symbol ? <ReviewValue label="Ticker" value={symbol} mono /> : null}
-              {price !== null ? <ReviewValue label={ownTreasuryPrice || (treasury && needsManualPrice) ? "Preço informado" : "Cotação conferida"} value={formatPriceBrl(price)} mono /> : null}
-              {impliedQuantity !== null ? <ReviewValue label="Quantidade de títulos" value={formatNumberText(impliedQuantity, 6)} mono /> : null}
+              {price !== null ? <ReviewValue label={ownTreasuryPrice || (treasury && needsManualPrice) ? "Entered price" : "Verified quote"} value={formatPriceBrl(price)} mono /> : null}
+              {impliedQuantity !== null ? <ReviewValue label="Number of securities" value={formatNumberText(impliedQuantity, 6)} mono /> : null}
             </dl>
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Valor da posição</span><strong className="font-mono text-xl font-medium text-primary">{positionTotal !== null ? formatBrl(positionTotal) : "—"}</strong></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Position value</span><strong className="font-mono text-xl font-medium text-primary">{positionTotal !== null ? formatBrl(positionTotal) : "—"}</strong></div>
             <div className="space-y-2 border-t border-border/60 pt-4 text-xs text-muted-foreground">
-              {allocationRows.map((row) => <p key={row.key} className="flex justify-between gap-3"><span className="min-w-0">{row.assetClass} · {row.subclass} · {row.duration}{rowRate(row) ? ` · ${rowRate(row)}${rowIndexer(row) === "CDI" ? "% do CDI" : "% ao ano"}` : ""}</span><span className="shrink-0 font-mono text-foreground">{row.weight}%</span></p>)}
-              <p>Estratégia: {strategy || "Sem estratégia"}</p>
-              {wantsAutoIncome ? <p>Rendimento automático desde {appliedOn.split("-").reverse().join("/")}</p> : null}
-              {maturityDate ? <p>Vencimento: {maturityDate.split("-").reverse().join("/")}</p> : null}
+              {allocationRows.map((row) => <p key={row.key} className="flex justify-between gap-3"><span className="min-w-0">{englishLabel(row.assetClass)} · {englishLabel(row.subclass)} · {englishLabel(row.duration)}{rowRate(row) ? ` · ${rowRate(row)}${rowIndexer(row) === "CDI" ? "% of CDI" : "% per year"}` : ""}</span><span className="shrink-0 font-mono text-foreground">{row.weight}%</span></p>)}
+              <p>Strategy: {strategy || "No strategy"}</p>
+              {wantsAutoIncome ? <p>Automatic accrual since {appliedOn.split("-").reverse().join("/")}</p> : null}
+              {maturityDate ? <p>Maturity: {maturityDate.split("-").reverse().join("/")}</p> : null}
             </div>
           </Tabs.Panel> : null}
         </div>
       </Tabs.Root>
 
-      {/* A contagem de pendências fica no rodapé para os testes, que rodam
-          sobre os dados reais, saberem se o formulário está pronto sem salvar. */}
+
       <footer
         data-issue-count={issues.length}
         className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-4 sm:px-6"
@@ -1015,15 +1001,15 @@ function PositionForm({
           ) : visibleIssue ? (
             <p className="flex items-start gap-1.5 text-[11px] leading-snug text-warning-foreground" data-testid="position-form-issue">
               <WarningCircleIcon aria-hidden="true" className="mt-px shrink-0" size={13} weight="fill" />
-              {TABS.find((entry) => entry.key === visibleIssue.tab)?.label}: {visibleIssue.message}
+              {englishLabel(TABS.find((entry) => entry.key === visibleIssue.tab)?.label)}: {visibleIssue.message}
             </p>
           ) : null}
         </div>
         <div className="ml-auto flex gap-2">
-          {editing || flowStep === 0 ? <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancelar</Dialog.Close> : <button type="button" onClick={() => { setTab(flowKeys[flowStep - 1]); setShowIssues(false); }} disabled={isSaving} className={secondaryButtonClass}>Voltar</button>}
-          {!editing && tab !== "revisar" ? <button type="button" onClick={nextStep} className={primaryButtonClass}>Continuar</button> : <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
+          {editing || flowStep === 0 ? <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close> : <button type="button" onClick={() => { setTab(flowKeys[flowStep - 1]); setShowIssues(false); }} disabled={isSaving} className={secondaryButtonClass}>Back</button>}
+          {!editing && tab !== "revisar" ? <button type="button" onClick={nextStep} className={primaryButtonClass}>Continue</button> : <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
             {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
-            {isSaving ? "Salvando…" : editing ? "Salvar" : "Adicionar posição"}
+            {isSaving ? "Saving…" : editing ? "Save" : "Add position"}
           </button>}
         </div>
       </footer>
@@ -1032,13 +1018,13 @@ function PositionForm({
 }
 
 function ReviewValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="min-w-0"><dt className="text-[10px] tracking-[0.06em] text-muted-foreground uppercase">{label}</dt><dd className={cn("mt-1.5 break-words text-sm leading-5 text-foreground", mono && "font-mono")}>{value}</dd></div>;
+  return <div className="min-w-0"><dt className="text-[10px] tracking-[0.06em] text-muted-foreground uppercase">{englishLabel(label)}</dt><dd className={cn("mt-1.5 break-words text-sm leading-5 text-foreground", mono && "font-mono")}>{value}</dd></div>;
 }
 
 function ReadOnly({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{label}</span>
+      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
       <p
         className={cn(
           "flex h-9 items-center truncate rounded-lg border border-border/60 bg-white/[0.02] px-2.5 text-xs text-foreground/80",
@@ -1051,23 +1037,20 @@ function ReadOnly({ label, value, mono = false }: { label: string; value: string
   );
 }
 
-/** Saldos sem cotação e saldos em dólar aceitam vencimento (spec 040). */
+
 function allowsMaturityOf(position: Pick<MonthPosition, "quoteSymbol">) {
   return !position.quoteSymbol || position.quoteSymbol === USD_SYMBOL;
 }
 
 function editableValue(position: MonthPosition) {
-  return (position.quoteSymbol ? position.quantityText : position.totalBrl.toFixed(2)).replace(".", ",");
+  return (position.quoteSymbol ? position.quantityText : position.totalBrl.toFixed(2));
 }
 
 function formatWeight(value: number) {
-  return value.toLocaleString("pt-BR", { maximumFractionDigits: 4, useGrouping: false });
+  return value.toLocaleString("en-GB", { maximumFractionDigits: 4, useGrouping: false });
 }
 
-/**
- * Conta da instituição escolhida: a "Principal", ou a primeira; numa
- * instituição sem conta ou nova, uma conta "Principal" criada ao salvar.
- */
+
 function resolveAccount(
   institutionValue: string | null,
   createdInstitution: { key: string; name: string } | null,
@@ -1099,11 +1082,7 @@ type TickerCheckState = (
   | { state: "done"; response: TickerCheckResponse }
 ) & { refresh: () => void };
 
-/**
- * Confere o ticker no provedor do tipo escolhido, meio segundo depois da última
- * tecla. Um texto que mudou cancela a consulta anterior, e só o resultado do
- * texto atual é mostrado.
- */
+
 function useTickerCheck(
   monthId: string,
   kind: AssetKind | null,
@@ -1185,23 +1164,21 @@ function TickerStatus({
   if (!text.trim()) {
     content = <StatusLine tone="muted">{tickerHint(kind)}</StatusLine>;
   } else if (!symbol && ASSET_KIND_DEFINITIONS[kind].provider === "yahoo" && /^[A-Z0-9]{1,4}$/.test(text.trim())) {
-    // Na B3 só o ticker completo é conferido; "PETR" ainda está sendo digitado.
-    content = <StatusLine tone="muted">Digite o ticker completo, como PETR4 ou GPCA11.</StatusLine>;
+
+    content = <StatusLine tone="muted">Enter the complete ticker, such as PETR4 or GPCA11.</StatusLine>;
   } else if (!symbol) {
-    content = <StatusLine tone="error">Ticker inválido para {ASSET_KIND_DEFINITIONS[kind].label}.</StatusLine>;
+    content = <StatusLine tone="error">Invalid ticker for {englishLabel(ASSET_KIND_DEFINITIONS[kind].label)}.</StatusLine>;
   } else if (check.state === "checking" || check.state === "idle") {
-    content = <StatusLine tone="checking">Verificando {symbol} no {provider}…</StatusLine>;
+    content = <StatusLine tone="checking">Verifying {symbol} no {provider}…</StatusLine>;
   } else if (check.state === "error") {
     content = (
-      <StatusLine tone="warning">
-        Não foi possível conferir o ticker agora.{" "}
+      <StatusLine tone="warning">Could not verify the ticker right now.{" "}
         <button
           type="button"
           onClick={check.retry}
           className="inline-flex items-center gap-1 font-semibold underline-offset-2 outline-none hover:underline focus-visible:underline"
         >
-          <ArrowClockwiseIcon aria-hidden="true" size={11} weight="bold" />
-          Tentar de novo
+          <ArrowClockwiseIcon aria-hidden="true" size={11} weight="bold" />Try again
         </button>
       </StatusLine>
     );
@@ -1212,23 +1189,23 @@ function TickerStatus({
       case "found":
         content = (
           <StatusLine tone="success">
-            {symbol} encontrado{response.name ? ` (${response.name})` : ""} no {providerLabel(response.provider)}:{" "}
-            {formatPriceBrl(response.priceBrl)} hoje.
-            {isCurrent ? null : ` Informe a cotação de ${monthLabel}.`}
+            {symbol}found{response.name ? ` (${response.name})` : ""} no {providerLabel(response.provider)}:{" "}
+            {formatPriceBrl(response.priceBrl)}today.
+            {isCurrent ? null : ` Enter the quote for ${monthLabel}.`}
           </StatusLine>
         );
         break;
       case "known":
         content = (
           <StatusLine tone="success">
-            {symbol} já tem cotação nesta competência: {formatPriceBrl(response.priceBrl)}.
+            {symbol}already has a quote in this reporting month: {formatPriceBrl(response.priceBrl)}.
           </StatusLine>
         );
         break;
       case "unavailable":
         content = (
           <StatusLine tone="warning">
-            {providerLabel(response.provider)} indisponível: {response.message} Informe a cotação para salvar.
+            {providerLabel(response.provider)}unavailable: {response.message}Enter a quote to save.
           </StatusLine>
         );
         break;
@@ -1283,19 +1260,19 @@ function StatusLine({
 
 const NUMBER_TEXT_FORMATS = new Map<number, Intl.NumberFormat>();
 
-/** Número em pt-BR sem símbolo de moeda, como sugestão de campo ou quantidade. */
+
 function formatNumberText(value: number, digits = 8) {
   let format = NUMBER_TEXT_FORMATS.get(digits);
 
   if (!format) {
-    format = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: digits });
+    format = new Intl.NumberFormat("en-GB", { minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: digits });
     NUMBER_TEXT_FORMATS.set(digits, format);
   }
 
   return format.format(value);
 }
 
-/** Dia da aplicação sugerido: hoje, dentro da competência; num mês passado, o último dia dele. */
+
 function defaultAppliedOn(referenceDate: Date) {
   const first = referenceDate.toISOString().slice(0, 10);
   const last = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
@@ -1304,16 +1281,7 @@ function defaultAppliedOn(referenceDate: Date) {
   return today < first ? first : today > last ? last : today;
 }
 
-/**
- * Rentabilidade e rendimento automático (spec 079), na aba Rateio: a taxa é
- * opcional, e passa a ser obrigatória com o cálculo ligado. Numa aplicação
- * nova, o dia da aplicação diz desde quando o valor rende, como no banco.
- */
-/**
- * Rentabilidade de uma classificação (spec 079), dentro do cartão dela: % do
- * CDI no pós-fixado, % ao ano no prefixado. Opcional; exigida pelo cálculo
- * automático.
- */
+
 function RateField({
   index,
   indexer,
@@ -1327,10 +1295,10 @@ function RateField({
 }) {
   return (
     <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3" data-testid="allocation-rate">
-      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Rentabilidade</span>
+      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Rate of return</span>
       <label className="relative block w-36 shrink-0">
         <input
-          aria-label={`Rentabilidade da classificação ${index + 1}`}
+          aria-label={`Allocation rate of return ${index + 1}`}
           inputMode="decimal"
           value={value}
           placeholder={indexer === "CDI" ? "100" : "12,5"}
@@ -1338,17 +1306,14 @@ function RateField({
           className={cn(inputClass, "h-8 pr-14 text-right font-mono")}
         />
         <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[10px] text-muted-foreground">
-          {indexer === "CDI" ? "% CDI" : "% a.a."}
+          {indexer === "CDI" ? "% CDI" : "% p.a."}
         </span>
       </label>
     </div>
   );
 }
 
-/**
- * Rendimento automático da posição (spec 079), numa linha discreta abaixo do
- * rateio; numa inclusão, com o dia da aplicação, desde quando o valor rende.
- */
+
 function AutoIncomeToggle({
   automatic,
   onAutomaticChange,
@@ -1370,15 +1335,14 @@ function AutoIncomeToggle({
           checked={automatic}
           onChange={(event) => onAutomaticChange(event.target.checked)}
           className="size-4 shrink-0 accent-primary"
-        />
-        Calcular rendimento automaticamente
+        />Calculate accrual automatically
       </label>
       {automatic && appliedOn !== null ? (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Aplicado em</span>
+          <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Invested on</span>
           <div className="w-40">
-            {/* Uma aplicação antiga entra com o valor e o dia originais e rende desde ele, como no banco. */}
-            <DatePicker aria-label="Dia da aplicação" value={appliedOn} min="2000-01-01" max={defaultAppliedOn(month.referenceDate)} onChange={onAppliedOnChange} />
+
+            <DatePicker aria-label="Investment date" value={appliedOn} min="2000-01-01" max={defaultAppliedOn(month.referenceDate)} onChange={onAppliedOnChange} />
           </div>
         </div>
       ) : null}

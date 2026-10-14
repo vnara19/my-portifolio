@@ -4,14 +4,13 @@ import type { AppModule, AppRole } from "../src/generated/prisma/enums";
 import { getPrismaClient } from "../src/lib/prisma";
 import { readUserAccess } from "../src/modules/access/application/module-access";
 
-// Concessões de área e papéis pelo terminal (spec 081). Só o servidor concede:
-// a interface não tem como pedir nem atribuir acesso.
+
 //
 //   pnpm auth:access list
 //   pnpm auth:access grant <e-mail> gastos-familiares | recebimentos | previdencia | admin
 //   pnpm auth:access revoke <e-mail> gastos-familiares | recebimentos | previdencia | admin
 //
-// Com DATABASE_URL de um schema de teste, age só nele.
+
 
 const MODULES: Record<string, AppModule> = {
   "gastos-familiares": "FAMILY_EXPENSES",
@@ -25,14 +24,14 @@ async function main() {
   const prisma = getPrismaClient();
 
   if (!prisma) {
-    throw new Error("DATABASE_URL não está configurada.");
+    throw new Error("DATABASE_URL is not configured.");
   }
 
   if (command === "list") {
     const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, email: true } });
     for (const user of users) {
       const access = await readUserAccess(prisma, user.id);
-      console.info(`${user.email}\tInvestimentos${access.modules.map((module) => `, ${module}`).join("")}${access.roles.length ? `\t[${access.roles.join(", ")}]` : ""}`);
+      console.info(`${user.email}\tInvestments${access.modules.map((module) => `, ${module}`).join("")}${access.roles.length ? `\t[${access.roles.join(", ")}]` : ""}`);
     }
     return;
   }
@@ -41,7 +40,7 @@ async function main() {
   const role = name ? ROLES[name] : undefined;
 
   if ((command !== "grant" && command !== "revoke") || !email || (!area && !role)) {
-    console.error("Uso: auth:access list | auth:access grant|revoke <e-mail> gastos-familiares|recebimentos|previdencia|admin");
+    console.error("Usage: auth:access list | auth:access grant|revoke <e-mail> gastos-familiares|recebimentos|previdencia|admin");
     process.exitCode = 1;
     return;
   }
@@ -49,7 +48,7 @@ async function main() {
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } });
 
   if (!user) {
-    throw new Error(`Não existe conta com o e-mail ${email}.`);
+    throw new Error(`No account exists with the email ${email}.`);
   }
 
   if (area) {
@@ -74,7 +73,7 @@ async function main() {
     }
   }
 
-  console.info(`${command === "grant" ? "Concedido" : "Retirado"}: ${name} para ${email}.`);
+  console.info(`${command === "grant" ? "Granted" : "Revoked"}: ${name} for ${email}.`);
 }
 
 main()

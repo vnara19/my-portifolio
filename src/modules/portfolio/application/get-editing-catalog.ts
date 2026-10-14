@@ -7,7 +7,7 @@ export type EditingCatalog = {
   accounts: { id: string; label: string; institutionId: string; name: string }[];
   assets: {
     id: string;
-    /** Identidade do ativo, para o diálogo recusar um ativo novo repetido. */
+
     normalizedKey: string;
     name: string;
     ticker: string | null;
@@ -16,10 +16,8 @@ export type EditingCatalog = {
     maturityDate: string | null;
     liquidity: string | null;
     appliedOn?: string | null;
-    /**
-     * Rateio da posição mais recente do ativo, em %, para a inclusão de uma
-     * posição dele já vir preenchida (spec 043).
-     */
+
+
     allocations: { assetClass: string; subclass: string; duration: string; weight: number; ratePercent: number | null }[];
   }[];
   strategies: string[];
@@ -108,13 +106,13 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
     }
 
     const sorted = (values: Iterable<string>) =>
-      [...new Set(values)].sort((left, right) => left.localeCompare(right, "pt-BR"));
+      [...new Set(values)].sort((left, right) => left.localeCompare(right, "en-GB"));
     const target = latest
       ? new Date(Date.UTC(latest.referenceDate.getUTCFullYear(), latest.referenceDate.getUTCMonth() + 1, 1))
       : null;
 
     return {
-      institutions: institutions.sort((left, right) => left.name.localeCompare(right.name, "pt-BR")),
+      institutions: institutions.sort((left, right) => left.name.localeCompare(right.name, "en-GB")),
       accounts: accounts
         .map((account) => ({
           id: account.id,
@@ -122,7 +120,7 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
           institutionId: account.institutionId,
           name: account.name,
         }))
-        .sort((left, right) => left.label.localeCompare(right.label, "pt-BR")),
+        .sort((left, right) => left.label.localeCompare(right.label, "en-GB")),
       assets: assets.map((asset) => ({
         ...asset,
         maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,

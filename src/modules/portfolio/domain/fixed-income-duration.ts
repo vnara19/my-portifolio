@@ -17,13 +17,9 @@ export type FixedIncomeDuration = {
   hasTarget: boolean;
 };
 
-const collator = new Intl.Collator("pt-BR");
+const collator = new Intl.Collator("en-GB");
 
-/**
- * Monta a matriz subclasse × duração da renda fixa, em percentual do total da classe.
- * O atual usa o total atual de renda fixa; o ideal usa as metas do grupo FIXED_INCOME,
- * que já são frações do ideal da classe. Assim cada lado soma 100%.
- */
+
 export function buildFixedIncomeDuration(
   totals: FixedIncomeTotal[],
   targets: TargetValue[],

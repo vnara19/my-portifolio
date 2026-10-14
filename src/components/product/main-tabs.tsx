@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { ChartLineUpIcon, ChartPieSliceIcon, CoinsIcon, GearSixIcon, ListBulletsIcon } from "@phosphor-icons/react/dist/ssr";
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
 import { useSearchParams } from "next/navigation";
@@ -8,17 +10,13 @@ import { TabLink } from "@/components/product/section-tabs";
 
 export type TabKey = "overview" | "positions" | "settings";
 
-/**
- * Onde o usuário está dentro de Posições, para a trilha abaixo das abas (spec
- * 073, que substituiu a ilha escura da spec 046): uma posição ou as cotações.
- */
+
 export type NavContext = { kind: "position" | "quotes"; label: string };
 
-// Cada aba tem o próprio ícone, como a engrenagem da Configuração. Abaixo de
-// 420 px os ícones saem e ficam só os nomes, para as abas caberem.
+
 export const MAIN_TABS = [
-  { key: "overview", label: "Visão Geral", href: "/", icon: ChartPieSliceIcon },
-  { key: "positions", label: "Posições", href: "/posicoes", icon: ListBulletsIcon },
+  { key: "overview", label: "Overview", href: "/", icon: ChartPieSliceIcon },
+  { key: "positions", label: "Positions", href: "/posicoes", icon: ListBulletsIcon },
 ] as const;
 
 const ENTER: Transition = { type: "spring", stiffness: 380, damping: 30, mass: 0.9 };
@@ -28,11 +26,7 @@ const TRAIL_ICONS = {
   quotes: CoinsIcon,
 } as const;
 
-/**
- * Abas do topo. A Configuração vira uma aba com o mesmo destaque das outras
- * quando está aberta: o botão da engrenagem some do canto e reaparece aqui,
- * como se migrasse para o estado selecionado.
- */
+
 export function MainTabs({ active }: { active: TabKey | "none" }) {
   const searchParams = useSearchParams();
   const month = searchParams.get("mes");
@@ -40,11 +34,11 @@ export function MainTabs({ active }: { active: TabKey | "none" }) {
   const withMonth = (href: string) => (month ? `${href}?mes=${month}` : href);
 
   return (
-    <nav aria-label="Navegação principal" className="flex items-center gap-0.5 rounded-xl border border-border bg-card/70 p-1">
+    <nav aria-label="Main navigation" className="flex items-center gap-0.5 rounded-xl border border-border bg-card/70 p-1">
       {MAIN_TABS.map((tab) => (
         <TabLink key={tab.key} href={withMonth(tab.href)} active={tab.key === active}>
           <tab.icon aria-hidden="true" size={14} weight="duotone" className="shrink-0 max-[419px]:hidden" />
-          {tab.label}
+          {englishLabel(tab.label)}
         </TabLink>
       ))}
 
@@ -61,7 +55,7 @@ export function MainTabs({ active }: { active: TabKey | "none" }) {
           >
             <TabLink href={withMonth("/configuracao")} active testId="settings-tab">
               <GearSixIcon aria-hidden="true" size={14} weight="duotone" className="shrink-0" />
-              <span className="max-sm:sr-only">Configuração</span>
+              <span className="max-sm:sr-only">Settings</span>
             </TabLink>
           </motion.span>
         ) : null}
@@ -70,11 +64,7 @@ export function MainTabs({ active }: { active: TabKey | "none" }) {
   );
 }
 
-/**
- * Trilha abaixo das abas (specs 073 e 077): dentro de Posições, a posição ou as
- * cotações abertas, sem repetir "Posições". As setas que ligavam a aba, a
- * trilha e a faixa de competências saíram a pedido do usuário (spec 078).
- */
+
 export function NavTrail({ context }: { context: NavContext }) {
   const reduceMotion = useReducedMotion();
   const Icon = TRAIL_ICONS[context.kind];
@@ -82,7 +72,7 @@ export function NavTrail({ context }: { context: NavContext }) {
   return (
     <div className="flex justify-center px-4 pb-3 sm:px-6">
       <motion.p
-        key={`${context.kind}:${context.label}`}
+        key={`${context.kind}:${englishLabel(context.label)}`}
         data-testid="nav-trail"
         data-kind={context.kind}
         initial={reduceMotion ? false : { opacity: 0, y: -6, scale: 0.96 }}
@@ -92,8 +82,8 @@ export function NavTrail({ context }: { context: NavContext }) {
       >
         <Icon aria-hidden="true" size={13} weight="duotone" className="shrink-0 text-primary" />
         <span className="min-w-0 truncate font-medium text-foreground">
-          <span className="sr-only">Você está em </span>
-          {context.label}
+          <span className="sr-only">You are in </span>
+          {englishLabel(context.label)}
         </span>
       </motion.p>
     </div>

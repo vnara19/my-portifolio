@@ -2,12 +2,8 @@
 
 import { useCallback, useEffect, useRef, type TouchEvent } from "react";
 
-// No toque (spec 078), a indicação dos gráficos aparece enquanto o dedo está
-// no gráfico e some quando ele sai. O Recharts não limpa a indicação no fim do
-// toque, só quando o ponteiro deixa o gráfico; então, ao tirar o dedo, o
-// gráfico recebe a saída do ponteiro. O navegador ainda emula eventos de mouse
-// logo depois do toque, que reativariam a indicação: a saída repete depois
-// deles.
+
+// Dismiss tooltips when their touch interaction ends.
 const RELEASE_DELAYS_MS = [0, 80, 320];
 
 export function useTouchTooltip() {
@@ -40,7 +36,7 @@ export function useTouchTooltip() {
     timers.current = [];
   }, []);
 
-  /** O clique que acabou de chegar veio de um toque, não do mouse. */
+
   const isTouch = useCallback(() => Date.now() - lastTouch.current < 800, []);
 
   return { containerProps: { onTouchStart: hold, onTouchEnd: release, onTouchCancel: release }, isTouch };

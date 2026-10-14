@@ -1,18 +1,15 @@
+
+/** Create equal-weight default targets from existing portfolio categories when no target plan exists. */
 import {
   UNCLASSIFIED_LABEL,
   type AllocationAggregates,
   type AllocationGroupKey,
 } from "@/modules/portfolio/domain/rebalance";
 
-// Metas padrão (spec 048): quando não existe plano de metas, como num banco
-// novo ou depois de restaurar um backup sem metas, o aplicativo cria um plano
-// com as categorias que a carteira tem e divide cada grupo em partes iguais.
-// Não é uma recomendação de alocação: é o ponto de partida para o usuário
-// ajustar na configuração. Os percentuais são inteiros e cada grupo soma
-// exatamente 100%; o ponto que sobra da divisão vai para as categorias de
-// maior valor.
 
-export const DEFAULT_TARGET_PLAN_NAME = "Metas padrão";
+
+
+export const DEFAULT_TARGET_PLAN_NAME = "Default targets";
 
 export type DefaultTarget = {
   key: string;
@@ -45,7 +42,7 @@ export function buildDefaultTargets(aggregates: AllocationAggregates): DefaultTa
     ...split("ASSET_CLASS", flat(aggregates.assetClass)),
     ...split("CURRENCY", flat(aggregates.currency)),
     ...split("STRATEGY", flat(aggregates.strategy)),
-    // A moeda dentro de cada classe soma 100% por classe.
+
     ...[...classCurrency.values()].flatMap((entries) => split("CLASS_CURRENCY", entries)),
     ...split(
       "FIXED_INCOME",
@@ -57,8 +54,7 @@ export function buildDefaultTargets(aggregates: AllocationAggregates): DefaultTa
     ),
   ];
 
-  // Rótulos que só diferem em acento ou maiúscula dariam a mesma chave, que é
-  // única no plano.
+
   const used = new Set<string>();
   return targets.map((target) => {
     let key = target.key;
@@ -78,8 +74,8 @@ function split(scope: AllocationGroupKey, categories: Category[]): DefaultTarget
   const ordered = [...categories].sort(
     (left, right) =>
       right.value - left.value ||
-      left.primary.localeCompare(right.primary, "pt-BR") ||
-      (left.secondary ?? "").localeCompare(right.secondary ?? "", "pt-BR"),
+      left.primary.localeCompare(right.primary, "en-GB") ||
+      (left.secondary ?? "").localeCompare(right.secondary ?? "", "en-GB"),
   );
   const base = Math.floor(100 / ordered.length);
   const remainder = 100 - base * ordered.length;
@@ -93,11 +89,7 @@ function split(scope: AllocationGroupKey, categories: Category[]): DefaultTarget
   }));
 }
 
-/**
- * Metas de renda fixa que a matriz sempre mostra (spec 079): cada subclasse da
- * lista fixa, inclusive o prefixado, em cada prazo. As que o plano não tem
- * aparecem com 0% e entram no plano ao salvar.
- */
+
 export function fixedIncomeTaxonomyTargets(subclasses: readonly string[], durations: readonly string[]) {
   return subclasses.flatMap((subclass) =>
     durations.map((duration) => ({
@@ -109,7 +101,7 @@ export function fixedIncomeTaxonomyTargets(subclasses: readonly string[], durati
   );
 }
 
-/** Chave da meta no plano, no formato das metas existentes: `ESCOPO:classe:moeda`. */
+
 export function targetKey(scope: AllocationGroupKey, primaryLabel: string, secondaryLabel: string | null) {
   return [scope, normalizeTargetLabel(primaryLabel), secondaryLabel ? normalizeTargetLabel(secondaryLabel) : null]
     .filter(Boolean)
@@ -120,7 +112,7 @@ function normalizeTargetLabel(value: string) {
   return value
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
-    .toLocaleLowerCase("pt-BR")
+    .toLocaleLowerCase("en-GB")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }

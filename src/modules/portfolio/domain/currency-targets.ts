@@ -1,19 +1,15 @@
 import type { AllocationGroupKey } from "@/modules/portfolio/domain/rebalance";
 
-// Meta de moeda sobre o patrimônio total (spec 054): não é editada, é
-// calculada. Quem define a exposição a cada moeda é a moeda dentro de cada
-// classe, ponderada pela meta da classe: moeda(c) = Σ classe(k) × moeda(k, c).
-// Sem dependências de banco, para servir ao servidor e ao editor.
 
 type TargetFraction = {
   scope: AllocationGroupKey | string;
   primaryLabel: string;
   secondaryLabel: string | null;
-  /** Fração do grupo, de 0 a 1. */
+
   fraction: number;
 };
 
-/** Fração de cada moeda sobre o patrimônio total. */
+
 export function deriveCurrencyTargets(targets: TargetFraction[]) {
   const classes = new Map<string, number>();
 
@@ -36,7 +32,7 @@ export function deriveCurrencyTargets(targets: TargetFraction[]) {
     );
   }
 
-  // Uma moeda que só existe na meta sobre o total, sem classe, fica em zero.
+
   for (const target of targets) {
     if (target.scope === "CURRENCY" && !currencies.has(target.primaryLabel)) {
       currencies.set(target.primaryLabel, 0);
@@ -46,7 +42,7 @@ export function deriveCurrencyTargets(targets: TargetFraction[]) {
   return currencies;
 }
 
-/** As metas com a moeda sobre o total trocada pela calculada. */
+
 export function withDerivedCurrency<T extends TargetFraction>(targets: T[]): TargetFraction[] {
   const derived = deriveCurrencyTargets(targets);
 

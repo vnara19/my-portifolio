@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis, type LabelProps } from "recharts";
 
 import { cn } from "@/lib/utils";
@@ -15,12 +17,7 @@ export type AllocationBarRow = {
 
 type Mode = "current" | "target";
 
-/**
- * Atual contra ideal de um recorte da alocação (spec 078), no mesmo modelo da
- * renda fixa por resgate: uma barra por item, o atual e o ideal lado a lado na
- * mesma escala, com o percentual sobre cada barra. Substituiu as roscas, que
- * deixavam a comparação menos clara.
- */
+
 export function AllocationBars({ title, rows }: { title: string; rows: AllocationBarRow[] }) {
   const hasCurrent = rows.some((row) => row.currentShare > 0);
   const hasTarget = rows.some((row) => (row.targetShare ?? 0) > 0);
@@ -33,41 +30,40 @@ export function AllocationBars({ title, rows }: { title: string; rows: Allocatio
       </h2>
 
       {rows.length === 0 ? (
-        <p className="mt-5 grid h-[160px] place-items-center rounded-xl border border-dashed border-border/70 text-[11px] text-muted-foreground">
-          Sem posições neste recorte
+        <p className="mt-5 grid h-[160px] place-items-center rounded-xl border border-dashed border-border/70 text-[11px] text-muted-foreground">No positions in this allocation view
         </p>
       ) : (
         <>
-          <ul aria-label="Itens" className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
+          <ul aria-label="Items" className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
             {rows.map((row) => (
               <li key={row.label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(row.label) }} />
-                {row.label}
+                {englishLabel(row.label)}
               </li>
             ))}
           </ul>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
-            <ShareBars mode="current" title="Atual" empty={!hasCurrent} emptyText="Sem posições neste recorte" rows={rows} scale={scale} />
+            <ShareBars mode="current" title="Current" empty={!hasCurrent} emptyText="No positions in this allocation view" rows={rows} scale={scale} />
             <div aria-hidden="true" className="h-px bg-border/60 lg:h-auto lg:w-px" />
-            <ShareBars mode="target" title="Ideal" empty={!hasTarget} emptyText="Sem metas neste recorte" rows={rows} scale={scale} />
+            <ShareBars mode="target" title="Target" empty={!hasTarget} emptyText="No targets in this allocation view" rows={rows} scale={scale} />
           </div>
 
           <table className="sr-only">
-            <caption>{title}, atual e ideal</caption>
+            <caption>{title}, current and target</caption>
             <thead>
               <tr>
                 <th scope="col">Item</th>
-                <th scope="col">Atual</th>
-                <th scope="col">Ideal</th>
+                <th scope="col">Current</th>
+                <th scope="col">Target</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.label}>
-                  <th scope="row">{row.label}</th>
+                  <th scope="row">{englishLabel(row.label)}</th>
                   <td>{formatSharePercent(row.currentShare)}</td>
-                  <td>{row.targetShare === null ? "sem meta" : formatSharePercent(row.targetShare)}</td>
+                  <td>{row.targetShare === null ? "no target" : formatSharePercent(row.targetShare)}</td>
                 </tr>
               ))}
             </tbody>
@@ -113,7 +109,7 @@ function ShareBars({
                 dataKey="label"
                 interval={0}
                 tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                tickFormatter={(value: string) => (value.length > 14 ? `${value.slice(0, 13)}…` : value)}
+                tickFormatter={(value: string) => { const label = englishLabel(value); return label.length > 14 ? `${label.slice(0, 13)}…` : label; }}
                 tickLine={false}
               />
               <YAxis
@@ -138,7 +134,7 @@ function ShareBars({
                     <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
                       <div className="flex items-center gap-2">
                         <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(row.label) }} />
-                        <p className="text-[11px] font-medium text-foreground">{row.label}</p>
+                        <p className="text-[11px] font-medium text-foreground">{englishLabel(row.label)}</p>
                       </div>
                       <p className="mt-1.5 font-mono text-[10px]">
                         <span className={cn(mode === "current" ? "text-foreground" : "text-muted-foreground")}>
@@ -146,9 +142,9 @@ function ShareBars({
                         </span>
                         <span className="text-muted-foreground/50"> / </span>
                         <span className={cn(mode === "target" ? "text-foreground" : "text-muted-foreground")}>
-                          {row.targetShare === null ? "sem meta" : formatSharePercent(row.targetShare)}
+                          {row.targetShare === null ? "no target" : formatSharePercent(row.targetShare)}
                         </span>
-                        <span className="ml-2 text-[9px] tracking-[0.1em] text-muted-foreground uppercase">atual / ideal</span>
+                        <span className="ml-2 text-[9px] tracking-[0.1em] text-muted-foreground uppercase">current / target</span>
                       </p>
                     </div>
                   );
@@ -176,7 +172,7 @@ function ValueLabel({ viewBox, value }: { viewBox: LabelProps["viewBox"]; value:
   }
 
   const width = Number(viewBox.width ?? 0);
-  // Na Geist Mono todo caractere avança 0,6 em; sem espaço, o valor fica no tooltip.
+
   const precise = 5 * 0.6 * 10 <= width + 8;
   const text = precise ? formatSharePercent(share) : `${Math.round(share)}%`;
 
@@ -199,7 +195,7 @@ function ValueLabel({ viewBox, value }: { viewBox: LabelProps["viewBox"]; value:
   );
 }
 
-/** Mesma escala da renda fixa por resgate: passos de 10, 20 ou 25 pontos. */
+
 function shareScale(max: number) {
   const padded = max * 1.1;
   const step = padded <= 40 ? 10 : padded <= 60 ? 20 : 25;

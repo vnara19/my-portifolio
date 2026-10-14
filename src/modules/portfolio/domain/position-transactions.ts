@@ -1,39 +1,37 @@
-// Movimentações das posições (spec 056). Sem dependências de banco, para servir
-// ao servidor e ao formulário.
 
-/** Tipos do formulário de movimentação (spec 057). */
+
+
+
 export const TRANSACTION_KINDS = ["CONTRIBUTION", "WITHDRAWAL", "INCOME"] as const;
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
-/**
- * O saldo inicial só nasce com a posição: identifica o valor que ela já tinha
- * ao começar o acompanhamento, sem ser aporte, rendimento nem custo conhecido.
- */
+
+
 export type StoredTransactionKind = TransactionKind | "OPENING";
 
 export const TRANSACTION_LABELS: Record<StoredTransactionKind, string> = {
-  OPENING: "Saldo inicial",
-  CONTRIBUTION: "Aporte",
-  WITHDRAWAL: "Retirada",
-  INCOME: "Rendimento",
+  OPENING: "Opening balance",
+  CONTRIBUTION: "Contribution",
+  WITHDRAWAL: "Withdrawal",
+  INCOME: "Return",
 };
 
-/** Movimentações registradas num mês (spec 058), para separar do que é estimado. */
+
 export type RecordedMonth = {
-  /** Aportes externos menos retiradas externas, em reais. */
+
   netFlowBrl: number;
   contributionsBrl: number;
   withdrawalsBrl: number;
   incomeBrl: number;
-  /** Rendimento que mudou a quantidade/saldo; dividendos em dinheiro ficam fora. */
+
   capitalizedIncomeBrl: number;
   openingBrl: number;
-  /** Entradas menos saídas de transferências internas (liquidação). */
+
   internalBrl: number;
-  /** Efeito das operações na quantidade, sem o saldo inicial. */
+
   quantityDelta: number;
-  /** Quantidade identificada como saldo inicial, sem custo conhecido. */
+
   openingQuantity: number;
-  /** Movimentos para custo/avaliação, em ordem financeira crescente. */
+
   movements: RecordedMovement[];
   count: number;
 };
@@ -62,10 +60,7 @@ export function emptyRecordedMonth(): RecordedMonth {
   };
 }
 
-/**
- * Soma as movimentações de cada mês (AAAA-MM): aportes, retiradas, rendimentos
- * e saldo inicial separados. O saldo inicial não é aporte nem rendimento.
- */
+
 export function recordedByMonth(
   transactions: (RecordedMovement & { month: string })[],
 ) {
@@ -109,8 +104,8 @@ export function recordedByMonth(
   }
 
   for (const month of months.values()) {
-    // O histórico normalmente vem decrescente. Em dias iguais, preserve a
-    // ordem fornecida; quem lê o banco inclui createdAt na ordenação crescente.
+
+
     month.movements.sort((left, right) => (left.occurredOn ?? "").localeCompare(right.occurredOn ?? ""));
     for (const key of ["netFlowBrl", "contributionsBrl", "withdrawalsBrl", "incomeBrl", "capitalizedIncomeBrl", "openingBrl", "internalBrl"] as const) {
       month[key] = round(month[key], 2);
@@ -120,26 +115,17 @@ export function recordedByMonth(
   return months;
 }
 
-/**
- * Como a posição guarda o valor: `quoted` em unidades vezes o preço do mês
- * (ações, ETFs, cripto e o caixa em dólar, cotado pelo dólar); `balance`, o
- * saldo em reais, sem cotação (renda fixa, caixa em reais).
- */
+
 export type PositionValueKind = "quoted" | "balance";
 
-/** Variação da quantidade da posição: retirada tira; os demais põem. */
+
 export function quantityDelta(kind: StoredTransactionKind, quantity: number) {
   return kind === "WITHDRAWAL" ? -quantity : quantity;
 }
 
 export type TrioField = "quantity" | "unitPrice" | "amount";
 
-/**
- * Modos do formulário (spec 057): o valor desta operação ou o novo total da
- * posição, de que o app tira a diferença. Num ativo cotado, o novo total pode
- * ser a quantidade ou o valor de mercado, que a cotação do mês converte em
- * quantidade.
- */
+
 export type MovementMode = "operation" | "total";
 export type TotalTarget = "quantity" | "marketValue";
 
@@ -147,12 +133,12 @@ export type MovementInput = {
   kind: StoredTransactionKind;
   mode: MovementMode;
   totalTarget: TotalTarget;
-  /** Ativo cotado (unidades × preço); falso nos saldos em reais. */
+
   quoted: boolean;
   current: { quantity: number; marketPrice: number | null };
-  /** Valores digitados; nulos quando o campo não foi digitado. */
+
   typed: { quantity: number | null; unitPrice: number | null; amount: number | null; total: number | null };
-  /** Campos do trio digitados, do mais recente para o mais antigo. */
+
   order: TrioField[];
 };
 
@@ -161,25 +147,21 @@ export type MovementPlan = {
   quantity: number | null;
   unitPrice: number | null;
   amount: number | null;
-  /** Campos preenchidos pelo app, e não digitados. */
+
   computed: TrioField[];
-  /** Preço executado sugerido pela cotação do mês, por falta de um digitado. */
+
   suggestedPrice: boolean;
-  /** Rendimento em dinheiro num ativo cotado, sem mudar a quantidade. */
+
   cashIncome: boolean;
-  /** Quantidade depois da movimentação. */
+
   after: number;
-  /** O que falta ou o que não fecha; nulo quando pode salvar. */
+
   issue: string | null;
 };
 
 const MONEY_TOLERANCE = 0.01;
 
-/**
- * Resolve a movimentação a partir do que foi digitado (spec 057): calcula os
- * campos que faltam, aponta o dado que falta e mostra a divergência quando os
- * três campos digitados não fecham, sem trocar um número digitado.
- */
+
 export function resolveMovement(input: MovementInput): MovementPlan {
   const { current, typed, quoted } = input;
   let kind = input.kind;
@@ -192,9 +174,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
   const positive = (value: number | null) => value !== null && Number.isFinite(value) && value > 0;
   const nonNegative = (value: number | null) => value !== null && Number.isFinite(value) && value >= 0;
 
-  // `order` distingue um campo digitado de um campo vazio/calculado. Nunca
-  // substitua um número inválido digitado por uma conta dos outros campos.
-  // Ao trocar o modo, os campos que ficaram ocultos não bloqueiam o fluxo.
+
   const activeFields = input.order.filter((field) =>
     input.mode === "total"
       ? quoted && kind !== "OPENING" && field === "unitPrice"
@@ -205,7 +185,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
   );
 
   if (invalidField) {
-    const labels: Record<TrioField, string> = { quantity: "a quantidade", unitPrice: "o preço executado", amount: "o valor da operação" };
+    const labels: Record<TrioField, string> = { quantity: "the quantity", unitPrice: "the execution price", amount: "the transaction amount" };
     return {
       kind,
       quantity: quoted ? typed.quantity : typed.amount,
@@ -215,7 +195,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
       suggestedPrice: false,
       cashIncome: false,
       after: current.quantity,
-      issue: `Revise ${labels[invalidField]}: use um número válido maior que zero${invalidField === "quantity" && kind === "INCOME" ? ", ou zero para dinheiro recebido sem unidades" : ""}.`,
+      issue: `Review ${labels[invalidField]}: use a valid number greater than zero${invalidField === "quantity" && kind === "INCOME" ? ", or zero for cash received without units" : ""}.`,
     };
   }
 
@@ -233,7 +213,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
   };
 
   if (input.mode === "total") {
-    // Novo total: a diferença para o saldo atual é a movimentação.
+
     const target =
       !quoted || input.totalTarget === "quantity"
         ? typed.total
@@ -242,14 +222,14 @@ export function resolveMovement(input: MovementInput): MovementPlan {
           : null;
 
     if (target === null || !Number.isFinite(target) || target < 0) {
-      issue = quoted && input.totalTarget === "marketValue" ? "Informe o novo valor de mercado." : "Informe o novo total da posição.";
+      issue = quoted && input.totalTarget === "marketValue" ? "Enter the new market value." : "Enter the new position total.";
     } else {
       const difference = round(target - current.quantity, quoted ? 12 : 2);
 
       if (difference === 0) {
-        issue = "O novo total é igual ao atual.";
+        issue = "The new total is the same as the current total.";
       } else if (kind === "OPENING") {
-        issue = difference < 0 ? "O saldo inicial não pode ser negativo." : null;
+        issue = difference < 0 ? "The opening balance cannot be negative." : null;
       } else if (difference < 0) {
         kind = "WITHDRAWAL";
       } else if (kind === "WITHDRAWAL") {
@@ -260,15 +240,14 @@ export function resolveMovement(input: MovementInput): MovementPlan {
 
       if (quoted) {
         unitPrice = kind === "OPENING" ? null : price();
-        // Saldo inicial é valor conhecido da posição, sem preço de aquisição.
-        // No modo total, sua diferença usa a cotação do mês apenas para
-        // registrar o valor; não cria custo de compra.
+
+
         const valuationPrice = kind === "OPENING" ? current.marketPrice : unitPrice;
         amount = positive(valuationPrice) ? round(quantity * valuationPrice!, 2) : null;
         if (unitPrice === null && kind !== "OPENING") {
-          issue ??= "Informe o preço executado.";
+          issue ??= "Enter the execution price.";
         } else if (amount === null) {
-          issue ??= "A posição precisa de uma cotação válida para calcular o valor.";
+          issue ??= "The position needs a valid quote to calculate its value.";
         }
         computed.push("quantity", "amount");
       } else {
@@ -279,12 +258,12 @@ export function resolveMovement(input: MovementInput): MovementPlan {
   } else if (!quoted) {
     amount = positive(typed.amount) ? typed.amount : null;
     quantity = amount;
-    issue = amount === null ? "Informe o valor." : null;
+    issue = amount === null ? "Enter the amount." : null;
   } else if (kind === "INCOME" && !positive(typed.quantity)) {
-    // Dividendos e outros rendimentos em dinheiro: só o valor, sem unidades.
+
     amount = positive(typed.amount) ? typed.amount : null;
     quantity = 0;
-    issue = amount === null ? "Informe o valor recebido." : null;
+    issue = amount === null ? "Enter the amount received." : null;
   } else {
     const known = input.order.filter((field) => positive(typed[field]));
 
@@ -294,7 +273,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
       amount = typed.amount;
 
       if (Math.abs(quantity! * unitPrice! - amount!) > MONEY_TOLERANCE + amount! * 1e-6) {
-        issue = `Quantidade × preço dá ${formatPlain(quantity! * unitPrice!)}, diferente do valor digitado. Apague um dos três para o app calcular.`;
+        issue = `Quantity × price equals ${formatPlain(quantity! * unitPrice!)}, which differs from the entered amount. Clear one of the three fields to let the application calculate it.`;
       }
     } else {
       const values = { quantity: typed.quantity, unitPrice: typed.unitPrice, amount: typed.amount };
@@ -305,7 +284,7 @@ export function resolveMovement(input: MovementInput): MovementPlan {
       }
 
       if (known.length < 2) {
-        issue = known[0] === "unitPrice" || !positive(current.marketPrice) ? "Informe a quantidade ou o valor da operação." : "Informe a quantidade ou o valor.";
+        issue = known[0] === "unitPrice" || !positive(current.marketPrice) ? "Enter the quantity or transaction amount." : "Enter the quantity or amount.";
         quantity = values.quantity;
         unitPrice = values.unitPrice;
         amount = values.amount;
@@ -327,23 +306,19 @@ export function resolveMovement(input: MovementInput): MovementPlan {
   const after = round(current.quantity + delta, quoted ? 12 : 2);
 
   if (!issue && after < 0) {
-    issue = "A retirada é maior que a posição.";
+    issue = "The withdrawal exceeds the position.";
   }
 
   if (!issue && [quantity, unitPrice, amount, after].some((value) => value !== null && !Number.isFinite(value))) {
-    issue = "Os valores ultrapassam o limite do cálculo. Revise os números informados.";
+    issue = "Values exceed the calculation limit. Review the entered numbers.";
   } else if (!issue && amount !== null && amount <= 0) {
-    issue = "O valor da operação precisa ser maior que zero.";
+    issue = "The transaction amount must be greater than zero.";
   }
 
   return { kind, quantity, unitPrice, amount, computed, suggestedPrice, cashIncome, after, issue };
 }
 
-/**
- * Entrada versátil (spec 056): de quantidade, preço unitário e valor total,
- * os dois informados por último definem o terceiro. `order` traz os campos do
- * mais recente para o mais antigo.
- */
+
 export function completeTrio(
   values: { quantity: number | null; unitPrice: number | null; amount: number | null },
   order: TrioField[],
@@ -378,5 +353,5 @@ function round(value: number, digits: number) {
 }
 
 function formatPlain(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "BRL" }).format(value);
 }

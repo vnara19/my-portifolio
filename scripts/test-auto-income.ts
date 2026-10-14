@@ -13,14 +13,10 @@ import { ensureMonthsUpToDate } from "../src/modules/portfolio/application/month
 import { addTransaction, liquidatePosition, removeTransaction } from "../src/modules/portfolio/application/position-transactions";
 import { businessDaysBetween, isBusinessDay } from "../src/modules/portfolio/domain/business-days";
 
-// Integração do rendimento automático (spec 079), com CDI simulado: liga e
-// desliga pela flag do ativo, pós-fixado pelo CDI e prefixado pela taxa ao ano,
-// cada movimentação rendendo desde o próprio dia; rendimento manual bloqueado;
-// liquidação no dia do resgate; backup; virada do mês e o fechamento completado
-// quando a taxa do último dia útil sai depois. Também a liquidação de uma renda
-// fixa manual (spec 076). O roteiro se recusa a usar o schema real e cria um
-// usuário descartável no schema de teste indicado abaixo.
-assert.equal(databaseSchema(process.env.DATABASE_URL ?? ""), "auto_income_079", "Use o schema auto_income_079.");
+
+// Test manual fixed-income accrual only in an isolated schema (spec 076).
+
+assert.equal(databaseSchema(process.env.DATABASE_URL ?? ""), "auto_income_079", "Use the isolated auto_income_079 schema.");
 const prisma = getPrismaClient()!;
 const userId = randomUUID();
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -29,7 +25,7 @@ const CDI_DAILY = "0.055131";
 const cdiFactor = new Decimal(1).plus(new Decimal(CDI_DAILY).div(100).mul("1.1"));
 const preFactor = (days: number) => new Decimal("1.12").pow(new Decimal(days).div(252));
 const money = (value: InstanceType<typeof Decimal>) => value.toDecimalPlaces(2).toFixed(2);
-// Outubro de 2026 tem 21 dias úteis (12/10 é feriado).
+
 const preClose = new Decimal(5000).mul(preFactor(21));
 
 function businessDays(from: string, until: string) {
@@ -41,9 +37,9 @@ function businessDays(from: string, until: string) {
 }
 
 async function main() {
-  await prisma.user.create({ data: { id: userId, name: "Teste rendimento automático", email: `${userId}@test.invalid` } });
+  await prisma.user.create({ data: { id: userId, name: "Automatic accrual test", email: `${userId}@test.invalid` } });
   const institution = await prisma.institution.create({ data: { userId, name: "Teste", normalizedName: "teste" } });
-  const account = await prisma.account.create({ data: { userId, institutionId: institution.id, name: "Principal" } });
+  const account = await prisma.account.create({ data: { userId, institutionId: institution.id, name: "Main" } });
   const asset = (name: string, extra: Partial<Prisma.AssetUncheckedCreateInput>) =>
     prisma.asset.create({ data: { userId, name, normalizedKey: `private:teste:${name.toLowerCase()}`, baseCurrency: "BRL", ...extra } });
   const post = await asset("CDB pos", { maturityDate: day("2027-10-01") });
@@ -52,7 +48,7 @@ async function main() {
   const cash = await asset("Caixa", { cashAccount: true });
   await prisma.portfolioMonth.create({ data: { userId, referenceDate: day("2026-09-01"), status: "REVIEWED" } });
   const month = await prisma.portfolioMonth.create({ data: { userId, referenceDate: day("2026-10-01"), status: "DRAFT" } });
-  // A rentabilidade é de cada classificação do rateio (spec 079).
+
   const position = async (assetId: string, opening: string, subclass: string, ratePercent: number | null) => {
     const created = await prisma.position.create({
       data: { userId, portfolioMonthId: month.id, accountId: account.id, assetId, openingQuantity: opening, quantity: opening, totalBrl: opening },
@@ -67,8 +63,7 @@ async function main() {
   const manualPosition = await position(manual.id, "1000", "Pós-fixado", null);
   await position(cash.id, "100", "Pós-fixado", null);
 
-  // CDI simulado de outubro, sem o último dia útil (30/10): ele só sai depois
-  // da virada do mês, como acontece com o Banco Central.
+
   const october = businessDays("2026-10-01", "2026-11-01");
   assert.equal(october.length, 21);
   await clearRates();
@@ -106,23 +101,21 @@ async function main() {
   const monthClose = (id: string) => valueCdiPositions(prisma, { where: { id }, asOf: "2026-11-01" });
 
   await runAsUser(userId, async () => {
-    // Sem a flag, o rendimento é manual, como antes.
+
     await addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "INCOME", "50") });
     await balance(postPosition.id, "10050.00");
 
-    // Ligar com um rendimento manual no mês somaria duas vezes.
-    await assert.rejects(edit(postPosition.id, "CDB pos", "Pós-fixado", "110", true), /rendimento registrado à mão/);
+
+    await assert.rejects(edit(postPosition.id, "CDB pos", "Pós-fixado", "110", true), /manual return/);
     await balance(postPosition.id, "10050.00");
     const handIncome = await prisma.positionTransaction.findFirstOrThrow({ where: { positionId: postPosition.id, kind: "INCOME" } });
     await removeTransaction({ monthId: month.id, transactionId: handIncome.id });
     await balance(postPosition.id, "10000.00");
 
-    // Pós-fixado: a base rende desde o dia 1 pelo CDI × 110%; o aporte, desde o
-    // próprio dia. A flag sem taxa na classificação, ou com uma classificação
-    // sem cálculo automático, é recusada.
-    await assert.rejects(edit(manualPosition.id, "CDB manual", "Pós-fixado", null, true), /ter a rentabilidade/);
-    await assert.rejects(edit(manualPosition.id, "CDB manual", "IPCA", null, true), /pós-fixada ou prefixada/);
-    await assert.rejects(edit(manualPosition.id, "CDB manual", "IPCA", "6", false), /Só as classificações pós-fixadas ou prefixadas/);
+
+    await assert.rejects(edit(manualPosition.id, "CDB manual", "Pós-fixado", null, true), /have a rate of return/);
+    await assert.rejects(edit(manualPosition.id, "CDB manual", "IPCA", null, true), /floating-rate or fixed-rate/);
+    await assert.rejects(edit(manualPosition.id, "CDB manual", "IPCA", "6", false), /Only floating-rate or fixed-rate classifications/);
     await edit(postPosition.id, "CDB pos", "Pós-fixado", "110", true);
     assert.equal((await prisma.position.findUniqueOrThrow({ where: { id: postPosition.id } })).calculationStartDate?.toISOString().slice(0, 10), "2026-10-01");
     await addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "CONTRIBUTION", "1000") });
@@ -132,23 +125,21 @@ async function main() {
     assert.equal(valued.incomeCalculatedThrough?.toISOString().slice(0, 10), "2026-10-29");
     assert.equal(valued.calculatedIncomeBrl.toDecimalPlaces(2).toFixed(2), money(postUntil29.minus(11000)));
 
-    // O rendimento vem da taxa: nada de rendimento manual nem retirada acima
-    // do saldo daquele dia (02/10: um dia de CDI mais o aporte).
-    await assert.rejects(addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "INCOME", "10") }), /calculado automaticamente/);
-    await assert.rejects(addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "WITHDRAWAL", "11010") }), /retirada é maior/);
+
+    await assert.rejects(addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "INCOME", "10") }), /calculated automatically/);
+    await assert.rejects(addTransaction({ monthId: month.id, transaction: movement(postPosition.id, "WITHDRAWAL", "11010") }), /withdrawal exceeds/);
     await monthClose(postPosition.id);
     await balance(postPosition.id, money(postUntil29));
 
-    // Prefixado: (1 + 12%)^(dias úteis/252), sem depender de taxa publicada.
+
     await edit(prePosition.id, "CDB pre", "Prefixado", "12", true);
     await monthClose(prePosition.id);
     await balance(prePosition.id, money(preClose));
 
-    // Desligar guarda o calculado como "Rendimento automático até…", sem mudar
-    // o saldo; religar o recalcula no lugar dele.
+
     await edit(postPosition.id, "CDB pos", "Pós-fixado", "110", false);
     const folded = await prisma.positionTransaction.findFirstOrThrow({ where: { positionId: postPosition.id, kind: "INCOME" } });
-    assert.equal(folded.note, "Rendimento automático até 29/10/2026");
+    assert.equal(folded.note, "Automatic accrual through 29/10/2026");
     assert.equal(folded.amountBrl.toFixed(2), money(postUntil29.minus(11000)));
     const off = await balance(postPosition.id, money(postUntil29));
     assert.equal(off.calculationStartDate, null);
@@ -161,8 +152,7 @@ async function main() {
     await monthClose(postPosition.id);
     await balance(postPosition.id, money(postUntil29));
 
-    // Liquidar fecha o cálculo no dia do resgate (01/10 rendeu), com o acerto
-    // para o valor recebido; apagar a liquidação e salvar religa o cálculo.
+
     await liquidatePosition({ monthId: month.id, liquidation: { positionId: prePosition.id, occurredOn: "2026-10-02", amountBrl: "5000.00" } });
     const liquidated = await balance(prePosition.id, "0.00");
     assert.equal(liquidated.calculationStartDate, null);
@@ -171,28 +161,27 @@ async function main() {
     assert.deepEqual(
       legs.map((leg) => [leg.kind, leg.amountBrl.toFixed(2), leg.note]),
       [
-        ["INCOME", oneDay, "Rendimento automático até 01/10/2026"],
-        ["INCOME", `-${oneDay}`, "Liquidação: recebido abaixo do saldo"],
-        ["WITHDRAWAL", "5000.00", "Liquidação"],
+        ["INCOME", oneDay, "Automatic accrual through 01/10/2026"],
+        ["INCOME", `-${oneDay}`, "Liquidation: received less than the balance"],
+        ["WITHDRAWAL", "5000.00", "Liquidation"],
       ],
     );
-    for (const leg of legs.filter((entry) => entry.note?.startsWith("Liquidação")).reverse()) {
+    for (const leg of legs.filter((entry) => entry.note?.startsWith("Liquidation")).reverse()) {
       await removeTransaction({ monthId: month.id, transactionId: leg.id });
     }
     await edit(prePosition.id, "CDB pre", "Prefixado", "12", true);
     await monthClose(prePosition.id);
     await balance(prePosition.id, money(preClose));
 
-    // Liquidação de uma renda fixa manual (spec 076): pelo saldo e com acerto
-    // para cima e para baixo, sem liquidar duas vezes.
+
     for (const received of ["1000.00", "990.00", "1010.00"]) {
       await liquidatePosition({ monthId: month.id, liquidation: { positionId: manualPosition.id, occurredOn: "2026-10-02", amountBrl: received } });
       await balance(manualPosition.id, "0.00");
       await assert.rejects(
         liquidatePosition({ monthId: month.id, liquidation: { positionId: manualPosition.id, occurredOn: "2026-10-02", amountBrl: received } }),
-        /já está liquidada/,
+        /already liquidated/,
       );
-      const manualLegs = (await prisma.positionTransaction.findMany({ where: { positionId: manualPosition.id, note: { startsWith: "Liquidação" } } }))
+      const manualLegs = (await prisma.positionTransaction.findMany({ where: { positionId: manualPosition.id, note: { startsWith: "Liquidation" } } }))
         .sort((left, right) => Number(right.kind === "WITHDRAWAL") - Number(left.kind === "WITHDRAWAL"));
       assert.equal(manualLegs.length, received === "1000.00" ? 1 : 2);
       for (const leg of manualLegs) {
@@ -201,8 +190,7 @@ async function main() {
       await balance(manualPosition.id, "1000.00");
     }
 
-    // Backup: a flag e a taxa de cada classificação vão e voltam; um arquivo
-    // sem os campos novos restaura com o cálculo desligado.
+
     const backup = await exportBackup();
     assert.ok(backup);
     assert.equal(backup.tables.assets.find((row) => row.id === pre.id)!.autoIncome, true);
@@ -220,8 +208,7 @@ async function main() {
     assert.equal((await prisma.positionAllocation.findFirstOrThrow({ where: { positionId: prePosition.id } })).ratePercent?.toString(), "12");
     await balance(postPosition.id, money(postUntil29));
 
-    // Virada: o fechamento de outubro vira a base de novembro, que rende desde
-    // o dia 1 só onde a flag está ligada.
+
     await ensureMonthsUpToDate(day("2026-11-02"));
     const inherited = async (assetId: string) =>
       prisma.position.findFirstOrThrow({ where: { userId, assetId, portfolioMonth: { referenceDate: day("2026-11-01") } } });
@@ -234,8 +221,7 @@ async function main() {
     assert.equal((await inherited(cash.id)).calculationStartDate, null);
   });
 
-  // O CDI de 30/10 sai depois da virada: o job completa o fechamento de
-  // outubro, já revisado, e leva o saldo à base de novembro.
+
   const fetched: string[] = [];
   const report = await syncCdi(prisma, {
     now: new Date("2026-11-03T15:00:00.000Z"),
@@ -254,14 +240,14 @@ async function main() {
   const november = await prisma.position.findFirstOrThrow({ where: { userId, assetId: post.id, portfolioMonth: { referenceDate: day("2026-11-01") } } });
   assert.equal(november.openingQuantity.toFixed(2), money(postClose));
   assert.equal(november.quantity.toFixed(2), money(postClose));
-  // Novembro começa num domingo, e 02/11 é feriado: o prefixado ainda não rendeu.
+
   const preNovember = await prisma.position.findFirstOrThrow({ where: { userId, assetId: pre.id, portfolioMonth: { referenceDate: day("2026-11-01") } } });
   assert.equal(preNovember.quantity.toFixed(2), money(preClose));
 
-  console.info("Rendimento automático: flag, pós-fixado pelo CDI, prefixado, bloqueios, desligar e religar, liquidação, backup, virada e fechamento completado passaram no schema isolado.");
+  console.info("Automatic accrual: eligibility, CDI, fixed rates, safeguards, toggling, liquidation, backup, rollover and late closing passed in the isolated schema.");
 }
 
-// As taxas são de todos; no schema de teste, só as deste roteiro existem.
+
 async function clearRates() {
   await prisma.rateObservation.deleteMany({ where: { indexer: "CDI" } });
   await prisma.rateCoverage.deleteMany({ where: { indexer: "CDI" } });
@@ -269,8 +255,8 @@ async function clearRates() {
 
 main().finally(async () => {
   await clearRates();
-  // Account aponta à instituição com NoAction; retire primeiro as posições
-  // e contas do usuário criado por este roteiro, antes da cascata do usuário.
+
+
   await prisma.$transaction([
     prisma.position.deleteMany({ where: { userId } }),
     prisma.account.deleteMany({ where: { userId } }),

@@ -17,7 +17,7 @@ export async function fetchFinnhubQuotes(
         symbol,
         "finnhub",
         "MISSING_API_KEY",
-        "Configure FINNHUB_API_KEY para atualizar ativos cotados em USD.",
+        "Configure FINNHUB_API_KEY to update assets quoted in USD.",
       ),
     );
   }
@@ -48,11 +48,7 @@ export async function fetchFinnhubQuotes(
 
 const finnhubLookupSchema = z.object({ c: z.number().nullable().optional() });
 
-/**
- * Confere se o Finnhub conhece o símbolo (spec 026). Para um símbolo
- * desconhecido o Finnhub responde HTTP 200 com o preço zerado, e não um erro.
- * Falhas de rede, de chave ou de acesso são lançadas para quem chama.
- */
+
 export async function lookupFinnhubSymbol(
   symbol: string,
   apiKey: string,

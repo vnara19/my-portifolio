@@ -1,5 +1,7 @@
 "use client";
 
+/** Ask for confirmation before creating missing reporting months and carrying positions forward. */
+
 import { Dialog } from "@base-ui/react/dialog";
 import { CalendarPlusIcon } from "@phosphor-icons/react/dist/ssr";
 
@@ -13,18 +15,14 @@ import {
   secondaryButtonClass,
 } from "@/modules/portfolio/ui/edit-dialogs";
 
-const listFormat = new Intl.ListFormat("pt-BR", { style: "long", type: "conjunction" });
+const listFormat = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
 
 function compact(month: string) {
   const date = parseMonthParam(month);
   return date ? formatMonthCompact(date) : month;
 }
 
-/**
- * Confirmação da virada de mês (spec 078): o app não cria mais a competência
- * sozinho ao abrir. Ele pergunta, e só cria depois do "Criar". "Agora não"
- * deixa para depois; o botão de criar o mês, em Posições, continua disponível.
- */
+
 export function MonthRolloverPrompt({
   pending,
   creating,
@@ -59,19 +57,18 @@ export function MonthRolloverPrompt({
                 <div className="min-w-0">
                   <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">
                     {single && first
-                      ? `Começar ${formatMonth(first).toLocaleLowerCase("pt-BR")}?`
-                      : `Criar ${months.length} competências?`}
+                      ? `Start ${formatMonth(first).toLocaleLowerCase("en-GB")}?`
+                      : `Create ${months.length} reporting months?`}
                   </Dialog.Title>
                   <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
                     {single
-                      ? `As posições e os rateios de ${compact(pending.latestMonth)} passam para ${compact(months[0])}, e ${compact(pending.latestMonth)} fica fechado.`
-                      : `${listFormat.format(months.map(compact))}, cada uma a partir da anterior, desde ${compact(pending.latestMonth)}. Os meses anteriores ficam fechados.`}
+                      ? `The positions and allocations from ${compact(pending.latestMonth)} are carried forward to ${compact(months[0])}, e ${compact(pending.latestMonth)} is closed.`
+                      : `${listFormat.format(months.map(compact))}, each based on the previous month, from ${compact(pending.latestMonth)}. Previous months remain closed.`}
                   </Dialog.Description>
                 </div>
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <Dialog.Close className={secondaryButtonClass} disabled={creating}>
-                  Agora não
+                <Dialog.Close className={secondaryButtonClass} disabled={creating}>Not now
                 </Dialog.Close>
                 <button
                   type="button"
@@ -79,7 +76,7 @@ export function MonthRolloverPrompt({
                   onClick={() => void confirmRollover(onDataChanged)}
                   className={primaryButtonClass}
                 >
-                  {creating ? "Criando…" : single ? `Criar ${compact(months[0])}` : "Criar"}
+                  {creating ? "Creating…" : single ? `Create ${compact(months[0])}` : "Create"}
                 </button>
               </div>
             </>
