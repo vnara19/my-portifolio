@@ -10,12 +10,12 @@ export function OverviewQuotes({ overview, selic }: { overview: OverviewData; se
   return (
       <div className="metric-card rounded-2xl p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-          <QuoteBadge icon={<CurrencyDollarIcon aria-hidden="true" size={16} weight="duotone" />} label="USD / BRL this month"
-            value={overview.usdRate === null ? "—" : `1 USD = ${formatBrl(overview.usdRate)}`} />
-          <QuoteBadge icon={<CurrencyEurIcon aria-hidden="true" size={16} weight="duotone" />} label="BRL / EUR this month" testId="eur-month"
-            value={overview.eurRate === null || overview.eurRate <= 0 ? "—" : `1 BRL = ${formatCurrency(1 / overview.eurRate, "EUR", false, 4)}`}
+          <QuoteBadge icon={<CurrencyDollarIcon aria-hidden="true" size={16} weight="duotone" />} label="US Dollar"
+            value={overview.usdRate === null ? "—" : formatBrl(overview.usdRate)} />
+          <QuoteBadge icon={<CurrencyEurIcon aria-hidden="true" size={16} weight="duotone" />} label="Euro" testId="eur-month"
+            value={overview.eurRate === null || overview.eurRate <= 0 ? "—" : formatBrl(overview.eurRate)}
             detail={overview.eurRate === null ? "EUR exchange rate unavailable" : `1 EUR = ${formatBrl(overview.eurRate)}`} />
-          <QuoteBadge icon={<CurrencyBtcIcon aria-hidden="true" size={16} weight="duotone" />} label="Bitcoin (USD) this month" testId="btc-usd-month"
+          <QuoteBadge icon={<CurrencyBtcIcon aria-hidden="true" size={16} weight="duotone" />} label="Bitcoin" testId="btc-usd-month"
             value={btcUsd === null ? "—" : formatCurrency(btcUsd, "USD")}
             detail="Converted using this month's BTC/BRL and USD/BRL quotes." />
           <QuoteBadge icon={<BankIcon aria-hidden="true" size={16} weight="duotone" />} label="Selic rate this month"
