@@ -86,3 +86,8 @@ Earlier specifications and discovery notes under `.ai/` are historical reference
 material in their original language. Legacy spreadsheet/VBA files and applied SQL
 migrations are historical artifacts, not current product instructions. Preserve
 applied migration contents and commit authorship.
+
+The overview uses USD reporting with EUR/BRL equivalents. Balance-change percentages
+include historical exchange-rate movements and cash flows. EUR uses public daily
+ECB reference rates via Frankfurter; no new API account is required. Position entry
+and internal valuation still use the existing BRL/USD contracts in this first stage.

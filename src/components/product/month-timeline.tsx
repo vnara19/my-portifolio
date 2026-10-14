@@ -73,7 +73,7 @@ function toItem(month: PortfolioMonthSummary): MonthStripItem {
     month: month.month,
     name: formatMonth(month.referenceDate),
     short: formatMonthLabel(month.referenceDate),
-    description: month.changePercent === null ? undefined : `${formatPercent(month.changePercent)} this month`,
+    description: month.changePercent === null ? undefined : `${formatPercent(month.changePercent)} this month (BRL)`,
     marker: month.changeBrl === null ? "none" : month.changeBrl >= 0 ? "up" : "down",
   };
 }

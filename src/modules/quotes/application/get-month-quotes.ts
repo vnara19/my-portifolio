@@ -139,11 +139,11 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
 
 
     const own = [...stored.values()]
-      .filter((quote) => quote.manual || quote.symbol === "USD" || viewer.symbols.has(quote.symbol))
+      .filter((quote) => quote.manual || quote.symbol === "USD" || quote.symbol === "EUR" || viewer.symbols.has(quote.symbol))
       .map((quote) => quote.symbol);
-    const symbols = [...new Set([...own, ...usage.keys()])].sort((left, right) =>
-      left === "USD" ? -1 : right === "USD" ? 1 : left.localeCompare(right),
-    );
+    const priority = (symbol: string) => symbol === "USD" ? 0 : symbol === "EUR" ? 1 : 2;
+    const symbols = [...new Set(["USD", "EUR", ...own, ...usage.keys()])].sort((left, right) =>
+      priority(left) - priority(right) || left.localeCompare(right));
     const assetsOf = (symbol: string) =>
       [...(usage.get(symbol)?.assets ?? [])].sort((left, right) => left.localeCompare(right, "en-GB"));
     const inclusionBySymbol = new Map(inclusions.map((quote) => [quote.symbol, quote]));
@@ -187,8 +187,8 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
 
         return {
           symbol,
-          instrumentType: quote?.instrumentType ?? null,
-          baseCurrency: quote?.baseCurrency ?? null,
+          instrumentType: quote?.instrumentType ?? (symbol === "USD" || symbol === "EUR" ? "FIAT" : null),
+          baseCurrency: quote?.baseCurrency ?? (symbol === "USD" || symbol === "EUR" ? symbol : null),
           valueBrl: quote?.valueBrl.toNumber() ?? null,
           valueText: quote?.valueBrl.toString() ?? "",
           quoteDate: quote?.quoteDate ? toDateKey(quote.quoteDate) : null,

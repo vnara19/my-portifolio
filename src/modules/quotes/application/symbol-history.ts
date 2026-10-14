@@ -12,6 +12,7 @@ import { fetchYahooDailyHistory } from "@/modules/quotes/infrastructure/yahoo";
 import { treasuryMonthEndPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { ProviderRefusalError } from "@/modules/quotes/infrastructure/http";
+import { loadReportingFxHistory } from "@/modules/quotes/application/reporting-fx-history";
 
 
 // Historical fallback providers (spec 037):
@@ -51,7 +52,9 @@ export async function loadSymbolHistory(
     usdCache: UsdRatesCache;
   },
 ): Promise<HistoryResult> {
-
+  if (target.instrumentType === "FIAT" && (target.symbol === "USD" || target.symbol === "EUR")) {
+    return loadReportingFxHistory(prisma, target.symbol, months, now);
+  }
 
   if (target.instrumentType === "TESOURO") {
     if (months.length === 0) return { provider: TREASURY_PROVIDER, inserted: 0 };

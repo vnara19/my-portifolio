@@ -54,3 +54,16 @@ Restore validates input, summarizes it, then applies a user-scoped transactional
 replacement. Existing version-5 exports remain compatible. Financial backups are
 local/private data and never source-controlled. Export a new backup before risky
 production data changes.
+
+## Reporting currencies
+
+Overview reports USD as the primary currency with EUR and BRL equivalents. The
+three change cards compare each endpoint in its own currency; their percentage
+and direction reflect USD. Cash flows, asset valuation and FX all affect balance
+change. Existing portfolio valuation and storage remain BRL.
+
+The quote job always includes USD/EUR when a reporting month exists. EUR uses daily
+ECB reference data via Frankfurter (no API key), with Yahoo fallback. Missing
+month-end FX is backfilled; current rates must never stand in for historical rates.
+Existing non-carried and manual monthly observations take precedence. Bitcoin's
+USD display uses the stored BTC/BRL and USD/BRL quotes for the selected month.

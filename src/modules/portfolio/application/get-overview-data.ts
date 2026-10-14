@@ -11,9 +11,11 @@ import {
   type AllocationGroup,
 } from "@/modules/portfolio/domain/rebalance";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
-import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
-import { addMonths } from "@/modules/quotes/domain/calendar";
+import { readMonthQuoteValues, readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
+import { addMonths, currentReferenceMonth } from "@/modules/quotes/domain/calendar";
 
+
+import { reportingAmounts, reportingChange, type ReportingAmounts, type ReportingChange } from "@/modules/portfolio/domain/reporting-currency";
 
 export const PERIOD_START = new Date(Date.UTC(2023, 9, 1));
 
@@ -32,6 +34,8 @@ export type OverviewData = {
   totalUsd: number | null;
   usdRate: number | null;
   btcRate: number | null;
+  eurRate: number | null;
+  reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
 
@@ -155,9 +159,46 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       }))
       .sort((left, right) => right.valueBrl - left.valueBrl);
 
-    const quotes = await readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "BTC"]);
-    const usdRate = quotes.get("USD")?.valueBrl.toNumber() ?? null;
+    const quotes = await readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "EUR", "BTC"]);
+    let usdRate = quotes.get("USD")?.valueBrl.toNumber() ?? null;
     const btcRate = quotes.get("BTC")?.valueBrl.toNumber() ?? null;
+
+    let eurRate = quotes.get("EUR")?.valueBrl.toNumber() ?? null;
+    const fxSeries = await readQuoteSeries(prisma, ["USD", "EUR"]);
+    const fxByMonth = new Map<string, Map<string, number>>();
+    // Existing backfills may have daily closes without a materialized monthly quote.
+    const dailyFx = await prisma.dailyQuote.findMany({
+      where: { symbol: { in: ["USD", "EUR"] }, quoteDate: { lt: currentReferenceMonth() } },
+      orderBy: { quoteDate: "asc" }, select: { symbol: true, quoteDate: true, valueBrl: true },
+    });
+    for (const quote of dailyFx) {
+      const key = quote.quoteDate.toISOString().slice(0, 7);
+      const rates = fxByMonth.get(key) ?? new Map<string, number>();
+      rates.set(quote.symbol, quote.valueBrl.toNumber());
+      fxByMonth.set(key, rates);
+    }
+    for (const quote of fxSeries) {
+      if (quote.carriedFrom !== null) continue;
+      const key = toMonthParam(quote.referenceDate);
+      const rates = fxByMonth.get(key) ?? new Map<string, number>();
+      rates.set(quote.symbol, quote.valueBrl.toNumber());
+      fxByMonth.set(key, rates);
+    }
+    const amountsFor = (point: OverviewHistoryPoint | null) => {
+      if (!point) return null;
+      const rates = fxByMonth.get(point.month);
+      return reportingAmounts(point.totalBrl, rates?.get("USD") ?? null, rates?.get("EUR") ?? null);
+    };
+    const selectedFx = fxByMonth.get(selectedHistory.month);
+    usdRate ??= selectedFx?.get("USD") ?? null;
+    eurRate ??= selectedFx?.get("EUR") ?? null;
+    const reportingTotal = reportingAmounts(selectedHistory.totalBrl, usdRate, eurRate);
+    const reporting = {
+      total: reportingTotal,
+      monthly: reportingChange(reportingTotal, amountsFor(previousHistory)),
+      annual: reportingChange(reportingTotal, amountsFor(yearAgoHistory)),
+      allTime: reportingChange(reportingTotal, selected.referenceDate > firstHistory.date ? amountsFor(firstHistory) : null),
+    };
 
     const allocation = await getAllocationOverview(selected.referenceDate);
 
@@ -168,6 +209,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       totalUsd: usdRate && usdRate !== 0 ? selectedHistory.totalBrl / usdRate : null,
       usdRate,
       btcRate,
+      eurRate,
+      reporting,
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

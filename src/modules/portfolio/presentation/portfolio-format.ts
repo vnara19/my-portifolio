@@ -72,3 +72,12 @@ export function formatMonth(date: Date, short = false) {
 
   return formatted.charAt(0).toLocaleUpperCase("en-GB") + formatted.slice(1);
 }
+
+/** Explicit ISO currency labels make the reporting order unambiguous. */
+export function formatCurrency(value: number, currency: "USD" | "EUR" | "BRL", signed = false, decimals = 2) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency", currency, currencyDisplay: "code",
+    minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+    signDisplay: signed ? "exceptZero" : "auto",
+  }).format(value);
+}

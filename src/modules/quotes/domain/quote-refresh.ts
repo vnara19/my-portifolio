@@ -53,6 +53,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   coingecko: "CoinGecko",
   configuration: "Settings",
   finnhub: "Finnhub",
+  "frankfurter-ecb": "ECB reference rate via Frankfurter",
   fixed: "Fixed value",
   provider: "Provider",
   yahoo: "Yahoo Finance",

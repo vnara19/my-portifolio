@@ -18,6 +18,7 @@ import { fetchFinnhubQuotes } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { fetchTreasuryQuotes } from "@/modules/quotes/infrastructure/treasury";
+import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
 
 
 //
@@ -62,6 +63,15 @@ export async function fetchCurrentQuotes(
       results.push({ symbol: "BRL", provider: "fixed", status: "SUCCESS", valueBrl: 1 });
     } else if (request.symbol === "USD" && usd) {
       results.push({ ...usd, symbol: "USD" });
+    } else if (request.symbol === "EUR") {
+      const [eur] = await runChain([request], [
+        { provider: "frankfurter-ecb", enabled: true, fetch: async () => {
+          const point = await fetchReferenceFxLatest("EUR", today);
+          return [{ symbol: "EUR", provider: "frankfurter-ecb", status: "SUCCESS", valueBrl: point.value, quoteDate: point.day }];
+        } },
+        { provider: "yahoo", enabled: true, fetch: (pending) => perSymbol(pending, "yahoo", async () => (await fetchYahooPrice("EURBRL=X")).price) },
+      ]);
+      results.push(eur);
     } else {
       results.push(
         quoteFailure(request.symbol, "awesome-api", "UNSUPPORTED_CURRENCY", `The currency ${request.symbol} is not integrated yet.`),
@@ -161,6 +171,10 @@ async function fetchUsdChain(configuration: QuoteProviderConfiguration, today: s
     [
       { provider: "awesome-api", enabled: true, fetch: (pending) => perSymbol(pending, "awesome-api", () => fetchUsdBrl(configuration.awesomeApiKey)) },
       { provider: "bcb", enabled: true, fetch: (pending) => perSymbol(pending, "bcb", () => fetchPtaxUsdLatest(today)) },
+      { provider: "frankfurter-ecb", enabled: true, fetch: async () => {
+        const point = await fetchReferenceFxLatest("USD", today);
+        return [{ symbol: "USD", provider: "frankfurter-ecb", status: "SUCCESS", valueBrl: point.value, quoteDate: point.day }];
+      } },
       { provider: "yahoo", enabled: true, fetch: (pending) => perSymbol(pending, "yahoo", async () => (await fetchYahooPrice("USD")).price) },
     ],
   );

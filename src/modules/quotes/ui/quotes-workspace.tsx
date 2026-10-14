@@ -21,6 +21,7 @@ import { confirmDiscardChanges, setPendingChanges } from "@/components/product/u
 import { cn } from "@/lib/utils";
 import {
   formatBrl,
+  formatCurrency,
   formatMonthCompact,
   formatPriceBrl,
   parseLocaleNumber,
@@ -41,7 +42,7 @@ const MAX_DECIMALS = 8;
 
 const INSTRUMENT_LABELS: Record<string, string> = {
   ACAO: "Stock",
-  CRIPTO: "Cripto",
+  CRIPTO: "Crypto",
   ETF: "ETF",
   FIAT: "Currency",
 };
@@ -287,6 +288,7 @@ export function QuotesWorkspace({
                   <QuoteRow
                     key={row.symbol}
                     row={row}
+                    usdRate={usdRate}
                     editMode={editMode}
                     onChange={(text) => setDrafts((current) => ({ ...current, [row.symbol]: text }))}
                   />
@@ -347,10 +349,12 @@ export function QuotesWorkspace({
 
 function QuoteRow({
   row,
+  usdRate,
   editMode,
   onChange,
 }: {
   row: QuoteDraftRow;
+  usdRate: number | null;
   editMode: boolean;
   onChange: (text: string) => void;
 }) {
@@ -414,8 +418,15 @@ function QuoteRow({
         ) : (
           <>
             <span className="font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
-              {row.valueBrl === null ? <span className="text-muted-foreground">No quote</span> : formatPriceBrl(row.valueBrl)}
+              {row.valueBrl === null ? <span className="text-muted-foreground">No quote</span> : row.symbol === "BTC"
+                ? usdRate !== null && usdRate > 0 ? formatCurrency(row.valueBrl / usdRate, "USD") : "USD rate unavailable"
+                : row.symbol === "EUR" ? `1 BRL = ${formatCurrency(1 / row.valueBrl, "EUR", false, 4)}` : formatPriceBrl(row.valueBrl)}
             </span>
+            {row.valueBrl !== null && (row.symbol === "BTC" || row.symbol === "EUR") ? (
+              <span className="mt-1 block text-[10px] text-muted-foreground" title="Conversion uses the exchange rate for this reporting month; manual inputs remain in BRL.">
+                {row.symbol === "EUR" ? `1 EUR = ${formatPriceBrl(row.valueBrl)}` : `BTC/BRL: ${formatPriceBrl(row.valueBrl)}`}
+              </span>
+            ) : null}
             {editMode ? (
               <p title="Fetched from providers by the quote update job." className="mt-1 text-[9px] text-muted-foreground">Automatic
               </p>
@@ -424,7 +435,7 @@ function QuoteRow({
         )}
         {row.changed && !row.invalid && row.valueBrl !== null ? (
           <p className="mt-1 font-mono text-[9px] text-muted-foreground sm:whitespace-nowrap">
-            antes {formatPriceBrl(row.valueBrl)}
+            previously {formatPriceBrl(row.valueBrl)}
           </p>
         ) : null}
         {totalChanged ? (

@@ -23,7 +23,7 @@ export async function readQuoteViewer(db: PrismaClient): Promise<QuoteViewer> {
     }),
     db.portfolioMonth.findFirst({ orderBy: { referenceDate: "desc" }, select: { id: true } }),
   ]);
-  const symbols = new Set<string>();
+  const symbols = new Set<string>(latest ? ["USD", "EUR"] : []);
   const current = new Map<string, string[]>();
   const all = new Map<string, string[]>();
 

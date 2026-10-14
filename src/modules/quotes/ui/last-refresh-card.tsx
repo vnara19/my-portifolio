@@ -46,7 +46,7 @@ export function LastRefreshCard({
         >
           {time?.long ?? (summary?.lastUpdatedAt ? "Updated 10 min ago" : "Quotes not updated yet")}
         </p>
-        {time ? <p className="mt-0.5 text-xs text-muted-foreground">In {time.absolute}</p> : null}
+        {time ? <p className="mt-0.5 text-xs text-muted-foreground">On {time.absolute}</p> : null}
         {hasIssues && lastRun && now !== null ? (
           <p data-testid="last-refresh-issue" className="mt-1.5 text-xs text-destructive">
             {lastAttemptIsLatestUpdate ? "In this update" : `Last attempt on ${formatRefreshDateTime(lastRun.startedAt)}`}

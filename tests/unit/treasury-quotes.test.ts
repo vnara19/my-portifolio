@@ -134,7 +134,10 @@ function syncFixture() {
     $executeRaw: async (parts: TemplateStringsArray, ...values: unknown[]) => { raw.push({ sql: parts.join("?"), values }); return 0; },
     portfolioMonth: { findMany: async () => [{ id: "month", referenceDate: new Date("2026-10-01T00:00:00Z") }] },
     position: { findMany: async () => [{ asset: { quoteSymbol: identity.symbol } }] },
-    quoteSymbol: { findMany: async () => [symbol], updateMany: async () => ({}), update: async () => ({}) },
+    quoteSymbol: { findMany: async () => [symbol, ...["USD", "EUR"].map((currency) => ({
+      ...symbol, symbol: currency, instrumentType: "FIAT", baseCurrency: currency,
+      lastSuccessAt: new Date("2026-10-04T15:00:00Z"), historyAttemptedAt: new Date("2026-10-04T15:00:00Z"),
+    }))], updateMany: async () => ({}), update: async () => ({}) },
     quoteRefreshRun: { updateMany: async () => ({}), findFirst: async () => null, create: async () => ({ id: "run" }), update: async () => ({}) },
     quoteRefreshResult: { createMany: async ({ data }: { data: typeof results }) => { results.push(...data); return { count: data.length }; } },
     manualQuote: { deleteMany: async () => ({}) },

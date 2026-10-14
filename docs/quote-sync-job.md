@@ -32,3 +32,16 @@ The application's update age measures the latest successful quote write for the 
 
 `jobs/neon` remains an optional alternative entry point, not the current scheduler.
 Do not link it to the collaborator's projects or deploy it without a separate request.
+
+## Reporting FX
+
+USD and EUR are registered automatically for reporting, independently of quoted
+positions. EUR/BRL uses the daily ECB reference feed through Frankfurter, with
+Yahoo fallback. This public source needs no API key. It is also a USD fallback.
+The daily quote retains the source date. Historical month-end FX fills reporting
+comparisons without overwriting existing genuine or user-specific monthly prices.
+FX history coverage is checked daily, including holes before the last sync marker.
+
+The EUR screen displays the reciprocal explicitly (`1 BRL = … EUR`). The stored
+quote and manual input remain BRL per EUR. BTC's primary display is USD; its BRL
+quote remains the valuation and editing contract.

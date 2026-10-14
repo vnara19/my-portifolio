@@ -18,6 +18,7 @@ import {
   isHistoryDue,
   isQuoteDue,
   MAX_HISTORIES_PER_RUN,
+  HISTORY_RETRY_AFTER_MS,
   MAX_QUOTES_PER_RUN,
   missingClosingMonths,
 } from "@/modules/quotes/domain/quote-sync";
@@ -268,7 +269,9 @@ async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMon
       });
       const quoteSymbols = registry.filter((symbol) => isQuoteDue(symbol, now)).slice(0, MAX_QUOTES_PER_RUN);
       const historySymbols = registry
-        .filter((symbol) => isHistoryDue(symbol, currentMonth, now))
+        .filter((symbol) => (symbol.symbol === "USD" || symbol.symbol === "EUR")
+          ? !symbol.historyAttemptedAt || now.getTime() - symbol.historyAttemptedAt.getTime() >= HISTORY_RETRY_AFTER_MS
+          : isHistoryDue(symbol, currentMonth, now))
         .slice(0, MAX_HISTORIES_PER_RUN);
 
 
@@ -309,7 +312,7 @@ async function symbolsInUse(transaction: Transaction, monthIds: string[]) {
     select: { asset: { select: { quoteSymbol: true } } },
   });
 
-  return [...new Set(positions.map((position) => position.asset.quoteSymbol!))].sort();
+  return [...new Set(["USD", "EUR", ...positions.map((position) => position.asset.quoteSymbol!)])].sort();
 }
 
 
@@ -329,24 +332,26 @@ async function registerMissingSymbols(transaction: Transaction, inUse: string[])
     return [];
   }
 
-  const [monthly, daily, assets] = await Promise.all([
+  const metadataSymbols = missing.filter((symbol) => symbol !== "USD" && symbol !== "EUR");
+  const [monthly, daily, assets] = metadataSymbols.length === 0 ? [[], [], []] : await Promise.all([
     transaction.marketQuote.findMany({
-      where: { symbol: { in: missing } },
+      where: { symbol: { in: metadataSymbols } },
       orderBy: { referenceDate: "desc" },
       select: { symbol: true, instrumentType: true, baseCurrency: true },
     }),
     transaction.dailyQuote.findMany({
-      where: { symbol: { in: missing } },
+      where: { symbol: { in: metadataSymbols } },
       orderBy: { quoteDate: "desc" },
       select: { symbol: true, instrumentType: true, baseCurrency: true },
     }),
     transaction.asset.findMany({
-      where: { quoteSymbol: { in: missing }, quoteProviderId: { not: null } },
+      where: { quoteSymbol: { in: metadataSymbols }, quoteProviderId: { not: null } },
       orderBy: { createdAt: "asc" },
       select: { quoteSymbol: true, quoteProviderId: true },
     }),
   ]);
   const metadata = new Map<string, { instrumentType: string; baseCurrency: string }>();
+  for (const currency of ["USD", "EUR"]) metadata.set(currency, { instrumentType: "FIAT", baseCurrency: currency });
 
   for (const quote of [...monthly, ...daily]) {
     if (!metadata.has(quote.symbol)) {
@@ -570,7 +575,7 @@ async function syncHistories(
     try {
       const months = missingClosingMonths({
         currentMonth,
-        syncedUntil: symbol.historySyncedUntil,
+        syncedUntil: symbol.symbol === "USD" || symbol.symbol === "EUR" ? null : symbol.historySyncedUntil,
         closingDays: await closingDaysOf(prisma, symbol.symbol, currentMonth),
       });
       const result =
