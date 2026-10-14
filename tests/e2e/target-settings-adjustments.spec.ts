@@ -3,11 +3,11 @@ import { stubQuoteChecks } from "./support/quote-checks";
 
 test.beforeEach(async ({ page }) => { await stubQuoteChecks(page); });
 
-test("settings contains only tolerance controls", async ({ page }) => {
+test("settings preserves backups and account alongside tolerance", async ({ page }) => {
   await page.goto("/configuracao?mes=2026-09");
   await expect(page.getByRole("heading", { level: 1, name: "Portfolio settings" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Tolerance", exact: true })).toBeVisible();
-  await expect(page.locator("main section")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Export backup" })).toBeVisible();
   for (const title of ["Asset class", "Currency", "Strategy", "Currency within each class", "Fixed income", "Equities", "Buy and sell preview"]) {
     await expect(page.getByRole("heading", { name: title, exact: true })).toHaveCount(0);
   }

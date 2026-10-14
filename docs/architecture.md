@@ -22,11 +22,11 @@ redesign require separate specifications.
 
 ## Portfolio presentation
 
-Settings exposes only the tolerance band. Saving it updates only the active plan's
+Settings exposes the tolerance band, imported backup versions, backup tools and account controls. Saving it updates only the active plan's
 tolerance, without validating or modifying hidden allocation weights. Existing
 classification, strategy and target data remain compatible with stored backups.
-Overview allocation shows current holdings only, including the currency view;
-target charts and buy/sell recommendations are not displayed. No target plans are
+Overview allocation always uses the overall portfolio and offers only Class and Currency views; it shows current holdings only.
+Target charts and buy/sell recommendations are not displayed. No target plans are
 created just by visiting Settings.
 
 ## User data
@@ -85,3 +85,5 @@ The quote job always includes USD/EUR when a reporting month exists. EUR uses da
 ECB reference data via Frankfurter (no API key), with Yahoo fallback. Missing
 month-end FX is backfilled; current rates must never stand in for historical rates.
 Existing non-carried and manual monthly observations take precedence.
+
+The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in USD, Selic, position and institution counts.

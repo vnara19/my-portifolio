@@ -3,12 +3,13 @@ import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { AllocationExplorer } from "@/modules/portfolio/ui/allocation-explorer";
 import { AssetTypeBreakdown } from "@/modules/portfolio/ui/asset-type-breakdown";
 import { EmptyPortfolio } from "@/modules/portfolio/ui/empty-portfolio";
+import { OverviewQuotes } from "@/modules/portfolio/ui/overview-quotes";
 import { OverviewKpis } from "@/modules/portfolio/ui/overview-kpis";
 import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolution-chart";
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview }: { overview: OverviewData | null; selic: SelicMonthView | null }) {
+export function OverviewDashboard({ overview, selic }: { overview: OverviewData | null; selic: SelicMonthView | null }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -32,6 +33,8 @@ export function OverviewDashboard({ overview }: { overview: OverviewData | null;
       <div className="mt-4">
         <OverviewKpis overview={overview} />
       </div>
+
+      <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>
 
       <section
         id="evolucao"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { saveToleranceAction } from "@/app/actions/target-plan";
 import { Button } from "@/components/ui/button";
 import { setPendingChanges } from "@/components/product/unsaved-changes";
@@ -12,7 +12,7 @@ import { StepSlider } from "@/modules/portfolio/ui/step-slider";
 const format = (value: number) => new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2, useGrouping: false }).format(value);
 
 /** Tolerance is saved independently; hidden allocation targets are never submitted or changed. */
-export function TargetEditor({ tolerance }: { tolerance: number }) {
+export function TargetEditor({ tolerance, children }: { tolerance: number; children?: ReactNode }) {
   const [saved, setSaved] = useState(tolerance);
   const [draft, setDraft] = useState(format(tolerance));
   const [message, setMessage] = useState<{ ok: boolean; message: string } | null>(null);
@@ -57,5 +57,6 @@ export function TargetEditor({ tolerance }: { tolerance: number }) {
       </div>
       {message ? <p role={message.ok ? "status" : "alert"} className={cn("mt-3 text-sm", message.ok ? "text-primary" : "text-destructive")}>{message.message}</p> : null}
     </section>
+    <div className="mt-6 space-y-6">{children}</div>
   </div>;
 }
