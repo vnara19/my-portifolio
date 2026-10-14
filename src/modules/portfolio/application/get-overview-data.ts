@@ -1,3 +1,5 @@
+import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
+import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { getAllocationOverview } from "@/modules/portfolio/application/get-allocation-overview";
@@ -35,6 +37,7 @@ export type OverviewData = {
   usdRate: number | null;
   btcRate: number | null;
   eurRate: number | null;
+  gains: PortfolioGains;
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
@@ -211,6 +214,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       btcRate,
       eurRate,
       reporting,
+      gains: await getPortfolioGains(selected.referenceDate, usdRate),
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

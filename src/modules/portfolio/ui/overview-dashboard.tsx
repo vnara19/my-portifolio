@@ -8,7 +8,7 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic }: { overview: OverviewData | null; selic: SelicMonthView | null }) {
+export function OverviewDashboard({ overview }: { overview: OverviewData | null; selic: SelicMonthView | null }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -16,21 +16,21 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
   const monthParam = toMonthParam(overview.referenceDate);
 
   return (
-    <div className="relative mx-auto w-full max-w-[1472px] px-5 py-8 sm:px-7 sm:py-10 xl:px-12 xl:py-12">
+    <div className="relative mx-auto w-full max-w-[1472px] px-5 py-5 sm:px-7 sm:py-6 xl:px-12">
       <div className="ambient-glow pointer-events-none absolute top-0 right-0 -z-10 h-[460px] w-[460px]" />
 
-      <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Overview
           </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio overview
+          <h1 className="mt-1 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">Portfolio overview
           </h1>
         </div>
         <DevQuoteSyncButton />
       </header>
 
-      <div className="mt-7">
-        <OverviewKpis overview={overview} selic={selic} />
+      <div className="mt-4">
+        <OverviewKpis overview={overview} />
       </div>
 
       <section

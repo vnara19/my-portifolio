@@ -34,6 +34,7 @@ const kpiCard = tv({
       true: { value: "text-xl tracking-[-0.05em] min-[360px]:text-[15px] min-[400px]:text-base sm:text-xl xl:text-2xl xl:tracking-[-0.04em]" },
       false: { value: "text-2xl tracking-[-0.04em]" },
     },
+    compact: { true: { root: "p-4 sm:p-4", value: "mt-3" }, false: {} },
     emphasis: { true: {}, false: {} },
   },
   compoundVariants: [
@@ -55,6 +56,7 @@ export function KpiCard({
   valueData,
   valueClassName,
   dense = false,
+  compact = false,
   emphasis = false,
   footer,
 }: {
@@ -73,12 +75,13 @@ export function KpiCard({
   valueClassName?: string;
 
   dense?: boolean;
+  compact?: boolean;
 
   emphasis?: boolean;
 
   footer?: ReactNode;
 }) {
-  const slots = kpiCard({ tone, dense, emphasis });
+  const slots = kpiCard({ tone, dense, emphasis, compact });
 
   return (
     <article className={slots.root()}>

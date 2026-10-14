@@ -24,53 +24,28 @@ async function pageWidth(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth);
 }
 
-test("all-time change replaces the off-target metric", async ({ page }) => {
+test("portfolio summary separates investment gains from balance changes", async ({ page }) => {
   await page.goto("/?mes=2026-09");
-
-  const kpis = page.getByRole("region", { name: "Reporting month metrics" });
-  const periodCard = kpis.locator("article").filter({ hasText: "All-time change" });
-  await expect(periodCard).toBeVisible();
-  await expect(kpis.getByText("Fora da meta")).toHaveCount(0);
-
-
-  // Full allocation view (spec 030).
-  await expect(page.getByTestId("period-change")).toHaveAttribute("data-value", /^\+[\d.]+(,\d{1,2})?%$/);
-  await expect(page.getByTestId("period-change")).toHaveClass(/text-primary/);
-  await expect(periodCard.locator("p").last()).toHaveText(/^R\$\s[\d.]+,\d{2} desde Out\/23$/);
-
-  await page.goto("/?mes=2023-10");
-  await expect(page.getByTestId("period-change")).toHaveText("—");
-  await expect(periodCard.locator("p").last()).toHaveText("Period start");
-
-  await page.goto("/?mes=2023-06");
-  await expect(page.getByTestId("period-change")).toHaveText("—");
-  await expect(periodCard.locator("p").last()).toHaveText("The period starts in Oct/23");
+  const summary = page.getByRole("region", { name: "Portfolio summary" });
+  await expect(summary.locator("article")).toHaveCount(4);
+  for (const label of ["Portfolio value", "Unrealized gain", "Realized gain", "Total gain"]) {
+    await expect(summary.getByText(label, { exact: true })).toBeVisible();
+  }
+  for (const oldLabel of ["Monthly change", "12-month change", "All-time change", "Bitcoin (USD) this month"]) {
+    await expect(summary.getByText(oldLabel, { exact: true })).toHaveCount(0);
+  }
+  const total = summary.locator("article").filter({ hasText: "Portfolio value" });
+  await expect(total.locator('[data-currency="EUR"]')).toBeVisible();
+  await expect(total.locator('[data-currency="BRL"]')).toBeVisible();
+  await expect(summary.locator("article").filter({ hasNotText: "Portfolio value" }).locator("[data-currency]")).toHaveCount(0);
 });
 
-test("changes compare calendar months", async ({ page }) => {
-  const kpis = page.getByRole("region", { name: "Reporting month metrics" });
-  const detail = (title: string) => kpis.locator("article").filter({ hasText: title }).locator("p").last();
-
+test("unavailable daily results, dividends and annualized returns explain missing data", async ({ page }) => {
   await page.goto("/?mes=2026-09");
-  await expect(detail("Monthly change")).toHaveText(/^R\$\s[\d.]+,\d{2}$/);
-  await expect(detail("12-month change")).toHaveText(/ desde Set\/25$/);
-
-
-  await page.goto("/?mes=2024-08");
-  await expect(detail("Monthly change")).toHaveText(/R\$\s[\d.]+,\d{2}$/);
-  await expect(detail("12-month change")).toHaveText(/ desde Ago\/23$/);
-
-
-  await page.goto("/?mes=2024-05");
-  await expect(page.getByTestId("year-change")).toHaveText("—");
-  await expect(detail("12-month change")).toHaveText("Insufficient history");
-
-
-  await page.goto("/?mes=2024-06");
-  await expect(detail("12-month change")).toHaveText(/ desde Jun\/23$/);
-
-  await page.goto("/?mes=2023-06");
-  await expect(detail("Monthly change")).toHaveText("First reporting month in history");
+  const summary = page.getByRole("region", { name: "Portfolio summary" });
+  await expect(summary.getByText("Last day — USD · —%")).toHaveAttribute("title", /previous-day valuation/);
+  await expect(summary.getByText("Total dividends — USD")).toHaveAttribute("title", /not separately identified/);
+  await expect(summary.getByText("Annualized yield —%")).toHaveAttribute("title", /XIRR/);
 });
 
 test("a target without a position appears as a purchase opportunity", async ({ page }) => {
@@ -191,7 +166,7 @@ test("cards respond to pointer movement like metric cards", async ({ page }) => 
   await page.goto("/?mes=2026-09");
 
   const hoverable = await page.evaluate(() => matchMedia("(hover: hover)").matches);
-  const kpi = page.getByRole("region", { name: "Reporting month metrics" }).locator("article").first();
+  const kpi = page.getByRole("region", { name: "Portfolio summary" }).locator("article").first();
   const panel = page.locator("#evolucao");
   const style = (locator: Locator, property: "transform" | "borderTopColor") =>
     locator.evaluate((element, name) => getComputedStyle(element)[name], property);
