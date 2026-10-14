@@ -216,3 +216,16 @@ function parseDecimal(raw: string) {
 
   return /^\d+(?:\.\d+)?$/.test(normalized) ? new Prisma.Decimal(normalized) : null;
 }
+
+/** Update only tolerance; existing allocation targets and their weights are preserved. */
+export async function saveTolerance(raw: string) {
+  const tolerance = parseTolerance(raw);
+  const prisma = await getUserDb();
+  if (!prisma) throw new TargetPlanError("The database is unavailable.");
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${DEFAULT_TARGETS_LOCK_KEY})`;
+    const active = await tx.targetPlan.findFirst({ where: { isActive: true }, orderBy: { createdAt: "desc" }, select: { id: true } });
+    if (active) await tx.targetPlan.update({ where: { id: active.id }, data: { tolerancePercent: tolerance } });
+    else await tx.targetPlan.create({ data: { userId: SCOPED_USER, name: "Portfolio settings", tolerancePercent: tolerance } });
+  }, { maxWait: 10000, timeout: 15000 });
+}

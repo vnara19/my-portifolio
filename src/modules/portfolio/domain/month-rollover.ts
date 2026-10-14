@@ -24,7 +24,7 @@ export type MonthRolloverOutcome =
   | { state: "unavailable"; message: string };
 
 
-export type TargetPlanCheck = "created" | "existing" | "no-positions" | "unavailable";
+export type TargetPlanCheck = "disabled" | "created" | "existing" | "no-positions" | "unavailable";
 
 export type OpenCheckResponse = {
   rollover: MonthRolloverOutcome;

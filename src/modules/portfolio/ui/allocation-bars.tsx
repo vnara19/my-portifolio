@@ -4,7 +4,6 @@ import { englishLabel } from "@/lib/english-labels";
 
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis, type LabelProps } from "recharts";
 
-import { cn } from "@/lib/utils";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
@@ -20,8 +19,7 @@ type Mode = "current" | "target";
 
 export function AllocationBars({ title, rows }: { title: string; rows: AllocationBarRow[] }) {
   const hasCurrent = rows.some((row) => row.currentShare > 0);
-  const hasTarget = rows.some((row) => (row.targetShare ?? 0) > 0);
-  const scale = shareScale(Math.max(0, ...rows.flatMap((row) => [row.currentShare, row.targetShare ?? 0])));
+  const scale = shareScale(Math.max(0, ...rows.map((row) => row.currentShare)));
 
   return (
     <section className="premium-panel rounded-[24px] p-5 sm:p-6" aria-labelledby="allocation-chart-title" data-testid="composition-chart">
@@ -43,19 +41,16 @@ export function AllocationBars({ title, rows }: { title: string; rows: Allocatio
             ))}
           </ul>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
+          <div className="mt-5">
             <ShareBars mode="current" title="Current" empty={!hasCurrent} emptyText="No positions in this allocation view" rows={rows} scale={scale} />
-            <div aria-hidden="true" className="h-px bg-border/60 lg:h-auto lg:w-px" />
-            <ShareBars mode="target" title="Target" empty={!hasTarget} emptyText="No targets in this allocation view" rows={rows} scale={scale} />
           </div>
 
           <table className="sr-only">
-            <caption>{title}, current and target</caption>
+            <caption>{title}, current</caption>
             <thead>
               <tr>
                 <th scope="col">Item</th>
                 <th scope="col">Current</th>
-                <th scope="col">Target</th>
               </tr>
             </thead>
             <tbody>
@@ -63,7 +58,6 @@ export function AllocationBars({ title, rows }: { title: string; rows: Allocatio
                 <tr key={row.label}>
                   <th scope="row">{englishLabel(row.label)}</th>
                   <td>{formatSharePercent(row.currentShare)}</td>
-                  <td>{row.targetShare === null ? "no target" : formatSharePercent(row.targetShare)}</td>
                 </tr>
               ))}
             </tbody>
@@ -137,14 +131,8 @@ function ShareBars({
                         <p className="text-[11px] font-medium text-foreground">{englishLabel(row.label)}</p>
                       </div>
                       <p className="mt-1.5 font-mono text-[10px]">
-                        <span className={cn(mode === "current" ? "text-foreground" : "text-muted-foreground")}>
-                          {formatSharePercent(row.currentShare)}
-                        </span>
-                        <span className="text-muted-foreground/50"> / </span>
-                        <span className={cn(mode === "target" ? "text-foreground" : "text-muted-foreground")}>
-                          {row.targetShare === null ? "no target" : formatSharePercent(row.targetShare)}
-                        </span>
-                        <span className="ml-2 text-[9px] tracking-[0.1em] text-muted-foreground uppercase">current / target</span>
+                        <span className="text-foreground">{formatSharePercent(row.currentShare)}</span>
+                        <span className="ml-2 text-[9px] tracking-[0.1em] text-muted-foreground uppercase">current</span>
                       </p>
                     </div>
                   );

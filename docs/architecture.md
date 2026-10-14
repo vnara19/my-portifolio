@@ -20,6 +20,15 @@ historical database tables and data remain untouched. A pension asset may remain
 part of the investment portfolio. Salary tracking and a TradingView-inspired
 redesign require separate specifications.
 
+## Portfolio presentation
+
+Settings exposes only the tolerance band. Saving it updates only the active plan's
+tolerance, without validating or modifying hidden allocation weights. Existing
+classification, strategy and target data remain compatible with stored backups.
+Overview allocation shows current holdings only, including the currency view;
+target charts and buy/sell recommendations are not displayed. No target plans are
+created just by visiting Settings.
+
 ## User data
 
 All portfolio reads and writes pass through user-scoped database access. Public

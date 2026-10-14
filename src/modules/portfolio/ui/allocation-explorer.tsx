@@ -10,7 +10,6 @@ import type { FixedIncomeDuration } from "@/modules/portfolio/domain/fixed-incom
 import type { AllocationGroup, AllocationGroupKey } from "@/modules/portfolio/domain/rebalance";
 import { AllocationBars } from "@/modules/portfolio/ui/allocation-bars";
 import { FixedIncomeDurationChart } from "@/modules/portfolio/ui/fixed-income-duration-chart";
-import { RebalancePanel } from "@/modules/portfolio/ui/rebalance-panel";
 
 type SliceDefinition = {
   key: string;
@@ -29,7 +28,6 @@ const CLASSIFICATIONS: { key: string; label: string; slices: SliceDefinition[] }
     slices: [
       { key: "classe", label: "Class", group: "ASSET_CLASS", chartTitle: "Asset class" },
       { key: "moeda", label: "Currency", group: "CURRENCY", chartTitle: "Currency" },
-      { key: "estrategia", label: "Strategy", group: "STRATEGY", chartTitle: "Strategy" },
     ],
   },
   {
@@ -70,7 +68,7 @@ export function AllocationExplorer({
   const rows = (activeSlice.parentClass
     ? allRows.filter((row) => row.label.startsWith(`${activeSlice.parentClass} ·`))
     : allRows
-  ).filter((row) => row.currentShare > 0 || (row.targetShare ?? 0) > 0);
+  ).filter((row) => row.currentShare > 0);
   const prefix = activeSlice.parentClass ? `${activeSlice.parentClass} · ` : "";
   const reduceMotion = useReducedMotion();
 
@@ -159,7 +157,6 @@ export function AllocationExplorer({
         />
       )}
 
-      <RebalancePanel rows={rows} />
     </section>
   );
 }

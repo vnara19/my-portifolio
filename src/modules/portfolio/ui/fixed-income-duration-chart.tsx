@@ -13,7 +13,6 @@ import {
   type LabelProps,
 } from "recharts";
 
-import { cn } from "@/lib/utils";
 import type {
   FixedIncomeDuration,
   FixedIncomeDurationRow,
@@ -33,14 +32,14 @@ const BAR_LABEL_MIN_DROP = 14;
 const BAR_LABEL_SEPARATION = 2;
 
 export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDuration }) {
-  const { durations, rows, hasCurrent, hasTarget } = duration;
+  const { durations, rows, hasCurrent } = duration;
 
-  if (!hasCurrent && !hasTarget) {
+  if (!hasCurrent) {
     return null;
   }
 
   const scale = shareScale(
-    Math.max(0, ...rows.flatMap((row) => [...Object.values(row.current), ...Object.values(row.target)])),
+    Math.max(0, ...rows.flatMap((row) => Object.values(row.current))),
   );
 
   return (
@@ -58,7 +57,7 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
       </ul>
 
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
+      <div className="mt-5">
         <DurationBars
           mode="current"
           title="Current"
@@ -68,38 +67,26 @@ export function FixedIncomeDurationChart({ duration }: { duration: FixedIncomeDu
           rows={rows}
           scale={scale}
         />
-        <div aria-hidden="true" className="h-px bg-border/60 lg:h-auto lg:w-px" />
-        <DurationBars
-          mode="target"
-          title="Target"
-          empty={!hasTarget}
-          emptyText="No fixed-income targets"
-          durations={durations}
-          rows={rows}
-          scale={scale}
-        />
       </div>
 
       <table className="sr-only">
-        <caption>Fixed income by redemption term, current and target</caption>
+        <caption>Fixed income by redemption term, current</caption>
         <thead>
           <tr>
             <th scope="col">Subclass</th>
             <th scope="col">Term</th>
             <th scope="col">Current</th>
-            <th scope="col">Target</th>
           </tr>
         </thead>
         <tbody>
           {rows.flatMap((row) =>
             durations
-              .filter((entry) => (row.current[entry] ?? 0) > 0 || (row.target[entry] ?? 0) > 0)
+              .filter((entry) => (row.current[entry] ?? 0) > 0)
               .map((entry) => (
                 <tr key={`${englishLabel(row.subclass)}-${entry}`}>
                   <th scope="row">{englishLabel(row.subclass)}</th>
                   <td>{durationLabel(entry)}</td>
                   <td>{formatSharePercent(row.current[entry] ?? 0)}</td>
-                  <td>{formatSharePercent(row.target[entry] ?? 0)}</td>
                 </tr>
               )),
           )}
@@ -180,7 +167,7 @@ function DurationBars({
                     return null;
                   }
 
-                  return <DurationTooltip mode={mode} durations={durations} row={datum.row} />;
+                  return <DurationTooltip durations={durations} row={datum.row} />;
                 }}
               />
               {durations.map((entry, index) => (
@@ -213,23 +200,21 @@ function DurationBars({
 }
 
 function DurationTooltip({
-  mode,
   durations,
   row,
 }: {
-  mode: Mode;
   durations: string[];
   row: FixedIncomeDurationRow;
 }) {
   const entries = durations.filter(
-    (entry) => (row.current[entry] ?? 0) > 0 || (row.target[entry] ?? 0) > 0,
+    (entry) => (row.current[entry] ?? 0) > 0,
   );
 
   return (
     <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-[11px] font-medium text-foreground">{englishLabel(row.subclass)}</p>
-        <p className="text-[9px] tracking-[0.1em] text-muted-foreground uppercase">Current / target</p>
+        <p className="text-[9px] tracking-[0.1em] text-muted-foreground uppercase">Current</p>
       </div>
       <div className="mt-2 space-y-1">
         {entries.map((entry) => (
@@ -237,13 +222,7 @@ function DurationTooltip({
             <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(entry) }} />
             <span className="text-[10px] text-muted-foreground">{durationLabel(entry)}</span>
             <span className="ml-auto pl-3 font-mono text-[10px]">
-              <span className={cn(mode === "current" ? "text-foreground" : "text-muted-foreground")}>
-                {formatSharePercent(row.current[entry] ?? 0)}
-              </span>
-              <span className="text-muted-foreground/50"> / </span>
-              <span className={cn(mode === "target" ? "text-foreground" : "text-muted-foreground")}>
-                {formatSharePercent(row.target[entry] ?? 0)}
-              </span>
+              <span className="text-foreground">{formatSharePercent(row.current[entry] ?? 0)}</span>
             </span>
           </div>
         ))}

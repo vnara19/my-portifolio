@@ -5,7 +5,7 @@ import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
 import { requireSessionUser } from "@/modules/auth/session";
-import { saveTargetPlan, TargetPlanError } from "@/modules/portfolio/application/target-plan-editing";
+import { saveTargetPlan, saveTolerance, TargetPlanError } from "@/modules/portfolio/application/target-plan-editing";
 
 const schema = z.object({
   targets: z
@@ -36,5 +36,19 @@ export async function saveTargetPlanAction(input: unknown): Promise<TargetPlanAc
       ok: false,
       message: error instanceof TargetPlanError ? error.message : "Could not save the targets.",
     };
+  }
+}
+
+export async function saveToleranceAction(input: unknown): Promise<TargetPlanActionResult> {
+  await requireSessionUser();
+  if (typeof input !== "string" || input.length > 20) return { ok: false, message: "Review the tolerance value." };
+  try {
+    await saveTolerance(input.trim());
+    revalidatePath("/configuracao");
+    return { ok: true, message: "Tolerance saved." };
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error("Tolerance save failed", { name: error instanceof Error ? error.name : "Unknown", code: error && typeof error === "object" && "code" in error ? String(error.code) : undefined });
+    return { ok: false, message: error instanceof TargetPlanError ? error.message : "Could not save tolerance." };
   }
 }

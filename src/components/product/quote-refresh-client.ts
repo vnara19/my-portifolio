@@ -176,15 +176,6 @@ async function execute(onDataChanged: () => void) {
       announceRollover(payload.rollover);
     }
 
-    if (payload.targetPlan === "created") {
-      showAppToast({
-        id: "default-targets",
-        tone: "info",
-        title: "Default targets created",
-        description: "Each group was split equally across the portfolio categories. Adjust this in Settings.",
-      });
-    }
-
     const lastRun = payload.summary?.lastRun ?? null;
 
     if (lastRun) {
