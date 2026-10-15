@@ -93,7 +93,7 @@ const addSchema = z.object({
       initialKind: z.enum(["OPENING", "CONTRIBUTION"]).optional(),
       executedPriceBrl: value.nullable().optional(),
       strategy,
-      allocations: allocationsSchema,
+      allocations: z.union([z.tuple([]), allocationsSchema]),
     })
     .refine((addition) => (addition.accountId === undefined) !== (addition.newAccount === undefined))
     .refine((addition) => (addition.assetId === undefined) !== (addition.newAsset === undefined)),

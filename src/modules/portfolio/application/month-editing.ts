@@ -189,7 +189,7 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 
 
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
-  const allocations = parseAllocations(input.addition.allocations);
+  const allocations = input.addition.allocations.length ? parseAllocations(input.addition.allocations) : [];
 
   return withUndo(input.monthId, async (transaction, month) => {
     const positions = await transaction.position.findMany({

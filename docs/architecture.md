@@ -109,3 +109,15 @@ Portfolio/Main storage account and no strategy. Existing accounts and historical
 positions are unchanged. Cash here records a holding balance; external cash flows,
 salary tracking, fees and a new trade ledger are not introduced by this UI change.
 The overview information strip no longer displays an institution count.
+
+New-position creation no longer exposes manual allocation controls. Existing
+catalog classifications are retained; cryptocurrency, cash and explicitly selected
+stocks receive their known default class. ETF wrappers do not imply equity
+exposure: without verified fund metadata, a new ETF remains unclassified. New
+positions can therefore have no allocation rows, while manual edits retain their
+existing validation. No existing positions are reclassified by this UI change.
+Quoted assets use the existing catalog identity, provider name when available, or
+the verified ticker as a fallback; manual names remain for private balances and
+Tesouro Direto. Broad European coverage and market-group selection await a listing
+and fund-metadata integration; currency selection must not relabel a quote without
+the corresponding conversion and provider routing.

@@ -287,7 +287,7 @@ async function lookupSymbol(
         const yahoo = await lookupYahoo(symbol);
 
         if (yahoo.state === "found") {
-          return { state: "found", priceBrl: yahoo.price, coinId: null, name: null };
+          return { state: "found", priceBrl: yahoo.price, coinId: null, name: yahoo.name };
         }
 
         if (yahoo.state === "not-found" || !configuration.alphaVantageApiKey) {
@@ -344,9 +344,10 @@ async function lookupSymbol(
 
 async function lookupYahoo(
   symbol: string,
-): Promise<{ state: "found"; price: number } | { state: "not-found" } | { state: "unavailable"; code: string; message: string }> {
+): Promise<{ state: "found"; price: number; name: string | null } | { state: "not-found" } | { state: "unavailable"; code: string; message: string }> {
   try {
-    return { state: "found", price: (await fetchYahooPrice(symbol)).price };
+    const result = await fetchYahooPrice(symbol);
+    return { state: "found", price: result.price, name: result.name };
   } catch (error) {
     const described = describeProviderError(error);
 

@@ -51,7 +51,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "us-stock": {
     kind: "us-stock",
-    label: "US stock",
+    label: "US Stock",
     hint: "Finnhub · USD",
     ticker: "market",
     provider: "finnhub",
@@ -69,7 +69,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "br-stock": {
     kind: "br-stock",
-    label: "Brazilian stock or REIT",
+    label: "Brazilian Stock or REIT",
     hint: "Yahoo Finance · BRL",
     ticker: "market",
     provider: "yahoo",
@@ -78,7 +78,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   crypto: {
     kind: "crypto",
-    label: "Cripto",
+    label: "Cryptocurrency",
     hint: "CoinGecko",
     ticker: "market",
     provider: "coingecko",
@@ -87,7 +87,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "fixed-income": {
     kind: "fixed-income",
-    label: "Fixed income",
+    label: "Fixed Income",
     hint: "BRL balance",
     ticker: null,
     provider: null,
@@ -105,7 +105,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "brl-cash": {
     kind: "brl-cash",
-    label: "BRL cash",
+    label: "BRL Cash",
     hint: "BRL balance",
     ticker: null,
     provider: null,
@@ -114,7 +114,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "usd-balance": {
     kind: "usd-balance",
-    label: "USD cash",
+    label: "USD Cash",
     hint: "Valued using USD",
     ticker: "usd",
     provider: null,

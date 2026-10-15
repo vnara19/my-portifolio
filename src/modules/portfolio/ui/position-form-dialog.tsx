@@ -21,6 +21,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { Button } from "@/components/ui/button";
+import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker, type PickerOption } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
@@ -225,7 +226,6 @@ function PositionForm({
 
 
   const definition = kind ? ASSET_KIND_DEFINITIONS[kind] : null;
-  const typedName = cleanName(assetName);
   const symbol =
     definition?.ticker === "usd"
       ? USD_SYMBOL
@@ -248,6 +248,11 @@ function PositionForm({
   const coins = kind === "crypto" && symbol && coinCandidates?.symbol === symbol ? coinCandidates.coins : null;
   const checkedCoinId =
     check.state === "done" && check.response.status === "found" ? (check.response.coinId ?? null) : null;
+  const automaticName = !editing && definition?.ticker === "market" && kind !== "treasury";
+  const response = check.state === "done" ? check.response : null;
+  const typedName = automaticName
+    ? cleanName(catalog.assets.find((asset) => asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "")
+    : cleanName(assetName);
   const treasuryMaturity = (editing?.quoteSymbol ?? (kind === "treasury" ? symbol : null))?.startsWith("TD:")
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
   const maturityDate = treasuryMaturity ?? ((editing ? allowsMaturityOf(editing) : definition?.allowsMaturity) && maturity ? maturity : null);
@@ -257,7 +262,6 @@ function PositionForm({
       : null;
   const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey) : undefined;
   const isNewAsset = !editing && assetKey !== null && !catalogAsset;
-  const response = check.state === "done" ? check.response : null;
   const needsManualPrice =
     isNewAsset &&
     definition?.ticker === "market" &&
@@ -331,7 +335,7 @@ function PositionForm({
           rate: rateText(allocation.ratePercent),
         }))
       : kind
-        ? [{ key: 0, ...defaultAllocation(kind, symbol), weight: "100", rate: "" }]
+        ? (editing ? [defaultAllocation(kind, symbol)] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: "" }))
         : [{ key: 0, assetClass: "", subclass: "", duration: "", weight: "100", rate: "" }];
   const allocationRows = rows ?? derivedRows;
   const weightSum = allocationRows.reduce((total, row) => total + (parseLocaleNumber(row.weight) ?? 0), 0);
@@ -352,7 +356,7 @@ function PositionForm({
       knownRow(row) &&
       (parseLocaleNumber(row.weight) ?? 0) > 0,
   );
-  const balanced = Math.abs(weightSum - 100) <= 0.01;
+  const balanced = (!editing && allocationRows.length === 0) || Math.abs(weightSum - 100) <= 0.01;
 
   const changeRows = (change: (current: AllocationRow[]) => AllocationRow[]) => setRows(change(allocationRows));
 
@@ -605,7 +609,7 @@ function PositionForm({
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
           <PositionSection single={!editing} value="geral" className="space-y-4 outline-none">
             {!editing ? <div role="group" aria-label="Entry type" className="flex gap-2">
-              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "secondary" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; setEntryType(type); setKind(null); setTickerText(""); setManualPrice(""); setRows(null); }}>
+              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "default" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; setEntryType(type); setKind(null); setTickerText(""); setManualPrice(""); setRows(null); }}>
                 {type === "asset" ? "Asset" : "Cash"}
               </Button>)}
             </div> : null}
@@ -751,7 +755,9 @@ function PositionForm({
                   </>
                 ) : null}
 
-                {!editing ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={market ? "For example, ETF - VOO" : "For example, Bank X CDB"} className={inputClass} /></Field> : null}
+                {!editing && !automaticName ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder="For example, Bank X CDB" className={inputClass} /></Field> : null}
+                {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
+                {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
                   {treasury ? (
                     <Field label="Enter the position using">
@@ -803,7 +809,7 @@ function PositionForm({
             )}
           </PositionSection>
 
-          <PositionSection single={!editing} value="rateio" className="outline-none">
+          {editing ? <PositionSection single={false} value="rateio" className="outline-none">
             {!editing ? <SectionHeading title="Set the allocation" description="Classify this holding for your portfolio breakdown. Weights must add up to 100%." /> : null}
             {editing ? (
               <p className="text-[11px] leading-5 text-muted-foreground">Split the position across classifications. Weights must add up to 100%.
@@ -917,7 +923,7 @@ function PositionForm({
                 month={month}
               />
             ) : null}
-          </PositionSection>
+          </PositionSection> : null}
 
         </div>
       </Tabs.Root>
