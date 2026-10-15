@@ -162,18 +162,21 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       }))
       .sort((left, right) => right.valueBrl - left.valueBrl);
 
-    const quotes = await readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "EUR", "BTC"]);
+    // Independent quote reads share one network wait instead of three round trips.
+    const [quotes, fxSeries, dailyFx] = await Promise.all([
+      readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "EUR", "BTC"]),
+      readQuoteSeries(prisma, ["USD", "EUR"]),
+      prisma.dailyQuote.findMany({
+        where: { symbol: { in: ["USD", "EUR"] }, quoteDate: { lt: currentReferenceMonth() } },
+        orderBy: { quoteDate: "asc" }, select: { symbol: true, quoteDate: true, valueBrl: true },
+      }),
+    ]);
     let usdRate = quotes.get("USD")?.valueBrl.toNumber() ?? null;
     const btcRate = quotes.get("BTC")?.valueBrl.toNumber() ?? null;
 
     let eurRate = quotes.get("EUR")?.valueBrl.toNumber() ?? null;
-    const fxSeries = await readQuoteSeries(prisma, ["USD", "EUR"]);
     const fxByMonth = new Map<string, Map<string, number>>();
     // Existing backfills may have daily closes without a materialized monthly quote.
-    const dailyFx = await prisma.dailyQuote.findMany({
-      where: { symbol: { in: ["USD", "EUR"] }, quoteDate: { lt: currentReferenceMonth() } },
-      orderBy: { quoteDate: "asc" }, select: { symbol: true, quoteDate: true, valueBrl: true },
-    });
     for (const quote of dailyFx) {
       const key = quote.quoteDate.toISOString().slice(0, 7);
       const rates = fxByMonth.get(key) ?? new Map<string, number>();
@@ -203,7 +206,10 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       allTime: reportingChange(reportingTotal, selected.referenceDate > firstHistory.date ? amountsFor(firstHistory) : null),
     };
 
-    const allocation = await getAllocationOverview(selected.referenceDate);
+    const [allocation, gains] = await Promise.all([
+      getAllocationOverview(selected.referenceDate),
+      getPortfolioGains(selected.referenceDate, usdRate),
+    ]);
 
     return {
       referenceDate: selected.referenceDate,
@@ -214,7 +220,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       btcRate,
       eurRate,
       reporting,
-      gains: await getPortfolioGains(selected.referenceDate, usdRate),
+      gains,
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

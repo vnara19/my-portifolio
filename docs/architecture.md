@@ -12,6 +12,17 @@ Vercel hosts the application. GitHub stores source and triggers deployments:
 Production releases require user approval. Provider jobs run in GitHub Actions.
 No credential or service owned by the original collaborator is required.
 
+Functions deploy to `gru1` (São Paulo), alongside the current Neon database in
+AWS `sa-east-1`. Keep compute near the database to avoid an intercontinental
+round trip for every query. Moving the database to Europe is a separate migration,
+not necessary to improve navigation against the existing database.
+
+Dynamic routes have lightweight, prefetchable loading shells. Quote-refresh
+status streams independently so its audit queries cannot block the page content.
+Independent overview reads run concurrently, and the Positions editing catalog
+starts alongside month selection. No cross-request cache of private portfolio
+data is introduced; session verification and user scoping remain unchanged.
+
 ## Product boundaries
 
 The product is investment-only: Overview, Positions, Quotes and Settings. Removed

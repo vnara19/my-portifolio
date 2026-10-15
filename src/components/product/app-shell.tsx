@@ -2,7 +2,7 @@
 /** Investment navigation, reporting-month selection and the most recent successful quote update. */
 import { ChartDonutIcon, GearSixIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { AppFrame } from "@/components/product/app-frame";
 import { MainTabs, NavTrail, type NavContext, type TabKey } from "@/components/product/main-tabs";
@@ -22,8 +22,6 @@ type AppShellProps = {
 };
 
 export async function AppShell({ active, months, selectedMonth, context, children }: AppShellProps) {
-  const quoteRefresh = await getRequestQuoteRefreshSummary();
-
   return (
     <AppFrame
       area="investments"
@@ -60,7 +58,9 @@ export async function AppShell({ active, months, selectedMonth, context, childre
             <div className="flex shrink-0 items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
 
               <span className={cn("contents", menu ? "max-[359px]:hidden" : null)}>
-                <QuoteRefreshIndicator summary={quoteRefresh} />
+                <Suspense fallback={<span role="status" className="flex h-9 items-center rounded-xl border border-border px-3 text-xs text-muted-foreground">Checking quotes…</span>}>
+                  <QuoteStatus />
+                </Suspense>
               </span>
 
               {active === "settings" ? null : (
@@ -86,4 +86,8 @@ export async function AppShell({ active, months, selectedMonth, context, childre
       {children}
     </AppFrame>
   );
+}
+
+async function QuoteStatus() {
+  return <QuoteRefreshIndicator summary={await getRequestQuoteRefreshSummary()} />;
 }

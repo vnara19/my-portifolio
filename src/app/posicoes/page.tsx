@@ -18,9 +18,10 @@ export default async function PositionsPage({
   searchParams: Promise<{ mes?: string }>;
 }) {
   const { mes } = await searchParams;
-  const { months, selected } = await getMonthContext(mes);
-  const [month, catalog] = await Promise.all([
-    getMonthPositions(selected?.referenceDate),
+  const context = getMonthContext(mes);
+  const [{ months, selected }, month, catalog] = await Promise.all([
+    context,
+    context.then(({ selected }) => getMonthPositions(selected?.referenceDate)),
     getEditingCatalog(),
   ]);
 
