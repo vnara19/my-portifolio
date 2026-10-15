@@ -251,7 +251,7 @@ function PositionForm({
   const automaticName = !editing && definition?.ticker === "market" && kind !== "treasury";
   const response = check.state === "done" ? check.response : null;
   const typedName = automaticName
-    ? cleanName(catalog.assets.find((asset) => asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "")
+    ? cleanName(catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "")
     : cleanName(assetName);
   const treasuryMaturity = (editing?.quoteSymbol ?? (kind === "treasury" ? symbol : null))?.startsWith("TD:")
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
