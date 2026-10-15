@@ -33,3 +33,12 @@ do not release to main or migrate financial data.
 ESLint, TypeScript, 67 unit tests and production compilation pass. Verify the
 deployed region and authenticated Overview/Positions/Settings navigation, including
 mobile layout and opening/cancelling the position form without saving real data.
+
+Deployed Preview verification on 2026-10-15 confirmed Ready with functions in
+`gru1`. Observed click-to-content samples were Settings 640 ms, Positions 846 ms
+in a fresh tab, and Overview 1269 ms. The loading shell appeared during navigation,
+and quote status loaded after the page content. A 390 px mobile viewport had no
+horizontal overflow; Add position opened and cancelled normally. No personal
+portfolio records were modified. Direct database profiling from this computer was
+unavailable, so no database-query-duration claim is made. Measurements are small
+browser samples, affected by network and warm/cold runtime state.

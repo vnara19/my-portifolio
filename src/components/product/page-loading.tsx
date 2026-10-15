@@ -8,7 +8,7 @@ export function PageLoading({ active = "overview" }: { active?: TabKey }) {
   return <div className="min-h-screen bg-background">
     <header className="flex h-16 items-center justify-center gap-3 border-b border-border px-4">
       <Suspense fallback={null}><MainTabs active={active} /></Suspense>
-      <Link href="/configuracao" className="rounded-lg p-2 text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">Settings</Link>
+      {active !== "settings" ? <Link href="/configuracao" className="rounded-lg p-2 text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">Settings</Link> : null}
     </header>
     <main aria-busy="true" className="mx-auto max-w-[1800px] space-y-6 p-4 sm:p-6">
       <p role="status" className="text-sm text-muted-foreground">Loading portfolio…</p>
