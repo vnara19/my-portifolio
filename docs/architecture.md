@@ -87,3 +87,14 @@ month-end FX is backfilled; current rates must never stand in for historical rat
 Existing non-carried and manual monthly observations take precedence.
 
 The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in USD, Selic, position and institution counts.
+
+## Position creation
+
+Add position uses one scrollable form, with Asset/Cash selection and direct saving.
+Relevant ticker, name, quantity/balance, currency, maturity, liquidity and allocation
+fields retain their validation and quote verification. There is no separate review
+step. New positions do not ask for institution or strategy: they use a user-scoped
+Portfolio/Main storage account and no strategy. Existing accounts and historical
+positions are unchanged. Cash here records a holding balance; external cash flows,
+salary tracking, fees and a new trade ledger are not introduced by this UI change.
+The overview information strip no longer displays an institution count.

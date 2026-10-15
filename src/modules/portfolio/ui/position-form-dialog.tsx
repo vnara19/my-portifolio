@@ -1,6 +1,6 @@
 "use client";
 
-/** Guided identification, balance, allocation and review steps. Picker values preserve database keys while labels are displayed in English. */
+/** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -20,6 +20,7 @@ import {
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker, type PickerOption } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,6 @@ import {
 } from "@/modules/portfolio/domain/classification";
 import { normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
-import { FlowHeading, FlowSteps } from "@/modules/portfolio/ui/flow-steps";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
 import { formatBrl, formatPriceBrl, parseLocaleNumber } from "@/modules/portfolio/presentation/portfolio-format";
@@ -163,8 +163,7 @@ function PositionForm({
 
   // General settings.
   const [kind, setKind] = useState<AssetKind | null>(null);
-  const [institutionValue, setInstitutionValue] = useState<string | null>(null);
-  const [createdInstitution, setCreatedInstitution] = useState<{ key: string; name: string } | null>(null);
+  const [entryType, setEntryType] = useState<"asset" | "cash">("asset");
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
 
@@ -205,38 +204,9 @@ function PositionForm({
   const quoteOf = (symbol: string) => month.quotes.find((entry) => entry.symbol === symbol)?.valueBrl ?? null;
 
 
-  const institutionOptions: PickerOption[] = [
-    ...catalog.institutions.map((institution) => ({ value: institution.id, label: institution.name })),
-    ...(createdInstitution
-      ? [{ value: `${NEW_INSTITUTION}${createdInstitution.key}`, label: createdInstitution.name, hint: "nova" }]
-      : []),
-  ];
-  const institutionName = editing
-    ? editing.institutionName
-    : institutionValue?.startsWith(NEW_INSTITUTION)
-      ? (createdInstitution?.name ?? null)
-      : (catalog.institutions.find((entry) => entry.id === institutionValue)?.name ?? null);
-  const account = resolveAccount(institutionValue, createdInstitution, catalog);
-
-  const createInstitution = (text: string) => {
-    const name = cleanName(text);
-    const key = normalizeKey(name);
-
-    if (!key) {
-      return;
-    }
-
-
-    const existing = catalog.institutions.find((institution) => normalizeKey(institution.name) === key);
-
-    if (existing) {
-      setInstitutionValue(existing.id);
-      return;
-    }
-
-    setCreatedInstitution({ key, name });
-    setInstitutionValue(`${NEW_INSTITUTION}${key}`);
-  };
+  const institutionName = editing?.institutionName ?? "Portfolio";
+  const defaultInstitution = catalog.institutions.find((entry) => normalizeKey(entry.name) === normalizeKey("Portfolio"));
+  const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const chooseKind = (next: string) => {
     setKind(next as AssetKind);
@@ -412,9 +382,6 @@ function PositionForm({
     if (!kind) {
       issues.push({ tab: "geral", message: "Choose the asset type." });
     }
-    if (!institutionName) {
-      issues.push({ tab: "geral", message: "Choose the institution." });
-    }
   }
   if (!typedName) {
     issues.push({ tab: editing ? "geral" : "ativo", message: "Enter the asset name." });
@@ -471,14 +438,6 @@ function PositionForm({
   }
 
   const tabsWithIssues = new Set(issues.map((issue) => issue.tab));
-  const flowKeys: TabKey[] = ["geral", "ativo", "rateio", "revisar"];
-  const flowStep = flowKeys.indexOf(tab);
-  const nextStep = () => {
-    const blocking = issues.find((issue) => issue.tab === tab) ?? (tab === "rateio" ? issues[0] : null);
-    if (blocking) { setShowIssues(true); setTab(blocking.tab); return; }
-    setShowIssues(false); setTab(flowKeys[flowStep + 1]);
-  };
-
   const visibleIssue = showIssues ? (issues.find((issue) => issue.tab === tab) ?? issues[0] ?? null) : null;
 
   const submit = () => {
@@ -583,7 +542,7 @@ function PositionForm({
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
               ? `${editing.institutionName} · ${englishLabel(month.label)}`
-              : `${englishLabel(month.label)} · complete each step and review before saving.`}
+              : `${englishLabel(month.label)} · enter the position details and save.`}
           </Dialog.Description>
         </div>
         <Dialog.Close
@@ -632,7 +591,7 @@ function PositionForm({
               </Tabs.Tab>
             );
           })}
-        </Tabs.List> : <FlowSteps steps={["Position", "Asset", "Allocation", "Review"]} current={flowStep} />}
+        </Tabs.List> : null}
 
         {!editing && catalogAsset ? (
           <div className="mx-5 mt-3 sm:mx-6" data-asset-existing="">
@@ -644,8 +603,12 @@ function PositionForm({
 
 
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
-          <Tabs.Panel value="geral" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Identify your position" description="Choose where it is held and how to identify it." /> : null}
+          <PositionSection single={!editing} value="geral" className="space-y-4 outline-none">
+            {!editing ? <div role="group" aria-label="Entry type" className="flex gap-2">
+              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "secondary" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; setEntryType(type); setKind(null); setTickerText(""); setManualPrice(""); setRows(null); }}>
+                {type === "asset" ? "Asset" : "Cash"}
+              </Button>)}
+            </div> : null}
             {editing ? (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Asset type">
@@ -659,11 +622,11 @@ function PositionForm({
                 <ReadOnly label="Institution" value={editing.institutionName} />
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3">
                 <Field label="Asset type">
                   <Picker
                     aria-label="Asset type"
-                    options={ASSET_KINDS.map((entry) => ({
+                    options={ASSET_KINDS.filter((entry) => (entry === "brl-cash" || entry === "usd-balance") === (entryType === "cash")).map((entry) => ({
                       value: entry,
                       label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
                       hint: ASSET_KIND_DEFINITIONS[entry].hint,
@@ -673,17 +636,7 @@ function PositionForm({
                     placeholder="Choose the type"
                   />
                 </Field>
-                <Field label="Institution">
-                  <Picker
-                    aria-label="Institution"
-                    options={institutionOptions}
-                    value={institutionValue}
-                    onValueChange={setInstitutionValue}
-                    onCreate={createInstitution}
-                    placeholder="Select or type"
-                    emptyMessage="Type to create an institution"
-                  />
-                </Field>
+
               </div>
             )}
 
@@ -705,18 +658,18 @@ function PositionForm({
             </> : null}
             <div className="grid grid-cols-2 gap-3">
               {editing ? <ReadOnly label={valueLabel} value={value} mono /> : null}
-              <Field label="Strategy">
+              {editing ? <Field label="Strategy">
                 <Picker aria-label="Strategy" options={strategyOptions} value={strategy} onValueChange={setStrategy} />
-              </Field>
+              </Field> : null}
             </div>
             {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Use Transactions to change the quantity or balance.</p> : null}
 
-          </Tabs.Panel>
+          </PositionSection>
 
-          <Tabs.Panel value="ativo" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Enter the asset and current balance" description="The quote is verified automatically. Then enter the quantity or balance for this position." /> : null}
+          <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
+            {!editing ? <SectionHeading title="Enter the asset and current balance" description="The quote is verified automatically. Then enter the quantity or balance for this position." /> : null}
             {!editing && !kind ? (
-              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type in the General tab.
+              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
             ) : (
               <>
@@ -848,10 +801,10 @@ function PositionForm({
                 ) : null}
               </>
             )}
-          </Tabs.Panel>
+          </PositionSection>
 
-          <Tabs.Panel value="rateio" className="outline-none">
-            {!editing ? <FlowHeading title="Set the allocation" description="Confirm the classification used for portfolio targets. Weights must add up to 100%." /> : null}
+          <PositionSection single={!editing} value="rateio" className="outline-none">
+            {!editing ? <SectionHeading title="Set the allocation" description="Classify this holding for your portfolio breakdown. Weights must add up to 100%." /> : null}
             {editing ? (
               <p className="text-[11px] leading-5 text-muted-foreground">Split the position across classifications. Weights must add up to 100%.
               </p>
@@ -964,26 +917,8 @@ function PositionForm({
                 month={month}
               />
             ) : null}
-          </Tabs.Panel>
-          {!editing ? <Tabs.Panel value="revisar" className="space-y-5 outline-none">
-            <FlowHeading title="Review your new position" description="Review the details and current balance before saving. You can go back to make adjustments." />
-            <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border/60 pb-5">
-              <ReviewValue label="Asset" value={typedName} />
-              <ReviewValue label="Institution" value={institutionName ?? "—"} />
-              <ReviewValue label="Type" value={definition?.label ?? "—"} />
-              <ReviewValue label={valueLabel} value={value} mono />
-              {symbol ? <ReviewValue label="Ticker" value={symbol} mono /> : null}
-              {price !== null ? <ReviewValue label={ownTreasuryPrice || (treasury && needsManualPrice) ? "Entered price" : "Verified quote"} value={formatPriceBrl(price)} mono /> : null}
-              {impliedQuantity !== null ? <ReviewValue label="Number of securities" value={formatNumberText(impliedQuantity, 6)} mono /> : null}
-            </dl>
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Position value</span><strong className="font-mono text-xl font-medium text-primary">{positionTotal !== null ? formatBrl(positionTotal) : "—"}</strong></div>
-            <div className="space-y-2 border-t border-border/60 pt-4 text-xs text-muted-foreground">
-              {allocationRows.map((row) => <p key={row.key} className="flex justify-between gap-3"><span className="min-w-0">{englishLabel(row.assetClass)} · {englishLabel(row.subclass)} · {englishLabel(row.duration)}{rowRate(row) ? ` · ${rowRate(row)}${rowIndexer(row) === "CDI" ? "% of CDI" : "% per year"}` : ""}</span><span className="shrink-0 font-mono text-foreground">{row.weight}%</span></p>)}
-              <p>Strategy: {strategy || "No strategy"}</p>
-              {wantsAutoIncome ? <p>Automatic accrual since {appliedOn.split("-").reverse().join("/")}</p> : null}
-              {maturityDate ? <p>Maturity: {maturityDate.split("-").reverse().join("/")}</p> : null}
-            </div>
-          </Tabs.Panel> : null}
+          </PositionSection>
+
         </div>
       </Tabs.Root>
 
@@ -1006,19 +941,23 @@ function PositionForm({
           ) : null}
         </div>
         <div className="ml-auto flex gap-2">
-          {editing || flowStep === 0 ? <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close> : <button type="button" onClick={() => { setTab(flowKeys[flowStep - 1]); setShowIssues(false); }} disabled={isSaving} className={secondaryButtonClass}>Back</button>}
-          {!editing && tab !== "revisar" ? <button type="button" onClick={nextStep} className={primaryButtonClass}>Continue</button> : <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
+          <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close>
+          <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
             {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
             {isSaving ? "Saving…" : editing ? "Save" : "Add position"}
-          </button>}
+          </button>
         </div>
       </footer>
     </>
   );
 }
 
-function ReviewValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="min-w-0"><dt className="text-[10px] tracking-[0.06em] text-muted-foreground uppercase">{englishLabel(label)}</dt><dd className={cn("mt-1.5 break-words text-sm leading-5 text-foreground", mono && "font-mono")}>{value}</dd></div>;
+function SectionHeading({ title, description }: { title: string; description: string }) {
+  return <div className="mb-4"><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></div>;
+}
+
+function PositionSection({ single, value, className, children }: { single: boolean; value: string; className?: string; children: ReactNode }) {
+  return single ? <section className={cn("mb-5", className)}>{children}</section> : <Tabs.Panel value={value} className={className}>{children}</Tabs.Panel>;
 }
 
 function ReadOnly({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

@@ -21,7 +21,6 @@ export function OverviewQuotes({ overview, selic }: { overview: OverviewData; se
           <QuoteBadge icon={<BankIcon aria-hidden="true" size={16} weight="duotone" />} label="Selic rate this month"
             value={formatSelic(selic)} detail={describeSelic(selic)} testId="selic-month" />
           <QuoteBadge label="Positions" value={overview.positionCount.toLocaleString("en-GB")} />
-          <QuoteBadge label="Institutions" value={overview.institutionCount.toLocaleString("en-GB")} />
         </div>
       </div>
   );
