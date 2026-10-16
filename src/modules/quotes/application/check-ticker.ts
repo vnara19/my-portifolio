@@ -26,11 +26,12 @@ import {
 } from "@/modules/quotes/infrastructure/coingecko";
 import { lookupFinnhubSymbol } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
-import { fetchYahooPrice, searchEuropeanListings } from "@/modules/quotes/infrastructure/yahoo";
+import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { latestTreasuryPoint, treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { isMarketKind } from "@/modules/portfolio/domain/market-assets";
 import { lookupMarketListing } from "./market-listing";
+import { resolveEuropeanTicker } from "./european-listing";
 
 
 export type { VerifiedTicker } from "@/modules/quotes/application/verified-ticker-token";
@@ -84,10 +85,10 @@ export async function checkTicker(
 
   if (!symbol) {
     try {
-      const listings = await searchEuropeanListings(input.ticker.trim().toUpperCase());
+      const { listings, preferred } = await resolveEuropeanTicker(input.ticker);
       if (!listings.length) return { status: "invalid", message: "No European listings found. Try the exchange-qualified ticker." };
-      if (listings.length > 1) return { status: "matches", listings };
-      symbol = listings[0].symbol;
+      if (!preferred) return { status: "matches", listings };
+      symbol = preferred.symbol;
     } catch {
       return { status: "invalid", message: "European search is unavailable. Try again or enter an exchange-qualified ticker." };
     }

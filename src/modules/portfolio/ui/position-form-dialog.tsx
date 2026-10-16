@@ -293,6 +293,8 @@ function PositionForm({
   } else if (definition?.ticker === "market") {
     if (!symbol) {
       tickerIssue = "Enter a valid ticker.";
+    } else if (identity && !identity.exposure) {
+      tickerIssue = "This fund cannot be added until its asset class has been identified.";
     } else if (!tickerCheckAllowsSaving(response)) {
       tickerIssue = check.state === "checking" || check.state === "idle" ? "Wait for ticker verification." : "Verify the ticker.";
     } else if (response.status === "known" || (response.status === "found" && month.isCurrent)) {
@@ -723,10 +725,11 @@ function PositionForm({
                     {response?.status === "matches" ? <Field label="Matching listings">
                       <div className="space-y-2" aria-label="Matching European listings">
                         {response.listings.map((listing) => <button key={listing.symbol} type="button"
-                          aria-label={`${listing.symbol} · ${listing.exchange} · ${listing.name}`}
-                          className="w-full rounded-xl border border-border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
+                          aria-label={`${listing.symbol} · ${listing.exchange} · ${listing.currency ?? "Currency unavailable"} · ${listing.name}`}
+                          disabled={!listing.currency || !["EUR", "USD", "BRL"].includes(listing.currency)}
+                          className="w-full rounded-xl border border-border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
                           onClick={() => setTickerText(listing.symbol)}>
-                          <span className="block font-semibold">{listing.symbol} · {listing.exchange}</span>
+                          <span className="block font-semibold">{listing.symbol} · {listing.exchange} · {listing.currency ?? "Currency unavailable"}</span>
                           <span className="block text-sm text-muted-foreground">{listing.name}</span>
                         </button>)}
                       </div>
@@ -774,7 +777,9 @@ function PositionForm({
                 {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
                 {identity ? <>
                   <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} />
-                  <ReadOnly label="Exchange" value={identity.exchange} />
+                  <ReadOnly label="Exchange" value={`${identity.exchange} · ${identity.currency}`} />
+                  {kind === "eu-market" && !inputSymbol && identity.currency === "EUR" ? <p className="text-xs text-muted-foreground">EUR reference listing selected automatically: {symbol}.</p> : null}
+                  {!identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                   {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
                   {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Issuer reference</a> : null}
                 </> : null}
@@ -968,7 +973,7 @@ function PositionForm({
         </div>
         <div className="ml-auto flex gap-2">
           <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close>
-          <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
+          <button type="button" onClick={submit} disabled={isSaving || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
             {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
             {isSaving ? "Saving…" : editing ? "Save" : "Add position"}
           </button>
@@ -1153,7 +1158,7 @@ function TickerStatus({
 
     switch (response.status) {
       case "matches":
-        content = <StatusLine tone="muted">Select the listing that matches your investment. Its trading currency will be verified.</StatusLine>;
+        content = <StatusLine tone="muted">No unambiguous EUR listing was found. Check the trading currency and select your investment.</StatusLine>;
         break;
       case "found":
         content = (

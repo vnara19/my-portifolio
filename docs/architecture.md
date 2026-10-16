@@ -155,3 +155,11 @@ European Market now searches the provider catalog from a single ticker field.
 Search candidates are not trusted quote identities: selecting an exchange-qualified
 symbol invokes the existing quote verification and signed save proof. The issuer
 reference catalog supports classification only and does not restrict search results.
+
+European bare-ticker resolution now verifies each candidate's actual trading currency
+and prefers matching EUR products on Xetra, then Paris/Amsterdam/Milan. Ambiguous
+major-venue products remain explicit choices with currency shown; exchange-qualified
+symbols remain an override. See spec 109 for bounded public metadata caching, venue
+preference and reviewed issuer sources. Description-based fund classification augments
+issuer references conservatively. New market positions with unknown exposure are
+rejected before writes; client allocations cannot bypass signed classification.

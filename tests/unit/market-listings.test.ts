@@ -25,7 +25,7 @@ test("issuer references override incorrect wrapper metadata, not the trading cur
   assert.equal(gold.exposure, "commodity"); assert.equal(gold.currency, "EUR"); assert.equal(gold.instrumentType, "EU_ETC");
   assert.equal(marketIdentity("eu-market", "PPFD.SG", metadata("iShares Physical Silver ETC", "MUTUALFUND")).exposure, "commodity");
   assert.equal(marketIdentity("eu-market", "CSH2.PA", metadata("Amundi Smart Overnight Return UCITS ETF Acc")).exposure, "cash");
-  assert.equal(marketIdentity("eu-market", "OTHER.L", metadata("Another Physical Gold ETC", "EQUITY")).exposure, null);
+  assert.equal(marketIdentity("eu-market", "OTHER.L", metadata("Another Physical Gold ETC", "EQUITY")).exposure, "commodity");
   assert.throws(() => marketIdentity("eu-market", "UETW.DE", metadata("Fund", "ETF", "USD")));
   assert.throws(() => marketIdentity("eu-market", "FUND.L", metadata("Fund", "ETF", "GBX")));
 });

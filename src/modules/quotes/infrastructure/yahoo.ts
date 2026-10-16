@@ -40,13 +40,13 @@ export function toYahooSymbol(symbol: string) {
   return symbol.endsWith(".SAO") ? symbol.replace(/\.SAO$/, ".SA") : symbol;
 }
 
-async function fetchChart(symbol: string, range: string) {
+async function fetchChart(symbol: string, range: string, timeoutMs?: number) {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(toYahooSymbol(symbol))}`);
   url.searchParams.set("range", range);
   url.searchParams.set("interval", "1d");
 
   try {
-    const payload = chartSchema.parse(await fetchJson(url, { headers: HEADERS }));
+    const payload = chartSchema.parse(await fetchJson(url, { headers: HEADERS }, { timeoutMs }));
     const result = payload.chart.result?.[0];
 
     if (!result) {
@@ -65,8 +65,8 @@ async function fetchChart(symbol: string, range: string) {
 }
 
 
-export async function fetchYahooPrice(symbol: string) {
-  const result = await fetchChart(symbol, "5d");
+export async function fetchYahooPrice(symbol: string, timeoutMs?: number) {
+  const result = await fetchChart(symbol, "5d", timeoutMs);
   const price = result.meta.regularMarketPrice;
 
   if (!price || price <= 0) {

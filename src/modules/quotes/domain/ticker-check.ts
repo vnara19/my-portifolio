@@ -32,7 +32,7 @@ export type TickerCheckResponse =
       coins?: CoinCandidate[];
     }
 
-  | { status: "matches"; listings: { symbol: string; name: string; exchange: string }[] }
+  | { status: "matches"; listings: { symbol: string; name: string; exchange: string; currency?: string | null }[] }
 
   | { status: "known"; symbol: string; priceBrl: number }
 

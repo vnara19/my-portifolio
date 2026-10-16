@@ -192,6 +192,7 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const newAsset = input.addition.newAsset;
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
+  if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
   const allocationInputs = identity ? marketAllocation(identity).map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
