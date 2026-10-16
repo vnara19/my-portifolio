@@ -12,7 +12,7 @@ export type AssetClass = (typeof ASSET_CLASSES)[number];
 export const SUBCLASSES_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Caixa: ["Pós-fixado", "Prefixado", "Stablecoin"],
   Cripto: ["BTC", "Altcoin", "Stablecoin"],
-  "Renda Fixa": ["Pós-fixado", "Prefixado", "IPCA"],
+  "Renda Fixa": ["Pós-fixado", "Prefixado", "IPCA", "Bond ETF"],
   "Renda Variável": ["Ações EUA", "Ações - Ex: USA", "Ações BR", "Imobiliário BR", "Commoditie"],
   Reserva: ["Commoditie"],
 };
@@ -21,7 +21,7 @@ export const SUBCLASSES_BY_CLASS: Record<AssetClass, readonly string[]> = {
 export const REDEMPTIONS_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Caixa: ["Curto"],
   Cripto: [NO_REDEMPTION],
-  "Renda Fixa": ["Curto", "Médio", "Longo"],
+  "Renda Fixa": ["Curto", "Médio", "Longo", NO_REDEMPTION],
   "Renda Variável": [NO_REDEMPTION],
   Reserva: [NO_REDEMPTION],
 };
@@ -69,6 +69,7 @@ export function classificationIssue(row: { assetClass: string; subclass: string;
 
 
 export const ASSET_TYPES = [
+  "us-market", "br-market", "eu-market",
   "us-etf",
   "us-stock",
   "br-etf",
@@ -84,6 +85,7 @@ export const ASSET_TYPES = [
 export type AssetType = (typeof ASSET_TYPES)[number];
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+  "us-market": "US Market", "br-market": "Brazilian Market", "eu-market": "European Market",
   "us-etf": "US ETF",
   "us-stock": "US stock",
   "br-etf": "Brazilian ETF",

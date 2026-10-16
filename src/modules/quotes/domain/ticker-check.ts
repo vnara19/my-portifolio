@@ -2,6 +2,7 @@
 
 
 import type { AssetKind } from "@/modules/portfolio/domain/asset-kinds";
+import type { MarketIdentity } from "@/modules/portfolio/domain/market-assets";
 
 export type TickerCheckRequest = {
   monthId: string;
@@ -18,6 +19,7 @@ export type TickerCheckResponse =
 
   | {
       status: "found";
+      identity?: MarketIdentity;
       symbol: string;
       provider: string;
       priceBrl: number;

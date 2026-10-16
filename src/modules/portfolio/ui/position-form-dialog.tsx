@@ -22,6 +22,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { Button } from "@/components/ui/button";
 import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
+import { EUROPEAN_LISTINGS, isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker, type PickerOption } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
@@ -250,8 +251,9 @@ function PositionForm({
     check.state === "done" && check.response.status === "found" ? (check.response.coinId ?? null) : null;
   const automaticName = !editing && definition?.ticker === "market" && kind !== "treasury";
   const response = check.state === "done" ? check.response : null;
+  const identity = response?.status === "found" ? response.identity : undefined;
   const typedName = automaticName
-    ? cleanName(catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "")
+    ? cleanName(catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
   const treasuryMaturity = (editing?.quoteSymbol ?? (kind === "treasury" ? symbol : null))?.startsWith("TD:")
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
@@ -335,7 +337,7 @@ function PositionForm({
           rate: rateText(allocation.ratePercent),
         }))
       : kind
-        ? (editing ? [defaultAllocation(kind, symbol)] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: "" }))
+        ? (editing ? [defaultAllocation(kind, symbol)] : isMarketKind(kind) ? identity ? marketAllocation(identity) : [] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: "" }))
         : [{ key: 0, assetClass: "", subclass: "", duration: "", weight: "100", rate: "" }];
   const allocationRows = rows ?? derivedRows;
   const weightSum = allocationRows.reduce((total, row) => total + (parseLocaleNumber(row.weight) ?? 0), 0);
@@ -532,7 +534,7 @@ function PositionForm({
     ...catalog.strategies.map((entry) => ({ value: entry, label: entry })),
   ];
   const market = !editing && definition?.ticker === "market";
-  const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? (kind ? baseCurrencyOf(kind, symbol) : null);
+  const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? identity?.currency ?? (kind && !isMarketKind(kind) ? baseCurrencyOf(kind, symbol) : null);
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
 
 
@@ -630,7 +632,7 @@ function PositionForm({
                 <Field label="Asset type">
                   <Picker
                     aria-label="Asset type"
-                    options={ASSET_KINDS.filter((entry) => (entry === "brl-cash" || entry === "usd-balance") === (entryType === "cash")).map((entry) => ({
+                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && (entry === "brl-cash" || entry === "usd-balance") === (entryType === "cash")).map((entry) => ({
                       value: entry,
                       label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
                       hint: ASSET_KIND_DEFINITIONS[entry].hint,
@@ -689,6 +691,11 @@ function PositionForm({
 
                 {market && kind ? (
                   <>
+                    {kind === "eu-market" ? <Field label="European listing">
+                      <Picker aria-label="European listing" value={EUROPEAN_LISTINGS.some((listing) => listing.symbol === tickerText) ? tickerText : null}
+                        options={EUROPEAN_LISTINGS.map((listing) => ({ value: listing.symbol, label: `${listing.symbol.split(".")[0]} · ${listing.name}`, hint: `${listing.exchange} · ${listing.currency}` }))}
+                        onValueChange={setTickerText} placeholder="Choose a listing or enter another ticker below" />
+                    </Field> : null}
                     {kind === "treasury" ? (
                       <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
@@ -705,7 +712,7 @@ function PositionForm({
                         autoCapitalize="characters"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder={kind === "crypto" ? "ETH" : kind.startsWith("br") ? "GPCA11" : "VOO"}
+                        placeholder={kind === "crypto" ? "ETH" : kind === "eu-market" ? "UETW.DE" : kind.startsWith("br") ? "GPCA11" : "VOO"}
                         className={cn(inputClass, "font-mono uppercase")}
                       />
                     </Field>}
@@ -758,6 +765,12 @@ function PositionForm({
                 {!editing && !automaticName ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder="For example, Bank X CDB" className={inputClass} /></Field> : null}
                 {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
                 {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
+                {identity ? <>
+                  <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} />
+                  <ReadOnly label="Exchange" value={identity.exchange} />
+                  {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
+                  {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Issuer reference</a> : null}
+                </> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
                   {treasury ? (
                     <Field label="Enter the position using">
@@ -781,7 +794,7 @@ function PositionForm({
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && baseCurrency ? <ReadOnly label="Base currency" value={baseCurrency} mono /> : null}
+                {!editing && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
 
 
                 {canEditMaturity ? (
@@ -1103,18 +1116,20 @@ function TickerStatus({
   monthLabel: string;
   isCurrent: boolean;
 }) {
-  const provider = providerLabel(ASSET_KIND_DEFINITIONS[kind].provider ?? "provider");
+  const provider = providerLabel(isMarketKind(kind) ? "yahoo" : ASSET_KIND_DEFINITIONS[kind].provider ?? "provider");
   let content: ReactNode;
 
   if (!text.trim()) {
     content = <StatusLine tone="muted">{tickerHint(kind)}</StatusLine>;
+  } else if (kind === "eu-market" && !symbol && text.trim()) {
+    content = <StatusLine tone="error">Choose a European listing above or enter the ticker with its exchange.</StatusLine>;
   } else if (!symbol && ASSET_KIND_DEFINITIONS[kind].provider === "yahoo" && /^[A-Z0-9]{1,4}$/.test(text.trim())) {
 
     content = <StatusLine tone="muted">Enter the complete ticker, such as PETR4 or GPCA11.</StatusLine>;
   } else if (!symbol) {
     content = <StatusLine tone="error">Invalid ticker for {englishLabel(ASSET_KIND_DEFINITIONS[kind].label)}.</StatusLine>;
   } else if (check.state === "checking" || check.state === "idle") {
-    content = <StatusLine tone="checking">Verifying {symbol} no {provider}…</StatusLine>;
+    content = <StatusLine tone="checking">Verifying {symbol} with {provider}…</StatusLine>;
   } else if (check.state === "error") {
     content = (
       <StatusLine tone="warning">Could not verify the ticker right now.{" "}
@@ -1134,8 +1149,8 @@ function TickerStatus({
       case "found":
         content = (
           <StatusLine tone="success">
-            {symbol}found{response.name ? ` (${response.name})` : ""} no {providerLabel(response.provider)}:{" "}
-            {formatPriceBrl(response.priceBrl)}today.
+            {symbol} found{response.name ? ` (${response.name})` : ""} on {providerLabel(response.provider)}:{" "}
+            {formatPriceBrl(response.priceBrl)} · {response.quoteDate}.
             {isCurrent ? null : ` Enter the quote for ${monthLabel}.`}
           </StatusLine>
         );

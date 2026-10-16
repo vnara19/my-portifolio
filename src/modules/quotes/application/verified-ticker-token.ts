@@ -6,8 +6,10 @@ import { z } from "zod";
 
 import { ASSET_KINDS, type AssetKind, type QuoteProvider } from "@/modules/portfolio/domain/asset-kinds";
 import { toDateKey } from "@/modules/quotes/domain/calendar";
+import { marketIdentitySchema, type MarketIdentity } from "@/modules/portfolio/domain/market-assets";
 
 export type VerifiedTicker = {
+  identity?: MarketIdentity;
   symbol: string;
   kind: AssetKind;
   status: "found" | "unavailable";
@@ -26,6 +28,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   return !Number.isNaN(parsed.getTime()) && toDateKey(parsed) === value;
 });
 const claimsSchema = z.object({
+  identity: marketIdentitySchema.optional(),
   version: z.literal(1),
   userId: z.string().uuid(),
   monthId: z.string().uuid(),
@@ -85,6 +88,7 @@ export function readVerifiedTickerToken(
       claims.expiresAt <= (context.now ?? new Date()).getTime()
     ) return null;
     return {
+      ...(claims.identity ? { identity: claims.identity } : {}),
       symbol: claims.symbol,
       kind: claims.kind,
       status: claims.status,

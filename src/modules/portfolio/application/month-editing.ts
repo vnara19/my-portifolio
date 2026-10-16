@@ -29,6 +29,7 @@ import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity } from "@/modules/portfolio/do
 import { autoIncomeParts, indexerOfSubclass, supportsAutoIncome } from "@/modules/portfolio/domain/fixed-income-policy";
 import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import { classificationIssue } from "@/modules/portfolio/domain/classification";
+import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
 import { readVerifiedTicker } from "@/modules/quotes/application/check-ticker";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
@@ -189,7 +190,10 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 
 
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
-  const allocations = input.addition.allocations.length ? parseAllocations(input.addition.allocations) : [];
+  const newAsset = input.addition.newAsset;
+  const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
+  const allocationInputs = identity ? marketAllocation(identity).map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
+  const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
   return withUndo(input.monthId, async (transaction, month) => {
     const positions = await transaction.position.findMany({
@@ -641,7 +645,8 @@ async function resolveAdditionAsset(
   }
 
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
-  const name = requireName(input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
+  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.month.id) : null;
+  const name = requireName(identity ? identity.name.slice(0, MAX_ASSET_NAME_LENGTH) : input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
   const symbol = definition.ticker === null ? null : normalizeTicker(input.kind, input.ticker ?? "");
 
   if (definition.ticker !== null && !symbol) {
@@ -705,13 +710,13 @@ async function resolveAdditionAsset(
       name,
       ticker: symbol,
       quoteSymbol: symbol,
-      baseCurrency: baseCurrencyOf(input.kind, symbol),
+      baseCurrency: identity?.currency ?? baseCurrencyOf(input.kind, symbol),
       maturityDate,
       liquidity: normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance"),
 
-      assetType: input.kind,
+      assetType: identity?.assetType ?? input.kind,
       ...incomeOfNewAsset(input),
     },
     select: { id: true },
@@ -723,6 +728,15 @@ async function resolveAdditionAsset(
 }
 
 
+async function verifiedMarketIdentity(input: NewAssetInput, monthId: string) {
+  const verified = input.quoteCheckToken ? readVerifiedTicker(input.quoteCheckToken, { userId: await currentUserId(), monthId }) : null;
+  const symbol = normalizeTicker(input.kind, input.ticker ?? "");
+  if (!verified || verified.kind !== input.kind || verified.symbol !== symbol || verified.status !== "found" || !verified.identity) {
+    throw new MonthEditError(`Ticker verification for ${symbol ?? "this listing"} has expired. Verify the ticker again and try saving.`);
+  }
+  return verified.identity;
+}
+
 async function ensureMonthQuote(
   transaction: Transaction,
   input: NewAssetInput,
@@ -730,8 +744,9 @@ async function ensureMonthQuote(
   batch: AdditionBatch,
 ): Promise<string | null> {
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
-  const instrumentType = definition.instrumentType ?? "FIAT";
-  const baseCurrency = baseCurrencyOf(input.kind, symbol);
+  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.month.id) : null;
+  const instrumentType = identity?.instrumentType ?? definition.instrumentType ?? "FIAT";
+  const baseCurrency = identity?.currency ?? baseCurrencyOf(input.kind, symbol);
   const provider = providerForQuote(instrumentType, baseCurrency);
   const stored =
     (await transaction.marketQuote.findFirst({

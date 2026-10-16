@@ -13,6 +13,7 @@ import { treasuryMonthEndPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/m
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { ProviderRefusalError } from "@/modules/quotes/infrastructure/http";
 import { loadReportingFxHistory } from "@/modules/quotes/application/reporting-fx-history";
+import { fetchReferenceFxHistory } from "@/modules/quotes/infrastructure/frankfurter";
 
 
 // Historical fallback providers (spec 037):
@@ -87,9 +88,21 @@ export async function loadSymbolHistory(
   const toMonth = toDateKey(currentMonth).slice(0, 7);
   const span = monthsBetween(fromMonth, toMonth).length;
   const inBrl = async (closes: Map<string, DayValue>, currency: string | null) => {
-    if (currency !== "USD") {
+    if (currency === "BRL") {
       return closes;
     }
+    if (currency === "EUR") {
+      const sorted = [...closes.values()].sort((a, b) => a.day.localeCompare(b.day));
+      if (!sorted.length) return new Map<string, DayValue>();
+      const start = new Date(`${sorted[0].day}T00:00:00Z`); start.setUTCDate(start.getUTCDate() - 7);
+      const rates = await fetchReferenceFxHistory("EUR", toDateKey(start), sorted.at(-1)!.day);
+      return new Map([...closes].map(([key, close]) => {
+        const rate = rates.findLast((point) => point.day <= close.day);
+        if (!rate || Date.parse(close.day) - Date.parse(rate.day) > 7 * 86400000) throw new Error(`Missing historical EUR/BRL rate for ${close.day}.`);
+        return [key, { day: close.day, value: close.value * rate.value }];
+      }));
+    }
+    if (currency !== "USD") throw new Error(`Unsupported historical quote currency: ${currency ?? "unknown"}.`);
 
     usdCache.rates ??= await usdMonthEndRates(prisma, currentMonth, configuration.awesomeApiKey, now);
     const converted = new Map<string, DayValue>();
@@ -129,7 +142,7 @@ export async function loadSymbolHistory(
       points = await inBrl(monthEndPoints(yahoo.points, fromMonth, toMonth), yahoo.currency);
       source = "yahoo";
     } catch (yahooError) {
-      if (!configuration.alphaVantageApiKey) {
+      if (!configuration.alphaVantageApiKey || target.instrumentType.startsWith("EU_")) {
         throw yahooError;
       }
 

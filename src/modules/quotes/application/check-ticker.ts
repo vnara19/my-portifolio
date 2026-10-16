@@ -29,6 +29,8 @@ import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { latestTreasuryPoint, treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { isMarketKind } from "@/modules/portfolio/domain/market-assets";
+import { lookupMarketListing } from "./market-listing";
 
 
 export type { VerifiedTicker } from "@/modules/quotes/application/verified-ticker-token";
@@ -78,6 +80,21 @@ export async function checkTicker(
 
   if (!month) {
     return { status: "invalid", message: "The reporting month no longer exists." };
+  }
+
+  if (isMarketKind(input.kind)) {
+    const now = options.now ?? new Date();
+    try {
+      const [listing, saved] = await Promise.all([lookupMarketListing(input.kind, symbol, toDateKey(now)), readMonthQuoteValues(prisma, month.referenceDate, [symbol])]);
+      const existing = saved.get(symbol);
+      const priceBrl = existing?.valueBrl.toNumber() ?? listing.priceBrl;
+      const quoteDate = existing?.quoteDate ? toDateKey(existing.quoteDate) : listing.quoteDate;
+      const token = createVerifiedTickerToken({ symbol, kind: input.kind, provider: "yahoo", status: "found", priceBrl, coinId: null,
+        identity: listing.identity, quoteDate: new Date(`${quoteDate}T00:00:00Z`), fetchedAt: now }, { userId: await currentUserId(), monthId: input.monthId, now });
+      return { status: "found", symbol, provider: "yahoo", priceBrl, name: listing.identity.name, quoteDate, token, identity: listing.identity };
+    } catch (error) {
+      return { status: "invalid", message: error instanceof Error ? error.message : "Could not verify this listing. Please try again." };
+    }
   }
 
   const provider = providerForQuote(definition.instrumentType, baseCurrencyOf(input.kind, symbol));

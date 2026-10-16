@@ -36,7 +36,7 @@ test("cash selection uses the same form with cash asset types", async ({ page })
 test("quoted assets use an automatic identity without manual allocation fields", async ({ page }) => {
   test.skip(!(await openEditableMonth(page)), "No open reporting month.");
   const dialog = await openAddForm(page);
-  await chooseKind(page, dialog, /^US ETF/);
+  await chooseKind(page, dialog, /^US Market/);
   await expect(dialog.getByRole("textbox", { name: "Asset name", exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("combobox", { name: "Allocation class 1", exact: true })).toHaveCount(0);
   await expect(dialog.getByText("Unclassified", { exact: true })).toBeVisible();

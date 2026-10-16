@@ -4,7 +4,7 @@ const LABELS: Readonly<Record<string, string>> = {
   Cripto: "Crypto",
   "Renda Fixa": "Fixed income",
   "Renda Variável": "Equities",
-  Reserva: "Reserve",
+  Reserva: "Commodities",
   "Pós-fixado": "Floating-rate",
   Prefixado: "Fixed-rate",
   "Ações EUA": "US equities",

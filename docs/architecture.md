@@ -97,7 +97,7 @@ ECB reference data via Frankfurter (no API key), with Yahoo fallback. Missing
 month-end FX is backfilled; current rates must never stand in for historical rates.
 Existing non-carried and manual monthly observations take precedence.
 
-The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in USD, Selic, position and institution counts.
+The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in USD, Selic and the position count.
 
 ## Position creation
 
@@ -118,6 +118,35 @@ positions can therefore have no allocation rows, while manual edits retain their
 existing validation. No existing positions are reclassified by this UI change.
 Quoted assets use the existing catalog identity, provider name when available, or
 the verified ticker as a fallback; manual names remain for private balances and
-Tesouro Direto. Broad European coverage and market-group selection await a listing
-and fund-metadata integration; currency selection must not relabel a quote without
-the corresponding conversion and provider routing.
+Tesouro Direto.
+
+## Market listings and European assets
+
+New quoted positions select US Market, Brazilian Market or European Market rather
+than choosing stock versus ETF in advance. Legacy kind keys remain valid. Yahoo
+instrument metadata identifies stocks/ETFs, trading currency, name and exchange.
+Issuer-backed public listing references supplement exposure data for supported
+funds; an ETF wrapper alone never implies equity exposure. Brazilian FII legal
+product names can identify real-estate funds; a ticker ending in 11 is insufficient.
+Unknown fund exposure remains Unclassified. Issuer references override erroneous
+wrapper metadata (for example a physical-gold ETC reported as EQUITY).
+
+European listings retain exchange-qualified symbols. The picker offers verified
+reference listings, with manual entry for other supported exchanges. It does not
+guess where a broker executed a trade. Trading currency comes from the actual
+listing, independently of the fund's base currency. EUR/USD/BRL observations are
+converted to BRL before valuation; GBP/GBX and unknown currencies are rejected.
+European quote types use an EU_ prefix to keep both EUR and USD European listings
+on their Yahoo route, separate from the US Finnhub and B3 chains. Historical EUR
+quotes use historical FX, never a current rate or an unconverted EUR amount.
+
+Identity, currency, wrapper and exposure are included in user/month-bound signed
+ticker proofs. The server uses verified names/types/currencies and reconstructs
+new-position allocations from those claims. A client cannot relabel the metadata.
+Existing monthly/manual quotes remain authoritative for that month's valuation;
+existing portfolio records are not bulk-renamed or reclassified. Public listing
+lookups have a short bounded cache; private portfolio responses are not shared.
+The legacy Reserva taxonomy key is displayed as Commodities without rewriting data.
+No new subscription or broker credentials are needed for this integration. Yahoo
+availability and reference coverage are limited; complete worldwide UCITS metadata
+is not guaranteed.

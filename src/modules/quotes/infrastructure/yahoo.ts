@@ -12,6 +12,9 @@ const chartSchema = z.object({
             currency: z.string().nullable().optional(),
             longName: z.string().nullable().optional(),
             shortName: z.string().nullable().optional(),
+            instrumentType: z.string().nullable().optional(),
+            fullExchangeName: z.string().nullable().optional(),
+            regularMarketTime: z.number().nullable().optional(),
             regularMarketPrice: z.number().nullable().optional(),
           }),
           timestamp: z.array(z.number()).optional(),
@@ -70,7 +73,9 @@ export async function fetchYahooPrice(symbol: string) {
     throw new ProviderRefusalError("MISSING_QUOTE", `Yahoo Finance did not return the price for ${symbol}.`);
   }
 
-  return { price, currency: result.meta.currency ?? null, name: result.meta.longName ?? result.meta.shortName ?? null };
+  return { price, currency: result.meta.currency ?? null, name: result.meta.longName ?? result.meta.shortName ?? null,
+    instrumentType: result.meta.instrumentType ?? null, exchange: result.meta.fullExchangeName ?? null,
+    quoteDate: result.meta.regularMarketTime ? new Date(result.meta.regularMarketTime * 1000).toISOString().slice(0, 10) : null };
 }
 
 

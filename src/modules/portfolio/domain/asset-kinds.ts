@@ -8,6 +8,7 @@
 
 
 export const ASSET_KINDS = [
+  "us-market", "br-market", "eu-market",
   "us-etf",
   "us-stock",
   "br-etf",
@@ -40,6 +41,9 @@ export type AssetKindDefinition = {
 };
 
 export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
+  "us-market": { kind: "us-market", label: "US Market", hint: "Stocks, ETFs and REITs", ticker: "market", provider: "finnhub", instrumentType: "ACAO", allowsMaturity: false },
+  "br-market": { kind: "br-market", label: "Brazilian Market", hint: "Stocks, ETFs and real estate funds", ticker: "market", provider: "yahoo", instrumentType: "ACAO", allowsMaturity: false },
+  "eu-market": { kind: "eu-market", label: "European Market", hint: "Stocks, UCITS ETFs and ETCs", ticker: "market", provider: "yahoo", instrumentType: "EU_FUND", allowsMaturity: false },
   "us-etf": {
     kind: "us-etf",
     label: "US ETF",
@@ -142,6 +146,7 @@ export function normalizeTicker(kind: AssetKind, raw: string): string | null {
   }
 
   const text = raw.trim().toUpperCase();
+  if (kind === "eu-market") return /^[A-Z0-9][A-Z0-9-]{0,19}\.(DE|PA|L|MI|AS|SG|F|BE|MU|SW|VI|BR|LS)$/.test(text) ? text : null;
 
   if (definition.provider === "tesouro") {
     const match = /^TD:[A-Z0-9-]+:(\d{4}-\d{2}-\d{2})$/.exec(text);
@@ -165,6 +170,7 @@ export function normalizeTicker(kind: AssetKind, raw: string): string | null {
 }
 
 export function tickerHint(kind: AssetKind) {
+  if (kind === "eu-market") return "Choose a listing above, or enter a ticker with its exchange, such as UETW.DE or CSH2.PA.";
   switch (ASSET_KIND_DEFINITIONS[kind].provider) {
     case "yahoo":
       return "For example, GPCA11 or PETR4.";
@@ -181,9 +187,11 @@ export function tickerHint(kind: AssetKind) {
 export function baseCurrencyOf(kind: AssetKind, symbol: string | null) {
   switch (kind) {
     case "us-etf":
+    case "us-market":
     case "us-stock":
     case "usd-balance":
       return "USD";
+    case "eu-market": return "EUR";
     case "crypto":
 
       return symbol === "BTC" ? "BTC" : ALTCOINS;
@@ -195,6 +203,9 @@ export function baseCurrencyOf(kind: AssetKind, symbol: string | null) {
 
 export function defaultAllocation(kind: AssetKind, symbol: string | null): AllocationSeed {
   switch (kind) {
+    case "us-market":
+    case "br-market":
+    case "eu-market": return { assetClass: "", subclass: "", duration: "" };
     case "us-etf":
     case "us-stock":
       return { assetClass: "Renda Variável", subclass: "Ações EUA", duration: "-" };
@@ -252,6 +263,7 @@ export function describeAsset(asset: { quoteSymbol: string | null; baseCurrency:
 
 
 export function providerForQuote(instrumentType: string, baseCurrency: string): QuoteProvider {
+  if (instrumentType.startsWith("EU_")) return "yahoo";
   if (instrumentType === "TESOURO") return "tesouro";
   if (instrumentType === "FIAT") {
     return "awesome-api";

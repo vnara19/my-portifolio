@@ -19,6 +19,7 @@ import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { fetchTreasuryQuotes } from "@/modules/quotes/infrastructure/treasury";
 import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
+import { fetchMarketPriceBrl } from "./market-listing";
 
 
 //
@@ -45,14 +46,25 @@ export async function fetchCurrentQuotes(
   const fiat = unique.filter((request) => request.instrumentType === "FIAT");
   const crypto = unique.filter((request) => request.instrumentType === "CRIPTO");
   const treasury = unique.filter((request) => request.instrumentType === "TESOURO");
+  const european = unique.filter((request) => request.instrumentType.startsWith("EU_"));
   const usdAssets = unique.filter(
-    (request) => request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency === "USD",
+    (request) => !request.instrumentType.startsWith("EU_") && request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency === "USD",
   );
   const b3 = unique.filter(
-    (request) => request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency !== "USD",
+    (request) => !request.instrumentType.startsWith("EU_") && request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency !== "USD",
   );
   const results: QuoteResult[] = [];
   results.push(...await fetchTreasuryQuotes(treasury, { today }));
+  results.push(...await Promise.all(european.map(async (request): Promise<QuoteResult> => {
+    try {
+      const quote = await fetchMarketPriceBrl(request.symbol, today);
+      if (quote.currency !== request.baseCurrency) throw new Error("The listing currency changed; verify the instrument before updating its value.");
+      return { symbol: request.symbol, provider: "yahoo", status: "SUCCESS", valueBrl: quote.priceBrl, quoteDate: quote.quoteDate };
+    } catch (error) {
+      const described = describeProviderError(error);
+      return quoteFailure(request.symbol, "yahoo", described.code, described.message);
+    }
+  })));
 
 
   const needsUsd = fiat.some((request) => request.symbol === "USD") || usdAssets.length > 0 || crypto.length > 0;
