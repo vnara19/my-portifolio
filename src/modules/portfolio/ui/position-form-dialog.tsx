@@ -723,6 +723,7 @@ function PositionForm({
                     {response?.status === "matches" ? <Field label="Matching listings">
                       <div className="space-y-2" aria-label="Matching European listings">
                         {response.listings.map((listing) => <button key={listing.symbol} type="button"
+                          aria-label={`${listing.symbol} · ${listing.exchange} · ${listing.name}`}
                           className="w-full rounded-xl border border-border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
                           onClick={() => setTickerText(listing.symbol)}>
                           <span className="block font-semibold">{listing.symbol} · {listing.exchange}</span>
