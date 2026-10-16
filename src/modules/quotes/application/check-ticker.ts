@@ -26,7 +26,7 @@ import {
 } from "@/modules/quotes/infrastructure/coingecko";
 import { lookupFinnhubSymbol } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
-import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
+import { fetchYahooPrice, searchEuropeanListings } from "@/modules/quotes/infrastructure/yahoo";
 import { latestTreasuryPoint, treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { isMarketKind } from "@/modules/portfolio/domain/market-assets";
@@ -61,9 +61,9 @@ export async function checkTicker(
     return { status: "invalid", message: "This asset type has no ticker to verify." };
   }
 
-  const symbol = normalizeTicker(input.kind, input.ticker);
+  let symbol = normalizeTicker(input.kind, input.ticker);
 
-  if (!symbol) {
+  if (!symbol && !(input.kind === "eu-market" && /^[A-Za-z0-9][A-Za-z0-9-]{0,19}$/.test(input.ticker.trim()))) {
     return { status: "invalid", message: "Enter a valid ticker for this asset type." };
   }
 
@@ -80,6 +80,17 @@ export async function checkTicker(
 
   if (!month) {
     return { status: "invalid", message: "The reporting month no longer exists." };
+  }
+
+  if (!symbol) {
+    try {
+      const listings = await searchEuropeanListings(input.ticker.trim().toUpperCase());
+      if (!listings.length) return { status: "invalid", message: "No European listings found. Try the exchange-qualified ticker." };
+      if (listings.length > 1) return { status: "matches", listings };
+      symbol = listings[0].symbol;
+    } catch {
+      return { status: "invalid", message: "European search is unavailable. Try again or enter an exchange-qualified ticker." };
+    }
   }
 
   if (isMarketKind(input.kind)) {

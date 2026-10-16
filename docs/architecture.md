@@ -150,3 +150,8 @@ The legacy Reserva taxonomy key is displayed as Commodities without rewriting da
 No new subscription or broker credentials are needed for this integration. Yahoo
 availability and reference coverage are limited; complete worldwide UCITS metadata
 is not guaranteed.
+
+European Market now searches the provider catalog from a single ticker field.
+Search candidates are not trusted quote identities: selecting an exchange-qualified
+symbol invokes the existing quote verification and signed save proof. The issuer
+reference catalog supports classification only and does not restrict search results.

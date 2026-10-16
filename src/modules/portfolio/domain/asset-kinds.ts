@@ -146,7 +146,7 @@ export function normalizeTicker(kind: AssetKind, raw: string): string | null {
   }
 
   const text = raw.trim().toUpperCase();
-  if (kind === "eu-market") return /^[A-Z0-9][A-Z0-9-]{0,19}\.(DE|PA|L|MI|AS|SG|F|BE|MU|SW|VI|BR|LS)$/.test(text) ? text : null;
+  if (kind === "eu-market") return /^[A-Z0-9][A-Z0-9-]{0,19}\.(DE|PA|L|MI|AS|SG|F|BE|MU|SW|VI|BR|LS|MC|ST|HE|CO|OL|IR|IC|PR|WA|AT|BD|XD|XC|NX)$/.test(text) ? text : null;
 
   if (definition.provider === "tesouro") {
     const match = /^TD:[A-Z0-9-]+:(\d{4}-\d{2}-\d{2})$/.exec(text);
@@ -170,7 +170,7 @@ export function normalizeTicker(kind: AssetKind, raw: string): string | null {
 }
 
 export function tickerHint(kind: AssetKind) {
-  if (kind === "eu-market") return "Choose a listing above, or enter a ticker with its exchange, such as UETW.DE or CSH2.PA.";
+  if (kind === "eu-market") return "Enter a ticker to search European listings, such as UETW, or use an exchange-qualified ticker such as UETW.DE.";
   switch (ASSET_KIND_DEFINITIONS[kind].provider) {
     case "yahoo":
       return "For example, GPCA11 or PETR4.";

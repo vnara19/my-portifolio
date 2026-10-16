@@ -32,6 +32,8 @@ export type TickerCheckResponse =
       coins?: CoinCandidate[];
     }
 
+  | { status: "matches"; listings: { symbol: string; name: string; exchange: string }[] }
+
   | { status: "known"; symbol: string; priceBrl: number }
 
   | { status: "not-found"; symbol: string; provider: string; message: string }

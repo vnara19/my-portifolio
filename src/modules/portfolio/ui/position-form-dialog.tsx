@@ -22,7 +22,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { Button } from "@/components/ui/button";
 import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
-import { EUROPEAN_LISTINGS, isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
+import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker, type PickerOption } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
@@ -227,19 +227,20 @@ function PositionForm({
 
 
   const definition = kind ? ASSET_KIND_DEFINITIONS[kind] : null;
-  const symbol =
+  const inputSymbol =
     definition?.ticker === "usd"
       ? USD_SYMBOL
       : definition?.ticker === "market" && kind
         ? normalizeTicker(kind, tickerText)
         : null;
-  const chosenCoinId = kind === "crypto" && symbol && coinChoice?.symbol === symbol ? coinChoice.id : null;
+  const chosenCoinId = kind === "crypto" && inputSymbol && coinChoice?.symbol === inputSymbol ? coinChoice.id : null;
   const check = useTickerCheck(
     month.id,
     !editing && definition?.ticker === "market" ? kind : null,
-    symbol,
+    kind === "eu-market" ? tickerText.trim().toUpperCase() || null : inputSymbol,
     chosenCoinId,
   );
+  const symbol = kind === "eu-market" && check.state === "done" && check.response.status === "found" ? check.response.symbol : inputSymbol;
   const checkedCoins = check.state === "done" && check.response.status === "found" ? check.response.coins : undefined;
 
   if (symbol && checkedCoins && coinCandidates?.symbol !== symbol) {
@@ -691,11 +692,6 @@ function PositionForm({
 
                 {market && kind ? (
                   <>
-                    {kind === "eu-market" ? <Field label="European listing">
-                      <Picker aria-label="European listing" value={EUROPEAN_LISTINGS.some((listing) => listing.symbol === tickerText) ? tickerText : null}
-                        options={EUROPEAN_LISTINGS.map((listing) => ({ value: listing.symbol, label: `${listing.symbol.split(".")[0]} · ${listing.name}`, hint: `${listing.exchange} · ${listing.currency}` }))}
-                        onValueChange={setTickerText} placeholder="Choose a listing or enter another ticker below" />
-                    </Field> : null}
                     {kind === "treasury" ? (
                       <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
@@ -712,18 +708,28 @@ function PositionForm({
                         autoCapitalize="characters"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder={kind === "crypto" ? "ETH" : kind === "eu-market" ? "UETW.DE" : kind.startsWith("br") ? "GPCA11" : "VOO"}
+                        placeholder={kind === "crypto" ? "ETH" : kind === "eu-market" ? "UETW" : kind.startsWith("br") ? "GPCA11" : "VOO"}
                         className={cn(inputClass, "font-mono uppercase")}
                       />
                     </Field>}
                     <TickerStatus
                       kind={kind}
                       text={tickerText}
-                      symbol={symbol}
+                      symbol={kind === "eu-market" ? tickerText.trim() || null : symbol}
                       check={check}
                       monthLabel={month.label}
                       isCurrent={month.isCurrent}
                     />
+                    {response?.status === "matches" ? <Field label="Matching listings">
+                      <div className="space-y-2" aria-label="Matching European listings">
+                        {response.listings.map((listing) => <button key={listing.symbol} type="button"
+                          className="w-full rounded-xl border border-border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
+                          onClick={() => setTickerText(listing.symbol)}>
+                          <span className="block font-semibold">{listing.symbol} · {listing.exchange}</span>
+                          <span className="block text-sm text-muted-foreground">{listing.name}</span>
+                        </button>)}
+                      </div>
+                    </Field> : null}
                     {coins && coins.length > 1 && symbol ? (
                       <Field label={`Currency · ${coins.length} with symbol ${symbol}`}>
                         <Picker
@@ -1121,8 +1127,7 @@ function TickerStatus({
 
   if (!text.trim()) {
     content = <StatusLine tone="muted">{tickerHint(kind)}</StatusLine>;
-  } else if (kind === "eu-market" && !symbol && text.trim()) {
-    content = <StatusLine tone="error">Choose a European listing above or enter the ticker with its exchange.</StatusLine>;
+
   } else if (!symbol && ASSET_KIND_DEFINITIONS[kind].provider === "yahoo" && /^[A-Z0-9]{1,4}$/.test(text.trim())) {
 
     content = <StatusLine tone="muted">Enter the complete ticker, such as PETR4 or GPCA11.</StatusLine>;
@@ -1146,6 +1151,9 @@ function TickerStatus({
     const response = check.response;
 
     switch (response.status) {
+      case "matches":
+        content = <StatusLine tone="muted">Select the listing that matches your investment. Its trading currency will be verified.</StatusLine>;
+        break;
       case "found":
         content = (
           <StatusLine tone="success">

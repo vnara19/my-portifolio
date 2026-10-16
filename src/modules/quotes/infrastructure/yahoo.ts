@@ -91,3 +91,23 @@ export async function fetchYahooDailyHistory(symbol: string, years = 3) {
     }),
   };
 }
+
+const searchSchema = z.object({ quotes: z.array(z.object({
+  symbol: z.string(), shortname: z.string().optional(), longname: z.string().optional(),
+  exchDisp: z.string().optional(), quoteType: z.string().optional(),
+})).default([]) });
+
+/** Search the provider catalog, rather than restricting users to issuer reference examples. */
+export async function searchEuropeanListings(query: string) {
+  const url = new URL("https://query1.finance.yahoo.com/v1/finance/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("quotesCount", "30");
+  url.searchParams.set("newsCount", "0");
+  const result = searchSchema.parse(await fetchJson(url, { headers: HEADERS }));
+  return result.quotes.filter((quote) =>
+    /\.(DE|PA|L|MI|AS|SG|F|BE|MU|SW|VI|BR|LS|MC|ST|HE|CO|OL|IR|IC|PR|WA|AT|BD|XD|XC|NX)$/.test(quote.symbol) &&
+    ["ETF", "EQUITY", "MUTUALFUND"].includes(quote.quoteType ?? "")
+  ).filter((quote, index, all) => all.findIndex((other) => other.symbol === quote.symbol) === index)
+    .map((quote) => ({ symbol: quote.symbol, name: quote.longname ?? quote.shortname ?? quote.symbol,
+      exchange: quote.exchDisp ?? quote.symbol.split(".").at(-1)! }));
+}
