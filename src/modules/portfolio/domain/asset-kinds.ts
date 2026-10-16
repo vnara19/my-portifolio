@@ -42,7 +42,7 @@ export type AssetKindDefinition = {
 
 export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   "us-market": { kind: "us-market", label: "US Market", hint: "Stocks, ETFs and REITs", ticker: "market", provider: "finnhub", instrumentType: "ACAO", allowsMaturity: false },
-  "br-market": { kind: "br-market", label: "Brazilian Market", hint: "Stocks, ETFs and real estate funds", ticker: "market", provider: "yahoo", instrumentType: "ACAO", allowsMaturity: false },
+  "br-market": { kind: "br-market", label: "Brazilian Market", hint: "Stocks, ETFs and Real Estate Funds", ticker: "market", provider: "yahoo", instrumentType: "ACAO", allowsMaturity: false },
   "eu-market": { kind: "eu-market", label: "European Market", hint: "Stocks, UCITS ETFs and ETCs", ticker: "market", provider: "yahoo", instrumentType: "EU_FUND", allowsMaturity: false },
   "us-etf": {
     kind: "us-etf",
@@ -83,7 +83,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   crypto: {
     kind: "crypto",
     label: "Cryptocurrency",
-    hint: "CoinGecko",
+    hint: "Coins, Altcoins and Stablecoins",
     ticker: "market",
     provider: "coingecko",
     instrumentType: "CRIPTO",

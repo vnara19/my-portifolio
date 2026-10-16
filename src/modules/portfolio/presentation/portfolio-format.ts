@@ -19,7 +19,7 @@ export function formatPriceBrl(value: number) {
   }).format(value);
 }
 
-export function parseLocaleNumber(value: string) {
+export function normalizeLocaleNumberInput(value: string) {
   const trimmed = value.trim().replace(/\s/g, "");
   const comma = trimmed.lastIndexOf(",");
   const dot = trimmed.lastIndexOf(".");
@@ -33,7 +33,12 @@ export function parseLocaleNumber(value: string) {
     return null;
   }
 
-  return Number(normalized);
+  return normalized;
+}
+
+export function parseLocaleNumber(value: string) {
+  const normalized = normalizeLocaleNumberInput(value);
+  return normalized === null ? null : Number(normalized);
 }
 
 export function formatSharePercent(value: number) {

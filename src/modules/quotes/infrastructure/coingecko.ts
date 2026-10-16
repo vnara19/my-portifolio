@@ -148,3 +148,14 @@ export async function fetchCoinGeckoDailyHistory(coinId: string, apiKey?: string
     .filter(([, price]) => price > 0)
     .map(([time, price]) => ({ day: new Date(time).toISOString().slice(0, 10), value: price }));
 }
+
+/** A single observation supplies both the storage quote and the USD quote shown during purchase entry. */
+export async function fetchCoinGeckoPricePair(id: string, apiKey?: string) {
+  const url = new URL("https://api.coingecko.com/api/v3/simple/price");
+  url.searchParams.set("ids", id);
+  url.searchParams.set("vs_currencies", "brl,usd");
+  const payload = z.record(z.string(), z.object({ brl: z.number().positive(), usd: z.number().positive().optional() })).parse(
+    await fetchJson(url, { headers: headersFor(apiKey) }, { timeoutMs: 6_000, attempts: 2 }),
+  );
+  return payload[id] ?? null;
+}

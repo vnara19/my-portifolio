@@ -20,7 +20,7 @@ import type { CoinCandidate, TickerCheckResponse } from "@/modules/quotes/domain
 import { lookupAlphaVantageSymbol } from "@/modules/quotes/infrastructure/alpha-vantage";
 import { fetchUsdBrl } from "@/modules/quotes/infrastructure/awesome-api";
 import {
-  fetchCoinGeckoPrices,
+  fetchCoinGeckoPricePair,
   resolveCoinGeckoCoin,
   searchCoinGeckoCoins,
 } from "@/modules/quotes/infrastructure/coingecko";
@@ -40,7 +40,7 @@ export const readVerifiedTicker = readVerifiedTickerToken;
 const LOOKUP_TTL_MS = 60 * 1000;
 
 type Lookup =
-  | { state: "found"; priceBrl: number; coinId: string | null; name: string | null; quoteDate?: string; coins?: CoinCandidate[] }
+  | { state: "found"; priceBrl: number; coinId: string | null; name: string | null; quoteDate?: string; coins?: CoinCandidate[]; priceNative?: number | null; currency?: "USD" | "EUR" | "BRL" }
   | { state: "not-found" }
   | { state: "unavailable"; code: string; message: string };
 
@@ -103,7 +103,7 @@ export async function checkTicker(
       const quoteDate = existing?.quoteDate ? toDateKey(existing.quoteDate) : listing.quoteDate;
       const token = createVerifiedTickerToken({ symbol, kind: input.kind, provider: "yahoo", status: "found", priceBrl, coinId: null,
         identity: listing.identity, quoteDate: new Date(`${quoteDate}T00:00:00Z`), fetchedAt: now }, { userId: await currentUserId(), monthId: input.monthId, now });
-      return { status: "found", symbol, provider: "yahoo", priceBrl, name: listing.identity.name, quoteDate, token, identity: listing.identity };
+      return { status: "found", symbol, provider: "yahoo", priceBrl, name: listing.identity.name, quoteDate, token, identity: listing.identity, priceNative: listing.price, currency: listing.identity.currency };
     } catch (error) {
       return { status: "invalid", message: error instanceof Error ? error.message : "Could not verify this listing. Please try again." };
     }
@@ -137,7 +137,7 @@ export async function checkTicker(
     };
   }
 
-  if (monthQuote) {
+  if (monthQuote && input.kind !== "crypto") {
     return { status: "known", symbol, priceBrl: monthQuote.valueBrl.toNumber() };
   }
 
@@ -209,6 +209,8 @@ export async function checkTicker(
     provider,
     priceBrl: lookup.priceBrl,
     name: lookup.name,
+    priceNative: lookup.priceNative,
+    currency: lookup.currency,
     quoteDate: toDateKey(quoteDate),
     token,
     coinId: lookup.coinId,
@@ -357,9 +359,9 @@ async function lookupSymbol(
           return { state: "not-found" };
         }
 
-        const price = (await fetchCoinGeckoPrices([coin.id], configuration.coinGeckoApiKey)).get(coin.id);
+        const price = await fetchCoinGeckoPricePair(coin.id, configuration.coinGeckoApiKey);
         return price
-          ? { state: "found", priceBrl: price, coinId: coin.id, name: coin.name, coins }
+          ? { state: "found", priceBrl: price.brl, priceNative: price.usd ?? null, currency: "USD", coinId: coin.id, name: coin.name, coins }
           : { state: "unavailable", code: "MISSING_QUOTE", message: `CoinGecko did not return the price for ${symbol}.` };
       }
       default:

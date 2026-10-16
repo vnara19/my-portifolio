@@ -163,3 +163,10 @@ symbols remain an override. See spec 109 for bounded public metadata caching, ve
 preference and reviewed issuer sources. Description-based fund classification augments
 issuer references conservatively. New market positions with unknown exposure are
 rejected before writes; client allocations cannot bypass signed classification.
+
+Market purchase entry (spec 110) uses native-currency execution price, fractional
+quantity, commission and acquisition date. The write boundary validates currency,
+obtains dated FX before the transaction and records fee-inclusive acquisition cost
+in existing PositionTransaction.amountBrl, with native breakdown in note. Current
+position value excludes fees. The average-cost gain ledger, Overview allocations,
+undo and backup v5 consume/preserve the existing fields; no migration is required.

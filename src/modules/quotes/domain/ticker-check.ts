@@ -23,6 +23,8 @@ export type TickerCheckResponse =
       symbol: string;
       provider: string;
       priceBrl: number;
+      priceNative?: number | null;
+      currency?: "USD" | "EUR" | "BRL";
       name: string | null;
       quoteDate: string;
       token: string;

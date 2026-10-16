@@ -25,7 +25,7 @@ import {
   USD_SYMBOL,
   type AssetKind,
 } from "@/modules/portfolio/domain/asset-kinds";
-import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
+import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity, automaticLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { autoIncomeParts, indexerOfSubclass, supportsAutoIncome } from "@/modules/portfolio/domain/fixed-income-policy";
 import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import { classificationIssue } from "@/modules/portfolio/domain/classification";
@@ -35,6 +35,10 @@ import { readVerifiedTicker } from "@/modules/quotes/application/check-ticker";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
 import { addMonths, calendarDay, currentReferenceMonth, lastDayOf, toDateKey } from "@/modules/quotes/domain/calendar";
 import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
+
+import { automaticAllocation } from "../domain/automatic-allocation";
+import { preparePurchase } from "./prepare-purchase";
+import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -70,6 +74,7 @@ export type NewAssetInput = {
 };
 
 export type PositionAddition = {
+  purchase?: PurchaseInput;
   accountId?: string;
   newAccount?: NewAccountInput;
   assetId?: string;
@@ -193,8 +198,21 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const newAsset = input.addition.newAsset;
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
-  const allocationInputs = identity ? marketAllocation(identity).map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
+  const seeds = identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
+  const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
+
+  const db = input.addition.purchase ? await getUserDb() : null;
+  const existingAsset = input.addition.purchase && input.addition.assetId ? await db?.asset.findUnique({ where: { id: input.addition.assetId }, select: { baseCurrency: true, assetType: true } }) : null;
+  const purchaseKind = newAsset?.kind ?? existingAsset?.assetType;
+  const purchaseCurrency = identity?.currency ?? (purchaseKind === "crypto" ? "USD" : existingAsset?.baseCurrency);
+  const ownedMonth = input.addition.purchase ? await db?.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } }) : null;
+  if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || !automaticLiquidity(purchaseKind))) throw new MonthEditError("This asset cannot use the market purchase form.");
+  let purchase: Awaited<ReturnType<typeof preparePurchase>> | null = null;
+  if (input.addition.purchase) {
+    try { purchase = await preparePurchase(input.addition.purchase, parseNonNegative(input.addition.value).toFixed(), purchaseCurrency!, toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(ownedMonth!.referenceDate).getTime())))); }
+    catch (error) { throw new MonthEditError(error instanceof Error ? error.message : "Could not verify purchase exchange rates."); }
+  }
 
   return withUndo(input.monthId, async (transaction, month) => {
     const positions = await transaction.position.findMany({
@@ -220,6 +238,15 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       throw new MonthEditError("This asset already has a position at this institution in this reporting month.");
     }
 
+    if (purchase) {
+      // Preserve an already published USD observation so acquisition basis and gains use the same rate.
+      const usdDate = new Date(`${purchase.usd.day}T00:00:00Z`);
+      const existingUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: purchase.date, gte: usdDate } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
+      const usd = existingUsd?.valueBrl ?? new Prisma.Decimal(purchase.usd.value);
+      const nativeFx = purchase.input.currency === "USD" ? usd : new Prisma.Decimal(purchase.native.value);
+      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString()), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
+      await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: usdDate, instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
+    }
     const value = parseNonNegative(addition.value);
     let unitPriceBrl: Prisma.Decimal | null = null;
     let quantity = value.toDecimalPlaces(2);
@@ -283,23 +310,24 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
         );
       }
 
-      const contribution = addition.initialKind === "CONTRIBUTION";
-      const executed =
+      const contribution = Boolean(purchase) || addition.initialKind === "CONTRIBUTION";
+      const executed = purchase?.cost.unitPriceBrl ?? (
         contribution && unitPriceBrl
           ? addition.executedPriceBrl
             ? parsePositive(addition.executedPriceBrl, 8)
             : unitPriceBrl
-          : null;
+          : null);
       await transaction.positionTransaction.create({
         data: {
           userId: SCOPED_USER,
           positionId: created.id,
           kind: contribution ? PositionTransactionKind.CONTRIBUTION : PositionTransactionKind.OPENING,
-          occurredOn: dates?.appliedOn ?? transactionDay(month.referenceDate),
+          occurredOn: purchase?.date ?? dates?.appliedOn ?? transactionDay(month.referenceDate),
           quantity,
 
           unitPriceBrl: executed,
-          amountBrl: executed ? quantity.mul(executed).toDecimalPlaces(2) : totalBrl,
+          amountBrl: purchase?.cost.amountBrl ?? (executed ? quantity.mul(executed).toDecimalPlaces(2) : totalBrl),
+          ...(purchase ? { note: purchase.note } : {}),
         },
       });
 
@@ -713,7 +741,7 @@ async function resolveAdditionAsset(
       quoteSymbol: symbol,
       baseCurrency: identity?.currency ?? baseCurrencyOf(input.kind, symbol),
       maturityDate,
-      liquidity: normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
+      liquidity: automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance"),
 

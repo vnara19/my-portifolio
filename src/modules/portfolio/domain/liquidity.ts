@@ -17,3 +17,12 @@ export function normalizeLiquidity(value: string | null | undefined) {
 
   return /^d\s*\+\s*\d+$/i.test(text) ? `D+${text.replace(/\D/g, "")}` : text;
 }
+
+/** Standard settlement guidance; trading availability is separate from withdrawal availability. */
+export function automaticLiquidity(kind: string, exposure: string | null = null, day = new Date().toISOString().slice(0, 10)) {
+  if (kind === "crypto") return "24/7 · platform-dependent";
+  if (kind === "us-market" || kind === "us-etf" || kind === "us-stock") return "D+1";
+  if (kind === "br-market" || kind === "br-etf" || kind === "br-stock") return exposure === "bond" ? "D+1" : "D+2";
+  if (kind === "eu-market") return day >= "2027-10-11" ? "D+1" : "D+2";
+  return null;
+}

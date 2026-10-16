@@ -51,11 +51,11 @@ import {
   subclassesOf,
   type AssetType,
 } from "@/modules/portfolio/domain/classification";
-import { normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
+import { automaticLiquidity, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
-import { formatBrl, formatPriceBrl, parseLocaleNumber } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatBrl, formatPriceBrl, formatCurrency, parseLocaleNumber, normalizeLocaleNumberInput } from "@/modules/portfolio/presentation/portfolio-format";
 import {
   AllocationPicker,
   backdropClass,
@@ -170,6 +170,10 @@ function PositionForm({
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
 
   const initialKind = "OPENING" as const;
+  const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [commission, setCommission] = useState("0");
+  const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
   const [strategy, setStrategy] = useState(editing?.strategy ?? "");
   // Asset details.
   const [tickerText, setTickerText] = useState("");
@@ -253,6 +257,12 @@ function PositionForm({
   const automaticName = !editing && definition?.ticker === "market" && kind !== "treasury";
   const response = check.state === "done" ? check.response : null;
   const identity = response?.status === "found" ? response.identity : undefined;
+  const purchaseEntry = !editing && kind !== null && (isMarketKind(kind) || kind === "crypto");
+  const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : null);
+  const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
+  const purchaseUnit = parseLocaleNumber(purchasePrice);
+  const purchaseFee = parseLocaleNumber(commission);
+  const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const typedName = automaticName
     ? cleanName(catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
@@ -386,6 +396,9 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
+  if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
+    issues.push({ tab: "ativo", message: "Enter the purchase price, a positive quantity, commission (zero if none) and purchase date." });
+  }
 
   if (!editing) {
     if (!kind) {
@@ -501,7 +514,7 @@ function PositionForm({
                     kind,
                     ticker: symbol,
                     maturityDate,
-                    liquidity: normalizeLiquidity(liquidity),
+                    liquidity: autoLiquidity ?? normalizeLiquidity(liquidity),
                     quoteCheckToken:
                       response?.status === "found" || response?.status === "unavailable" ? response.token : null,
                     manualPriceBrl: needsManualPrice || ownTreasuryPrice ? manualPrice.trim() : null,
@@ -509,7 +522,8 @@ function PositionForm({
                     ...(wantsAutoIncome ? { appliedOn } : {}),
                   },
                 }),
-            value: value.trim(),
+            value: purchaseEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -676,7 +690,7 @@ function PositionForm({
           </PositionSection>
 
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title="Enter the asset and current balance" description="The quote is verified automatically. Then enter the quantity or balance for this position." /> : null}
+            {!editing ? <SectionHeading title={purchaseEntry ? "Purchase details" : "Enter the asset and current balance"} description={purchaseEntry ? "Enter what you paid. Commission is included in your acquisition cost." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -722,6 +736,7 @@ function PositionForm({
                       monthLabel={month.label}
                       isCurrent={month.isCurrent}
                     />
+                    {purchaseEntry && response?.status === "found" && tradeCurrency && priceNative !== null ? <p className="font-mono text-sm text-muted-foreground">Market price {formatCurrency(priceNative, tradeCurrency, false, kind === "crypto" ? 8 : 2)}</p> : null}
                     {response?.status === "matches" ? <Field label="Matching listings">
                       <div className="space-y-2" aria-label="Matching European listings">
                         {response.listings.map((listing) => <button key={listing.symbol} type="button"
@@ -775,14 +790,28 @@ function PositionForm({
                 {!editing && !automaticName ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder="For example, Bank X CDB" className={inputClass} /></Field> : null}
                 {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
                 {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
-                {identity ? <>
-                  <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} />
-                  <ReadOnly label="Exchange" value={`${identity.exchange} · ${identity.currency}`} />
-                  {kind === "eu-market" && !inputSymbol && identity.currency === "EUR" ? <p className="text-xs text-muted-foreground">EUR reference listing selected automatically: {symbol}.</p> : null}
-                  {!identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
-                  {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
-                  {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Issuer reference</a> : null}
+                {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
+                {purchaseEntry ? <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label={`Purchase price (${tradeCurrency ?? "…"})`}><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
+                    <Field label="Quantity"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
+                    <Field label={`Commission (${tradeCurrency ?? "…"})`}><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /></Field>
+                    <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={setPurchaseDate} max={latestPurchaseDay} /></Field>
+                  </div>
                 </> : null}
+                {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
+                {purchaseEntry && (identity || kind === "crypto") ? <details className="rounded-xl border border-border p-3 text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">Details</summary>
+                  <div className="mt-3 space-y-3">
+                    {identity ? <>
+                      <ReadOnly label="Exchange" value={`${identity.exchange} · ${identity.currency}`} />
+                      {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
+                      {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Fund information</a> : null}
+                    </> : null}
+                    <ReadOnly label="Settlement" value={autoLiquidity?.replace("D+", "T+") ?? "Not specified"} />
+                    {response?.status === "found" ? <p className="text-xs text-muted-foreground">Quote: {response.quoteDate} · {providerLabel(response.provider)}</p> : null}
+                  </div>
+                </details> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
                   {treasury ? (
                     <Field label="Enter the position using">
@@ -797,16 +826,16 @@ function PositionForm({
                       />
                     </Field>
                   ) : null}
-                  <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field>
-                  {impliedQuantity !== null ? (
+                  {!purchaseEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">Total cost {formatCurrency(parsedValue * purchaseUnit + purchaseFee, tradeCurrency)} <span className="text-xs text-muted-foreground">including commission</span></p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
                       {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
-                  ) : quoted && !amountMode && positionTotal !== null ? (
+                  ) : !purchaseEntry && quoted && !amountMode && positionTotal !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
+                {!editing && !purchaseEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
 
 
                 {canEditMaturity ? (
@@ -823,11 +852,11 @@ function PositionForm({
                 ) : null}
                 {treasuryMaturity ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || isNewAsset ? (
+                {editing || (isNewAsset && !autoLiquidity) ? (
                   <Field label="Liquidity (optional)">
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
-                ) : catalogAsset ? (
+                ) : catalogAsset && !autoLiquidity ? (
                   <ReadOnly label="Asset liquidity" value={catalogAsset.liquidity ?? "Not specified"} />
                 ) : null}
               </>
@@ -1161,6 +1190,10 @@ function TickerStatus({
         content = <StatusLine tone="muted">No unambiguous EUR listing was found. Check the trading currency and select your investment.</StatusLine>;
         break;
       case "found":
+        if (isMarketKind(kind) || kind === "crypto") {
+          content = <StatusLine tone="success">Verified</StatusLine>;
+          break;
+        }
         content = (
           <StatusLine tone="success">
             {symbol} found{response.name ? ` (${response.name})` : ""} on {providerLabel(response.provider)}:{" "}
