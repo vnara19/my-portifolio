@@ -165,6 +165,7 @@ function PositionForm({
 
   // General settings.
   const [kind, setKind] = useState<AssetKind | null>(null);
+  const [verificationEpoch, setVerificationEpoch] = useState(0);
   const [entryType, setEntryType] = useState<"asset" | "cash">("asset");
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
@@ -215,26 +216,27 @@ function PositionForm({
   const defaultInstitution = catalog.institutions.find((entry) => normalizeKey(entry.name) === normalizeKey("Portfolio"));
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
+  const resetFields = () => {
+    setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
+    setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
+    setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
+    setValueKind("quantity"); setMaturity(""); setLiquidity(""); setStrategy("");
+    setAssetType(null); setRows(null); setNextRowKey(100); setAutoIncome(false);
+    setAppliedOn(defaultAppliedOn(month.referenceDate)); setTab("geral");
+    setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
+  };
   const chooseKind = (next: string) => {
+    if (next === kind) return;
+    resetFields();
     setKind(next as AssetKind);
-    setManualPrice("");
-    setValueKind("quantity");
-
-    if (next === "treasury") {
-
-      void prefetchTreasuryCatalog().catch(() => undefined);
-    }
-
-    if (!ASSET_KIND_DEFINITIONS[next as AssetKind].allowsMaturity) {
-      setMaturity("");
-    }
+    if (next === "treasury") void prefetchTreasuryCatalog().catch(() => undefined);
   };
 
 
   const definition = kind ? ASSET_KIND_DEFINITIONS[kind] : null;
   const inputSymbol =
-    definition?.ticker === "usd"
-      ? USD_SYMBOL
+    (definition?.ticker === "usd" || definition?.ticker === "eur")
+      ? normalizeTicker(kind!, "")
       : definition?.ticker === "market" && kind
         ? normalizeTicker(kind, tickerText)
         : null;
@@ -244,6 +246,7 @@ function PositionForm({
     !editing && definition?.ticker === "market" ? kind : null,
     kind === "eu-market" ? tickerText.trim().toUpperCase() || null : inputSymbol,
     chosenCoinId,
+    verificationEpoch,
   );
   const symbol = kind === "eu-market" && check.state === "done" && check.response.status === "found" ? check.response.symbol : inputSymbol;
   const checkedCoins = check.state === "done" && check.response.status === "found" ? check.response.coins : undefined;
@@ -274,7 +277,7 @@ function PositionForm({
     !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? institutionName : symbol)
       ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: institutionName ?? "", maturityDate })
       : null;
-  const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey || (symbol !== null && asset.quoteSymbol === symbol)) : undefined;
+  const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey || (definition?.ticker === "market" && symbol !== null && asset.quoteSymbol === symbol)) : undefined;
   const isNewAsset = !editing && assetKey !== null && !catalogAsset;
   const needsManualPrice =
     isNewAsset &&
@@ -298,9 +301,8 @@ function PositionForm({
   } else if (catalogAsset) {
     price = catalogAsset.quoteSymbol ? quoteOf(catalogAsset.quoteSymbol) : null;
     missingQuoteSymbol = catalogAsset.quoteSymbol && !price ? catalogAsset.quoteSymbol : null;
-  } else if (definition?.ticker === "usd") {
-    price = quoteOf(USD_SYMBOL);
-    missingQuoteSymbol = price ? null : USD_SYMBOL;
+  } else if (definition?.ticker === "usd" || definition?.ticker === "eur") {
+    price = quoteOf(symbol!);
   } else if (definition?.ticker === "market") {
     if (!symbol) {
       tickerIssue = "Enter a valid ticker.";
@@ -325,8 +327,8 @@ function PositionForm({
         ? "Position value (BRL)"
         : treasury
           ? "Number of securities"
-          : quoteSymbol === USD_SYMBOL
-            ? "Balance (USD)"
+          : quoteSymbol === USD_SYMBOL || quoteSymbol === "EUR"
+            ? `Balance (${quoteSymbol})`
             : quoted
               ? "Quantity"
               : "Balance (BRL)";
@@ -631,7 +633,7 @@ function PositionForm({
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
           <PositionSection single={!editing} value="geral" className="space-y-4 outline-none">
             {!editing ? <div role="group" aria-label="Entry type" className="flex gap-2">
-              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "default" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; setEntryType(type); setKind(null); setTickerText(""); setManualPrice(""); setRows(null); }}>
+              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "default" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; resetFields(); setEntryType(type); setKind(null); }}>
                 {type === "asset" ? "Asset" : "Cash"}
               </Button>)}
             </div> : null}
@@ -649,10 +651,10 @@ function PositionForm({
               </div>
             ) : (
               <div className="grid gap-3">
-                <Field label="Asset type">
+                <Field label={entryType === "cash" ? "Currency" : "Asset type"}>
                   <Picker
-                    aria-label="Asset type"
-                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && (entry === "brl-cash" || entry === "usd-balance") === (entryType === "cash")).map((entry) => ({
+                    aria-label={entryType === "cash" ? "Cash currency" : "Asset type"}
+                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && (entry === "brl-cash" || entry === "usd-balance" || entry === "eur-balance") === (entryType === "cash")).map((entry) => ({
                       value: entry,
                       label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
                       hint: ASSET_KIND_DEFINITIONS[entry].hint,
@@ -693,7 +695,7 @@ function PositionForm({
           </PositionSection>
 
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title={purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
+            {!editing ? <SectionHeading title={purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -790,9 +792,9 @@ function PositionForm({
                   </>
                 ) : null}
 
-                {!editing && !automaticName ? <Field label="Asset name"><input aria-label="Asset name" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder="For example, Bank X CDB" className={inputClass} /></Field> : null}
+                {!editing && !automaticName ? <Field label={entryType === "cash" ? "Cash name" : "Asset name"}><input aria-label={entryType === "cash" ? "Cash name" : "Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={entryType === "cash" ? "For example, Savings account" : "For example, Bank X CDB"} className={inputClass} /></Field> : null}
                 {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
-                {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
+                {!editing && kind && entryType !== "cash" ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {purchaseEntry ? <>
                   <div role="group" aria-label="Trade side" className="flex gap-2">
@@ -806,9 +808,9 @@ function PositionForm({
                   </div>
                 </> : null}
                 {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
-                {purchaseEntry && (identity || kind === "crypto") ? <details className="rounded-xl border border-border p-3 text-sm">
+                {purchaseEntry && (identity || kind === "crypto") ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
                   <summary className="cursor-pointer text-muted-foreground">Details</summary>
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3 flex flex-col gap-4">
                     {identity ? <>
                       <ReadOnly label="Exchange" value={`${identity.exchange} · ${identity.currency}`} />
                       {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
@@ -841,10 +843,10 @@ function PositionForm({
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && !purchaseEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
+                {!editing && entryType !== "cash" && !purchaseEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
 
 
-                {canEditMaturity ? (
+                {canEditMaturity && (editing || entryType !== "cash") ? (
                   <Field label="Maturity (optional)">
                     <DatePicker
                       aria-label="Maturity"
@@ -858,11 +860,11 @@ function PositionForm({
                 ) : null}
                 {treasuryMaturity ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || (isNewAsset && !autoLiquidity) ? (
+                {editing || (isNewAsset && !autoLiquidity && entryType !== "cash") ? (
                   <Field label="Liquidity (optional)">
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
-                ) : catalogAsset && !autoLiquidity ? (
+                ) : catalogAsset && !autoLiquidity && entryType !== "cash" ? (
                   <ReadOnly label="Asset liquidity" value={catalogAsset.liquidity ?? "Not specified"} />
                 ) : null}
               </>
@@ -1093,8 +1095,9 @@ function useTickerCheck(
   kind: AssetKind | null,
   symbol: string | null,
   coinId: string | null,
+  epoch: number,
 ): TickerCheckState {
-  const key = kind && symbol ? `${kind}:${symbol}:${coinId ?? ""}` : null;
+  const key = kind && symbol ? `${epoch}:${kind}:${symbol}:${coinId ?? ""}` : null;
   const [result, setResult] = useState<{ key: string; response: TickerCheckResponse | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
 

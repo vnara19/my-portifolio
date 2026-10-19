@@ -92,6 +92,6 @@ export async function pick(page: Page, field: Locator, text: string, option: str
 }
 
 export async function chooseKind(page: Page, dialog: Locator, kind: RegExp) {
-  await dialog.getByRole("combobox", { name: "Asset type" }).click();
+  await dialog.getByRole("combobox", { name: /^(Asset type|Cash currency)$/ }).click();
   await page.getByRole("option", { name: kind }).click();
 }

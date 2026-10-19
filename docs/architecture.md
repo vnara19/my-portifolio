@@ -181,3 +181,12 @@ edits are serialized per user/month to prevent concurrent overselling. Cash bala
 are not automatically credited by this recording operation. Historical holdings in
 a single non-default account can be resolved unambiguously; multiple-account
 holdings require selecting the corresponding position. Backup v5 remains unchanged.
+
+Cash creation supports BRL, USD and EUR through a name and native-currency balance.
+Cash has no new maturity, accrual setup, redundant currency field or trade side.
+Foreign cash stores native units with a dated FIAT/BRL quote; missing monthly USD
+or EUR reference rates are fetched before the write transaction. New cash receives
+Cash allocation on the server. The new eur-balance type is additive; existing keys,
+SQL migrations, historical records and backup v5 remain unchanged. Switching entry
+type, market or cash currency clears lower fields and invalidates pending ticker
+verification. Re-selecting the active option preserves entered values.

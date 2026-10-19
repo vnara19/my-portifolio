@@ -80,6 +80,7 @@ export const ASSET_TYPES = [
   "pension",
   "brl-cash",
   "usd-balance",
+  "eur-balance",
 ] as const;
 
 export type AssetType = (typeof ASSET_TYPES)[number];
@@ -94,8 +95,9 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   treasury: "Tesouro Direto",
   "fixed-income": "Fixed income",
   pension: "Pension",
-  "brl-cash": "BRL cash",
-  "usd-balance": "USD cash",
+  "brl-cash": "BRL Cash",
+  "usd-balance": "USD Cash",
+  "eur-balance": "EUR Cash",
 };
 
 export function isAssetType(value: string | null | undefined): value is AssetType {
@@ -124,6 +126,7 @@ export function assetTypeOf(asset: {
     return "fixed-income";
   }
 
+  if (symbol === "EUR") return "eur-balance";
   if (symbol === "USD") return "usd-balance";
   if (symbol.startsWith("TD:")) return "treasury";
   if (asset.baseCurrency === "BTC" || asset.baseCurrency === "Altcoins") return "crypto";

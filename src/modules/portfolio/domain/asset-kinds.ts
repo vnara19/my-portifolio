@@ -18,6 +18,7 @@ export const ASSET_KINDS = [
   "fixed-income",
   "brl-cash",
   "usd-balance",
+  "eur-balance",
 ] as const;
 
 export type AssetKind = (typeof ASSET_KINDS)[number];
@@ -33,7 +34,7 @@ export type AssetKindDefinition = {
   hint: string;
 
 
-  ticker: "market" | "usd" | null;
+  ticker: "market" | "usd" | "eur" | null;
   provider: QuoteProvider | null;
   instrumentType: string | null;
 
@@ -110,33 +111,38 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   "brl-cash": {
     kind: "brl-cash",
     label: "BRL Cash",
-    hint: "BRL balance",
+    hint: "BRL Balance",
     ticker: null,
     provider: null,
     instrumentType: null,
-    allowsMaturity: true,
+    allowsMaturity: false,
   },
   "usd-balance": {
     kind: "usd-balance",
     label: "USD Cash",
-    hint: "Valued using USD",
+    hint: "USD Balance",
     ticker: "usd",
     provider: null,
     instrumentType: "FIAT",
-    allowsMaturity: true,
+    allowsMaturity: false,
+  },
+  "eur-balance": {
+    kind: "eur-balance", label: "EUR Cash", hint: "EUR Balance",
+    ticker: "eur", provider: null, instrumentType: "FIAT", allowsMaturity: false,
   },
 };
 
 export const USD_SYMBOL = "USD";
 
 export const ALTCOINS = "Altcoins";
-const RESERVED_SYMBOLS = new Set(["USD", "BRL"]);
+const RESERVED_SYMBOLS = new Set(["USD", "EUR", "BRL"]);
 const B3_SUFFIX = ".SAO";
 
 
 export function normalizeTicker(kind: AssetKind, raw: string): string | null {
   const definition = ASSET_KIND_DEFINITIONS[kind];
 
+  if (definition.ticker === "eur") return "EUR";
   if (definition.ticker === "usd") {
     return USD_SYMBOL;
   }
@@ -191,7 +197,8 @@ export function baseCurrencyOf(kind: AssetKind, symbol: string | null) {
     case "us-stock":
     case "usd-balance":
       return "USD";
-    case "eu-market": return "EUR";
+    case "eu-market":
+    case "eur-balance": return "EUR";
     case "crypto":
 
       return symbol === "BTC" ? "BTC" : ALTCOINS;
@@ -227,6 +234,7 @@ export function defaultAllocation(kind: AssetKind, symbol: string | null): Alloc
       return { assetClass: "Renda Fixa", subclass: treasurySubclass(symbol), duration: "" };
     case "brl-cash":
     case "usd-balance":
+    case "eur-balance":
       return { assetClass: "Caixa", subclass: "Pós-fixado", duration: "Curto" };
   }
 }
@@ -248,6 +256,7 @@ export function describeAsset(asset: { quoteSymbol: string | null; baseCurrency:
     return "BRL balance";
   }
 
+  if (asset.quoteSymbol === "EUR") return "EUR cash";
   if (asset.quoteSymbol === USD_SYMBOL) {
     return "USD cash";
   }

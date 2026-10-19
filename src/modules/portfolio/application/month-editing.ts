@@ -38,6 +38,7 @@ import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
 
 import { automaticAllocation } from "../domain/automatic-allocation";
 import { preparePurchase } from "./prepare-purchase";
+import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
 import { tradeBalance } from "../domain/trade-balance";
 import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
@@ -199,7 +200,8 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const newAsset = input.addition.newAsset;
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
-  const seeds = identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
+  const cashKind = newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind);
+  const seeds = cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
   const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
@@ -215,6 +217,23 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     catch (error) { throw new MonthEditError(error instanceof Error ? error.message : "Could not verify purchase exchange rates."); }
   }
 
+  let cashQuote: { symbol: "USD" | "EUR"; day: string; value: number } | null = null;
+  if (newAsset?.kind === "usd-balance" || newAsset?.kind === "eur-balance") {
+    const cashDb = await requirePrisma();
+    const cashMonth = await cashDb.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } });
+    if (!cashMonth) throw new MonthEditError("The reporting month does not exist.");
+    const symbol = newAsset.kind === "eur-balance" ? "EUR" : "USD";
+    const quotes = await readMonthQuoteValues(cashDb, cashMonth.referenceDate, [symbol]);
+    if (!quotes.get(symbol)?.valueBrl.gt(0)) {
+      const day = toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(cashMonth.referenceDate).getTime())));
+      try {
+        const point = await fetchReferenceFxLatest(symbol, day);
+        if (point.day > day || Date.parse(day) - Date.parse(point.day) > 7 * 86400000) throw new Error("No recent exchange rate is available for this month.");
+        cashQuote = { symbol, ...point };
+      } catch { throw new MonthEditError("Could not load the cash exchange rate. Please try again."); }
+    }
+  }
+
   return withUndo(input.monthId, async (transaction, month) => {
     const positions = await transaction.position.findMany({
       where: { portfolioMonthId: month.id },
@@ -222,6 +241,12 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     });
     const quotes = await readMonthQuoteValues(transaction, month.referenceDate);
     const quoteBySymbol = new Map([...quotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
+    if (cashQuote && !quoteBySymbol.has(cashQuote.symbol)) {
+      await transaction.marketQuote.createMany({ data: [{ referenceDate: month.referenceDate, symbol: cashQuote.symbol, instrumentType: "FIAT", baseCurrency: cashQuote.symbol, valueBrl: cashQuote.value, quoteDate: new Date(`${cashQuote.day}T00:00:00Z`) }], skipDuplicates: true });
+      const current = await readMonthQuoteValues(transaction, month.referenceDate, [cashQuote.symbol]);
+      quoteBySymbol.set(cashQuote.symbol, current.get(cashQuote.symbol)!.valueBrl);
+    }
+
     const batch: AdditionBatch = {
       month,
       isCurrentMonth: month.referenceDate.getTime() === currentReferenceMonth().getTime(),
@@ -771,7 +796,7 @@ async function resolveAdditionAsset(
       maturityDate,
       liquidity: automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
-      cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance"),
+      cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance" || input.kind === "eur-balance"),
 
       assetType: identity?.assetType ?? input.kind,
       ...incomeOfNewAsset(input),
