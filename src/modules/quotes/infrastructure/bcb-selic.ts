@@ -17,7 +17,7 @@ export const fetchSelicTarget: SelicFetcher = async (startDay, today) => {
     url.searchParams.set("formato", "json");
     url.searchParams.set("dataInicial", sgsDate(startDay));
     url.searchParams.set("dataFinal", sgsDate(today));
-    return selicHistory(observationsSchema.parse(await fetchJson(url)), today, "bcb-sgs-432");
+    return selicHistory(observationsSchema.parse(await fetchJson(url, undefined, { timeoutMs: 10_000, attempts: 2 })), today, "bcb-sgs-432");
   } catch {
 
     return fetchSelicTargetSoap(startDay, today);
@@ -36,7 +36,7 @@ export async function fetchSelicTargetSoap(startDay: string, today: string): Pro
     headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: '\"\"' },
     body,
     cache: "no-store",
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

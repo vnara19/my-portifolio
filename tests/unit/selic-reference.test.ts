@@ -43,13 +43,13 @@ test("JSON is primary; fallback remains official and the date window ends today"
   try {
     const result = await fetchSelicTarget("2016-10-05", today);
     assert.equal(result.observations.at(-1)?.percentAnnual, "14");
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.match(requests[0].url, /bcdata.sgs.432\/dados/);
     assert.equal(new URL(requests[0].url).searchParams.get("dataInicial"), "05/10/2016");
     assert.equal(new URL(requests[0].url).searchParams.get("dataFinal"), "04/10/2026");
-    assert.match(requests[1].body, /<dataInicio>05\/10\/2016<\/dataInicio>/);
-    assert.equal(requests[1].url, "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS");
-    assert.match(requests[1].body, /<item>432<\/item>/);
+    assert.match(requests[2].body, /<dataInicio>05\/10\/2016<\/dataInicio>/);
+    assert.equal(requests[2].url, "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS");
+    assert.match(requests[2].body, /<item>432<\/item>/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -170,4 +170,39 @@ test("production dev-sync rejects before sessions, database or providers", async
     if (original === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("transient SGS HTTP 500 retries JSON before using the SOAP fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /^https:\/\/api\.bcb\.gov\.br\//);
+    calls++;
+    return calls === 1 ? new Response("Temporary upstream error", { status: 500 }) : Response.json([{ data: "04/10/2026", valor: "14.00" }]);
+  };
+  try {
+    const result = await fetchSelicTarget(today, today);
+    assert.equal(calls, 2);
+    assert.equal(result.source, "bcb-sgs-432");
+    assert.equal(result.observations[0].percentAnnual, "14.00");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("cached Selic failure retries after 30 minutes and clears after source recovery", async () => {
+  const fixture = rateFixture({ key: "SELIC_TARGET", percentAnnual: new Prisma.Decimal(13.75), observedOn: new Date("2026-10-02"), fetchedAt: new Date("2026-10-02"), lastAttemptAt: new Date("2026-10-02"), source: "bcb-sgs-432", errorMessage: null }, [point("2026-09-17", "13.75")]);
+  let calls = 0;
+  const fetchRate = async () => { calls++; if (calls === 1) throw new TypeError("Banco Central HTTP 500"); return history; };
+  const failed = await syncSelicReference(fixture.prisma, { now, fetchRate });
+  assert.equal(failed.state, "failed");
+  assert.equal(fixture.row()?.percentAnnual?.toString(), "13.75");
+  const early = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 29 * 60_000), fetchRate });
+  assert.equal(early.state, "failed"); assert.equal(calls, 1);
+  const recovered = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 30 * 60_000), fetchRate });
+  assert.equal(recovered.state, "fetched"); assert.equal(calls, 2);
+  assert.equal(fixture.row()?.errorMessage, null);
+  assert.equal(fixture.row()?.percentAnnual?.toString(), "14");
+  const repeated = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 60 * 60_000), fetchRate });
+  assert.equal(repeated.state, "fresh"); assert.equal(calls, 2);
+  assert.equal(isQuoteSyncFailure({ state: "idle", selic: recovered }), false);
 });

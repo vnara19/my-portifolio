@@ -5,6 +5,8 @@ import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 
 export const SELIC_RATE_KEY = "SELIC_TARGET";
 export const SELIC_REFRESH_MS = 24 * 60 * 60 * 1000;
+// Retry an outage on the next hourly job instead of replaying a cached failure all day.
+export const SELIC_FAILURE_RETRY_MS = 30 * 60 * 1000;
 const SELIC_LOCK_KEY = 2_026_100_204;
 
 const HISTORY_YEARS = 10;
@@ -60,7 +62,8 @@ export async function syncSelicReference(
       transaction.referenceRatePoint.findFirst({ where: { key: SELIC_RATE_KEY }, select: { effectiveOn: true } }),
     ]);
     const observedOn = row?.observedOn?.toISOString().slice(0, 10) ?? null;
-    const recent = row?.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < SELIC_REFRESH_MS;
+    const refreshAfter = row?.errorMessage ? SELIC_FAILURE_RETRY_MS : SELIC_REFRESH_MS;
+    const recent = row?.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < refreshAfter;
 
 
     const backfill =
