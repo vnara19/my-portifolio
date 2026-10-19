@@ -38,6 +38,7 @@ import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
 
 import { automaticAllocation } from "../domain/automatic-allocation";
 import { preparePurchase } from "./prepare-purchase";
+import { tradeBalance } from "../domain/trade-balance";
 import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
 type Transaction = Prisma.TransactionClient;
@@ -217,7 +218,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   return withUndo(input.monthId, async (transaction, month) => {
     const positions = await transaction.position.findMany({
       where: { portfolioMonthId: month.id },
-      select: { accountId: true, assetId: true },
+      select: { id: true, accountId: true, assetId: true },
     });
     const quotes = await readMonthQuoteValues(transaction, month.referenceDate);
     const quoteBySymbol = new Map([...quotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
@@ -234,9 +235,11 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     const account = await resolveAdditionAccount(transaction, addition, batch);
     const asset = await resolveAdditionAsset(transaction, addition, account, batch);
 
-    if (positions.some((position) => position.accountId === account.id && position.assetId === asset.id)) {
-      throw new MonthEditError("This asset already has a position at this institution in this reporting month.");
-    }
+    const matches = positions.filter((position) => position.assetId === asset.id);
+    const held = matches.find((position) => position.accountId === account.id) ?? (purchase && matches.length === 1 ? matches[0] : undefined);
+    if (purchase && !held && matches.length > 1) throw new MonthEditError("This asset is held in multiple accounts. Record the transaction from the position you want to change.");
+    if (held && !purchase) throw new MonthEditError("This asset already has a position at this institution in this reporting month.");
+    if (purchase?.input.side === "SELL" && !held) throw new MonthEditError("You must own this asset in the selected account before selling it.");
 
     if (purchase) {
       // Preserve an already published USD observation so acquisition basis and gains use the same rate.
@@ -244,8 +247,33 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       const existingUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: purchase.date, gte: usdDate } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
       const usd = existingUsd?.valueBrl ?? new Prisma.Decimal(purchase.usd.value);
       const nativeFx = purchase.input.currency === "USD" ? usd : new Prisma.Decimal(purchase.native.value);
-      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString()), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
+      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
       await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: usdDate, instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
+    }
+    if (held && purchase) {
+      const sale = purchase.input.side === "SELL";
+      const ledger = await transaction.position.findUniqueOrThrow({
+        where: { id: held.id },
+        select: { openingQuantity: true, unitPriceBrl: true, transactions: {
+          orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          select: { kind: true, quantity: true, occurredOn: true, amountBrl: true },
+        } },
+      });
+      if (!ledger.unitPriceBrl) throw new MonthEditError("This position has no market quote.");
+      // Validate the dated ledger, not only the final balance: no sale may precede ownership.
+      let balance: Prisma.Decimal;
+      try {
+        balance = tradeBalance(ledger.openingQuantity, [
+          ...ledger.transactions.map((entry) => ({ date: entry.occurredOn, quantity: entry.quantity, sale: entry.kind === "WITHDRAWAL" || entry.amountBrl.lt(0) })),
+          { date: purchase.date, quantity: purchase.cost.quantity, sale },
+        ]);
+      } catch (error) {
+        throw new MonthEditError(error instanceof Error ? error.message : "Could not validate the trade quantity.");
+      }
+      if (purchase.date < month.referenceDate) throw new MonthEditError("The transaction date must fall within the open reporting month.");
+      await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: held.id, kind: sale ? PositionTransactionKind.WITHDRAWAL : PositionTransactionKind.CONTRIBUTION, occurredOn: purchase.date, quantity: purchase.cost.quantity, unitPriceBrl: purchase.cost.unitPriceBrl, amountBrl: purchase.cost.amountBrl, note: purchase.note } });
+      await transaction.position.update({ where: { id: held.id }, data: { quantity: balance, totalBrl: balance.mul(ledger.unitPriceBrl).toDecimalPlaces(2) } });
+      return { created: batch.created };
     }
     const value = parseNonNegative(addition.value);
     let unitPriceBrl: Prisma.Decimal | null = null;
@@ -1330,6 +1358,8 @@ export async function withUndo(
   try {
     return await prisma.$transaction(
       async (transaction) => {
+        // Serialize edits so simultaneous trades cannot spend the same units twice.
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${monthId}))`;
         const month = await assertEditable(transaction, monthId);
         const before = await readSnapshot(transaction, month);
         const extras = await mutate(transaction, month);

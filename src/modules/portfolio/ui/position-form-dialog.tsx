@@ -171,6 +171,7 @@ function PositionForm({
 
   const initialKind = "OPENING" as const;
   const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
+  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
   const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
@@ -273,7 +274,7 @@ function PositionForm({
     !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? institutionName : symbol)
       ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: institutionName ?? "", maturityDate })
       : null;
-  const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey) : undefined;
+  const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey || (symbol !== null && asset.quoteSymbol === symbol)) : undefined;
   const isNewAsset = !editing && assetKey !== null && !catalogAsset;
   const needsManualPrice =
     isNewAsset &&
@@ -397,9 +398,11 @@ function PositionForm({
 
   const issues: Issue[] = [];
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
-    issues.push({ tab: "ativo", message: "Enter the purchase price, a positive quantity, commission (zero if none) and purchase date." });
+    issues.push({ tab: "ativo", message: "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
 
+  if (purchaseEntry && side === "SELL" && !catalogAsset) issues.push({ tab: "ativo", message: "You must own this asset before selling it." });
+  if (purchaseEntry && side === "SELL" && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null && parsedValue * purchaseUnit <= purchaseFee) issues.push({ tab: "ativo", message: "Commission must be less than the sale proceeds." });
   if (!editing) {
     if (!kind) {
       issues.push({ tab: "geral", message: "Choose the asset type." });
@@ -414,7 +417,7 @@ function PositionForm({
       message: !editing && !kind ? "Enter the quantity or balance." : quoted && quoteSymbol !== USD_SYMBOL ? "Enter the quantity." : "Enter the balance.",
     });
   }
-  if (duplicate) {
+  if (duplicate && !purchaseEntry) {
     issues.push({ tab: "ativo", message: "This asset already has a position at this institution." });
   }
   if (!editing && kind) {
@@ -523,7 +526,7 @@ function PositionForm({
                   },
                 }),
             value: purchaseEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
-            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate } } : {}),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -560,7 +563,7 @@ function PositionForm({
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {editing ? `Edit ${editing.assetName}` : "Add position"}
+            {editing ? `Edit ${editing.assetName}` : purchaseEntry ? "Record trade" : "Add position"}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
@@ -690,7 +693,7 @@ function PositionForm({
           </PositionSection>
 
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title={purchaseEntry ? "Purchase details" : "Enter the asset and current balance"} description={purchaseEntry ? "Enter what you paid. Commission is included in your acquisition cost." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
+            {!editing ? <SectionHeading title={purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -792,11 +795,14 @@ function PositionForm({
                 {!editing && kind ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {purchaseEntry ? <>
+                  <div role="group" aria-label="Trade side" className="flex gap-2">
+                    {(["BUY", "SELL"] as const).map((next) => <Button key={next} type="button" variant={side === next ? "default" : "outline"} aria-pressed={side === next} onClick={() => setSide(next)}>{next === "BUY" ? "Buy" : "Sell"}</Button>)}
+                  </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label={`Purchase price (${tradeCurrency ?? "…"})`}><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
+                    <Field label={`${side === "SELL" ? "Sale" : "Purchase"} price (${tradeCurrency ?? "…"})`}><input aria-label={side === "SELL" ? "Sale price" : "Purchase price"} inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
                     <Field label="Quantity"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
                     <Field label={`Commission (${tradeCurrency ?? "…"})`}><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /></Field>
-                    <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={setPurchaseDate} max={latestPurchaseDay} /></Field>
+                    <Field label="Trade date"><DatePicker aria-label="Trade date" value={purchaseDate} onChange={setPurchaseDate} max={latestPurchaseDay} /></Field>
                   </div>
                 </> : null}
                 {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
@@ -827,7 +833,7 @@ function PositionForm({
                     </Field>
                   ) : null}
                   {!purchaseEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
-                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">Total cost {formatCurrency(parsedValue * purchaseUnit + purchaseFee, tradeCurrency)} <span className="text-xs text-muted-foreground">including commission</span></p> : !purchaseEntry && impliedQuantity !== null ? (
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : "Total cost"} {formatCurrency(parsedValue * purchaseUnit + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span></p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
                       {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
@@ -1004,7 +1010,7 @@ function PositionForm({
           <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close>
           <button type="button" onClick={submit} disabled={isSaving || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
             {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
-            {isSaving ? "Saving…" : editing ? "Save" : "Add position"}
+            {isSaving ? "Saving…" : editing ? "Save" : purchaseEntry ? "Record trade" : "Add position"}
           </button>
         </div>
       </footer>

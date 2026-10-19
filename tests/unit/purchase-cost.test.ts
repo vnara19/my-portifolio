@@ -57,3 +57,28 @@ test("historical purchases use acquisition-date FX, not the current market quote
   await assert.rejects(preparePurchase({ price: "100", commission: "3", currency: "USD", occurredOn: "2026-10-10" }, "10", "EUR", "2026-10-16"), /currency/);
   await assert.rejects(preparePurchase({ price: "100", commission: "3", currency: "EUR", occurredOn: "2026-10-17" }, "10", "EUR", "2026-10-16"), /date/);
 });
+
+for (const [market, currency, fx] of [["US", "USD", 5], ["Brazil", "BRL", 1], ["Europe", "EUR", 6], ["Crypto", "USD", 5]] as const) {
+  test(`${market} (${currency}): sale commission reduces realized profit and fractional partial sales retain average basis`, () => {
+    const bought = purchaseCost("10.60", "100", "3", fx);
+    const sold = purchaseCost("5.30", "120", "3", fx, "SELL");
+    assert.equal(sold.nativeCost.toString(), "633");
+    const gains = portfolioGains([
+      { holding: market, kind: "CONTRIBUTION", quantity: 10.6, amountBrl: bought.amountBrl.toNumber(), usdRate: 5, transferId: null },
+      { holding: market, kind: "WITHDRAWAL", quantity: 5.3, amountBrl: sold.amountBrl.toNumber(), usdRate: 5, transferId: null },
+    ], [{ holding: market, quantity: 5.3, valueUsd: 636 * fx / 5 }]);
+    assert.equal(gains.realizedUsd, 101.5 * fx / 5);
+    assert.equal(gains.unrealizedUsd, 104.5 * fx / 5);
+    const all = portfolioGains([
+      { holding: market, kind: "CONTRIBUTION", quantity: 10.6, amountBrl: bought.amountBrl.toNumber(), usdRate: 5, transferId: null },
+      { holding: market, kind: "WITHDRAWAL", quantity: 10.6, amountBrl: purchaseCost("10.6", "90", "3", fx, "SELL").amountBrl.toNumber(), usdRate: 5, transferId: null },
+    ], []);
+    assert.equal(all.unrealizedUsd, 0);
+    assert.equal(all.realizedUsd, -112 * fx / 5);
+  });
+}
+test("sale proceeds must exceed commission and execution amounts retain exact precision", () => {
+  assert.throws(() => purchaseCost("1", "3", "3", 1, "SELL"), /Commission/);
+  assert.throws(() => purchaseCost("1", "3", "4", 1, "SELL"), /Commission/);
+  assert.equal(purchaseCost("0.00000001", "100000", "0", 5, "SELL").quantity.toString(), "1e-8");
+});

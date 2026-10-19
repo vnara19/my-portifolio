@@ -170,3 +170,14 @@ obtains dated FX before the transaction and records fee-inclusive acquisition co
 in existing PositionTransaction.amountBrl, with native breakdown in note. Current
 position value excludes fees. The average-cost gain ledger, Overview allocations,
 undo and backup v5 consume/preserve the existing fields; no migration is required.
+
+Market trade entry (spec 112) adds Buy/Sell to the same single-page form for US,
+Brazilian and European listed assets and cryptocurrency. Additional buys append to
+an existing holding; sales use WITHDRAWAL and net proceeds after commission. The
+USD average-cost ledger releases proportional acquisition basis into realized gain
+and retains remaining basis for unrealized gain. Full sales preserve history.
+Sales cannot precede ownership or exceed units held on their execution date. Month
+edits are serialized per user/month to prevent concurrent overselling. Cash balances
+are not automatically credited by this recording operation. Historical holdings in
+a single non-default account can be resolved unambiguously; multiple-account
+holdings require selecting the corresponding position. Backup v5 remains unchanged.
