@@ -117,8 +117,8 @@ exposure: without verified fund metadata, a new ETF remains unclassified. New
 positions can therefore have no allocation rows, while manual edits retain their
 existing validation. No existing positions are reclassified by this UI change.
 Quoted assets use the existing catalog identity, provider name when available, or
-the verified ticker as a fallback; manual names remain for private balances and
-Tesouro Direto.
+the verified ticker as a fallback; manual names remain for private balances. Tesouro Direto names come from the
+official security catalog.
 
 ## Market listings and European assets
 
@@ -190,3 +190,27 @@ Cash allocation on the server. The new eur-balance type is additive; existing ke
 SQL migrations, historical records and backup v5 remain unchanged. Switching entry
 type, market or cash currency clears lower fields and invalidates pending ticker
 verification. Re-selecting the active option preserves entered values.
+
+
+## Tesouro Direto acquisitions
+
+The authenticated catalog and current quote checks use the compact official
+`/o/c/rentabilidades/` snapshot, with a five-minute cache and concurrent request
+sharing. Historical backfills retain the official Tesouro Transparente CSV.
+The catalog includes outstanding securities outside the current offer, marked
+Existing holdings only. Security IDs still use the exact official type and final
+maturity date; RendA+ target years identify the start of income, not final maturity.
+Current portfolio valuation uses the official gross redemption price.
+
+The purchase form captures original date, units in increments of 0.01, unit
+acquisition price, contracted annual rate and costs paid at acquisition. An optional
+statement principal preserves rounding differences from unit prices shown with two
+decimals; mismatches outside that rounding tolerance fail. BRL and fixed-income
+classification are automatic. Separate historical purchases become dated ledger
+entries, retaining their rate/indexer and native cost breakdown in transaction notes
+through backup, restore and undo. Acquisition costs feed the existing gains model;
+current market prices never replace original purchase cost.
+
+Public data does not expose a customer's tax basis, accrued custody fees or exact
+net redemption. This change does not add an IR/IOF/custody estimator or a projected
+IPCA/Selic cash-flow model, nor does it infer guaranteed future indexed returns.

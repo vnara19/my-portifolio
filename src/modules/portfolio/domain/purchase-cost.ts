@@ -1,9 +1,9 @@
 import { Prisma } from "@/generated/prisma/client";
 
-export type PurchaseInput = { price: string; commission: string; currency: "USD" | "EUR" | "BRL"; occurredOn: string; side?: "BUY" | "SELL" };
+export type PurchaseInput = { price: string; commission: string; currency: "USD" | "EUR" | "BRL"; occurredOn: string; side?: "BUY" | "SELL"; amountInvested?: string; contractedRate?: string; contractedIndexer?: "IPCA" | "IGPM" | "Selic" | "Fixed" };
 
 /** Exact trade amounts: commission increases acquisition basis or reduces sale proceeds. */
-export function purchaseCost(quantity: string, price: string, commission: string, fxBrl: string | number, side: "BUY" | "SELL" = "BUY") {
+export function purchaseCost(quantity: string, price: string, commission: string, fxBrl: string | number, side: "BUY" | "SELL" = "BUY", amountInvested?: string) {
   const decimal = (raw: string, positive: boolean, scale: number) => {
     if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error("Enter a valid trade amount.");
     const value = new Prisma.Decimal(raw);
@@ -15,7 +15,9 @@ export function purchaseCost(quantity: string, price: string, commission: string
   const fee = decimal(commission, false, 8);
   const fx = new Prisma.Decimal(fxBrl);
   if (!fx.isFinite() || fx.lte(0)) throw new Error("The trade exchange rate is unavailable.");
-  const nativeCost = side === "SELL" ? units.mul(unit).minus(fee) : units.mul(unit).plus(fee);
+  const principal = amountInvested ? decimal(amountInvested, true, 2) : units.mul(unit);
+  if (amountInvested && (side !== "BUY" || principal.minus(units.mul(unit)).abs().gt(units.mul("0.005").plus("0.01")))) throw new Error("The invested amount does not match the quantity and purchase price, allowing for displayed-price rounding.");
+  const nativeCost = side === "SELL" ? principal.minus(fee) : principal.plus(fee);
   if (nativeCost.lte(0)) throw new Error("Commission must be less than the sale proceeds.");
   if (units.gte("1e18") || unit.mul(fx).gte("1e16") || nativeCost.mul(fx).gte("1e22")) throw new Error("The trade exceeds the supported amount limit.");
   return { quantity: units, nativeCost, unitPriceBrl: unit.mul(fx).toDecimalPlaces(8), amountBrl: nativeCost.mul(fx).toDecimalPlaces(2), feeBrl: fee.mul(fx).toDecimalPlaces(8) };
@@ -23,5 +25,5 @@ export function purchaseCost(quantity: string, price: string, commission: string
 
 /** Existing transaction notes retain the native breakdown through backup, restore and undo. Math uses amountBrl. */
 export function purchaseNote(input: PurchaseInput, quantity: string, fxBrl: string) {
-  return `${input.side === "SELL" ? "Sale" : "Purchase"}: ${quantity} × ${input.currency} ${input.price}; commission ${input.currency} ${input.commission}; FX ${fxBrl} BRL/${input.currency}.`;
+  return `${input.side === "SELL" ? "Sale" : "Purchase"}: ${quantity} × ${input.currency} ${input.price}; commission ${input.currency} ${input.commission}; FX ${fxBrl} BRL/${input.currency}.${input.amountInvested ? ` Invested ${input.currency} ${input.amountInvested}.` : ""}${input.contractedRate !== undefined ? ` Treasury ${input.contractedIndexer ?? "Fixed"} ${input.contractedRate}% p.a.` : ""}`;
 }

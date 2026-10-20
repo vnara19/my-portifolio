@@ -28,7 +28,7 @@ import { lookupFinnhubSymbol } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { latestTreasuryPoint, treasurySeriesOf } from "@/modules/quotes/domain/treasury";
-import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { readCurrentTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { isMarketKind } from "@/modules/portfolio/domain/market-assets";
 import { lookupMarketListing } from "./market-listing";
 import { resolveEuropeanTicker } from "./european-listing";
@@ -263,7 +263,7 @@ async function lookupSymbol(
   try {
     switch (provider) {
       case "tesouro": {
-        const series = treasurySeriesOf(await readTreasuryBook(), { symbol, providerId: chosenCoinId });
+        const series = treasurySeriesOf(await readCurrentTreasuryBook(), { symbol, providerId: chosenCoinId });
         if (!series || series.maturityDate <= today) return { state: "not-found" };
         const point = latestTreasuryPoint(series, today);
         return point

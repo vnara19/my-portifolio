@@ -1,86 +1,40 @@
 import { expect, test } from "@playwright/test";
 
-import { chooseKind, closeForm, continueForm, openAddForm, openEditableMonth, pick } from "./support/position-form";
-import { stubQuoteChecks } from "./support/quote-checks";
+const bond = {
+  symbol: "TD:TESOURO-RENDA-APOSENTADORIA-EXTRA:2084-12-15",
+  providerId: "Tesouro Renda+ Aposentadoria Extra|2084-12-15",
+  name: "Tesouro Renda+ Aposentadoria Extra 2065",
+  type: "Tesouro Renda+ Aposentadoria Extra",
+  maturityDate: "2084-12-15", quoteDate: "2026-10-20", valueBrl: 220.82,
+  purchasePrice: 232.58, purchaseRate: 6.66, indexer: "IPCA", targetYear: 2065,
+  paymentType: "M", offered: true,
+};
 
-
-test.beforeEach(async ({ page }) => { await stubQuoteChecks(page); });
-
-test("the official catalog fills name and maturity and derives quantity from verified base price", async ({ page }) => {
-  const bonds = [
-    { symbol: "TD:TESOURO-IPCA:2032-08-15", providerId: "Tesouro IPCA+|2032-08-15", name: "Tesouro IPCA+ 2032", type: "Tesouro IPCA+", maturityDate: "2032-08-15", quoteDate: "2026-10-02", valueBrl: 2912.33 },
-    { symbol: "TD:TESOURO-IPCA:2035-05-15", providerId: "Tesouro IPCA+|2035-05-15", name: "Tesouro IPCA+ 2035", type: "Tesouro IPCA+", maturityDate: "2035-05-15", quoteDate: "2026-10-02", valueBrl: 2311.05 },
-  ];
-  await page.route("**/api/quotes/treasury-catalog", (route) => route.fulfill({ json: { bonds, valuation: "market" } }));
-  const checked: string[] = [];
-  await page.route("**/api/quotes/ticker-check", async (route) => {
-    const { ticker } = route.request().postDataJSON();
-    checked.push(ticker);
-    await route.fulfill({ json: { status: "found", symbol: ticker, provider: "tesouro", priceBrl: 2912.33, name: "Tesouro IPCA+ 2032", quoteDate: "2026-10-02", token: "treasury-test-token", coinId: "Tesouro IPCA+|2032-08-15" } });
-  });
-  test.skip(!(await openEditableMonth(page)), "No open month to edit.");
-  const dialog = await openAddForm(page);
-  await chooseKind(page, dialog, /Tesouro Direto/);
-  await pick(page, dialog.getByRole("combobox", { name: "Institution" }), "inter", /^Inter$/);
-  await continueForm(dialog, "Asset");
-  await expect(dialog.getByRole("textbox", { name: "Ticker" })).toHaveCount(0);
-  await dialog.getByRole("combobox", { name: "Tesouro Direto security" }).click();
-  await page.getByRole("option", { name: /Tesouro IPCA\+ 2032/ }).click();
-  await expect(dialog.getByText("Market price on 02/10/2026")).toBeVisible();
-  await expect(dialog.getByText("Security maturity")).toBeVisible();
-  await expect(dialog.getByText("15/08/2032")).toBeVisible();
-  await expect.poll(() => checked.at(-1)).toBe("TD:TESOURO-IPCA:2032-08-15");
-  await expect(dialog.getByRole("textbox", { name: "Asset name" })).toHaveValue("Tesouro IPCA+ 2032");
-  await dialog.getByRole("textbox", { name: "Number of securities" }).fill("2");
-
-  if (await dialog.getByText("Enter the bond price").count()) await dialog.getByRole("textbox", { name: "Security price" }).fill("2912,33");
-  await expect(dialog.getByTestId("position-form-total")).toContainText("R$ 5.824,66");
-  await continueForm(dialog, "Allocation");
-
-  await expect(dialog.getByRole("combobox", { name: "Subclass of allocation 1", exact: true })).toHaveValue("IPCA");
-  await dialog.getByRole("combobox", { name: "Redemption term of allocation 1", exact: true }).click();
-  await page.getByRole("option", { name: "Long-term", exact: true }).click();
-  await continueForm(dialog, "Review");
-  await expect(dialog).toContainText("Tesouro IPCA+ 2032");
-  await expect(dialog).toContainText("R$ 5.824,66");
-  await expect(dialog).toContainText("15/08/2032");
-  await closeForm(dialog);
-});
-
-test("Tesouro Direto accepts a BRL position value and a custom price", async ({ page }) => {
-  const bond = { symbol: "TD:TESOURO-SELIC:2031-03-01", providerId: "Tesouro Selic|2031-03-01", name: "Tesouro Selic · 01/03/2031", type: "Tesouro Selic", maturityDate: "2031-03-01", quoteDate: "2026-10-02", valueBrl: 20000 };
+test("Treasury uses a closed official list and separates acquisition cost from redemption price", async ({ page }) => {
   await page.route("**/api/quotes/treasury-catalog", (route) => route.fulfill({ json: { bonds: [bond], valuation: "market" } }));
-  await page.route("**/api/quotes/ticker-check", (route) => route.fulfill({ json: { status: "found", symbol: bond.symbol, provider: "tesouro", priceBrl: 20000, name: bond.name, quoteDate: "2026-10-02", token: "treasury-test-token", coinId: bond.providerId } }));
-  test.skip(!(await openEditableMonth(page)), "No open month to edit.");
-  const dialog = await openAddForm(page);
-  await chooseKind(page, dialog, /Tesouro Direto/);
-  await pick(page, dialog.getByRole("combobox", { name: "Institution" }), "inter", /^Inter$/);
-  await continueForm(dialog, "Asset");
-  await dialog.getByRole("combobox", { name: "Tesouro Direto security" }).click();
-  await page.getByRole("option", { name: /Tesouro Selic/ }).click();
-  const price = dialog.getByRole("textbox", { name: "Security price" });
-
-
-  await expect(price).toBeVisible();
-  await dialog.getByRole("combobox", { name: "Enter the position using" }).click();
-  await page.getByRole("option", { name: /Position value/ }).click();
-  await dialog.getByRole("textbox", { name: "Position value (BRL)" }).fill("10000");
-  if (await dialog.getByTestId("treasury-price-hint").count()) {
-
-    await expect(dialog.getByTestId("treasury-price-hint")).toContainText("Official price: R$20,000.00");
-    await expect(dialog.getByTestId("position-form-total")).toContainText("0.50 bonds");
-    await price.fill("25000");
-    await expect(dialog.getByTestId("treasury-price-hint")).toContainText("Uses your price");
-  } else {
-    await price.fill("25000");
-  }
-  await expect(dialog.getByTestId("position-form-total")).toContainText("0.40 bonds");
-  await continueForm(dialog, "Allocation");
-  await expect(dialog.getByRole("combobox", { name: "Subclass of allocation 1", exact: true })).toHaveValue("Floating-rate");
-  await dialog.getByRole("combobox", { name: "Redemption term of allocation 1", exact: true }).click();
-  await page.getByRole("option", { name: "Short-term", exact: true }).click();
-  await continueForm(dialog, "Review");
-  await expect(dialog).toContainText("Entered price");
-  await expect(dialog).toContainText("R$ 10.000,00");
-  await closeForm(dialog);
+  await page.route("**/api/quotes/ticker-check", (route) => route.fulfill({ json: { status: "found", symbol: bond.symbol, provider: "tesouro", priceBrl: bond.valueBrl, name: bond.name, quoteDate: bond.quoteDate, token: "treasury-test-token", coinId: bond.providerId } }));
+  await page.goto("/posicoes");
+  const add = page.getByRole("button", { name: "Add position", exact: true });
+  test.skip(!(await add.count()), "An open test month is required.");
+  await add.click();
+  await page.getByRole("combobox", { name: "Asset type", exact: true }).click();
+  await page.getByRole("option", { name: /Tesouro Direto/ }).click();
+  const dialog = page.getByRole("dialog");
+  const security = dialog.getByRole("combobox", { name: "Tesouro Direto security", exact: true });
+  await expect(security).toBeEnabled();
+  await expect(security).toHaveAttribute("readonly", "");
+  await security.click();
+  await page.getByRole("option", { name: /2065/ }).click();
+  await expect(dialog.getByRole("textbox", { name: "Asset name", exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("Fixed income", { exact: true })).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Purchase price", exact: true }).fill("153.32");
+  await dialog.getByRole("textbox", { name: "Quantity", exact: true }).fill("81");
+  await dialog.getByRole("textbox", { name: "Contracted annual rate", exact: true }).fill("7.23");
+  await expect(dialog.getByTestId("purchase-total")).toContainText("12,418.92");
+  await dialog.getByText("Security details", { exact: true }).click();
+  await expect(dialog.getByText("2065", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("15/12/2084", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("R$220.82", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Sell", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 });

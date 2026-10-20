@@ -82,3 +82,12 @@ test("sale proceeds must exceed commission and execution amounts retain exact pr
   assert.throws(() => purchaseCost("1", "3", "4", 1, "SELL"), /Commission/);
   assert.equal(purchaseCost("0.00000001", "100000", "0", 5, "SELL").quantity.toString(), "1e-8");
 });
+
+
+test("Treasury statement principal preserves rounded unit-price differences and purchase costs", () => {
+  const cost = purchaseCost("59.05", "170.56", "3", 1, "BUY", "10071.56");
+  assert.equal(cost.amountBrl.toFixed(2), "10074.56");
+  assert.equal(cost.unitPriceBrl.toString(), "170.56");
+  assert.throws(() => purchaseCost("59.05", "170.56", "0", 1, "BUY", "9000"), /does not match/);
+  assert.throws(() => purchaseCost("59.05", "170.56", "0", 1, "SELL", "10071.56"), /does not match/);
+});

@@ -54,6 +54,7 @@ import {
 import { automaticLiquidity, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
+import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
 import { formatBrl, formatPriceBrl, formatCurrency, parseLocaleNumber, normalizeLocaleNumberInput } from "@/modules/portfolio/presentation/portfolio-format";
 import {
@@ -173,6 +174,9 @@ function PositionForm({
   const initialKind = "OPENING" as const;
   const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);
+  const [treasuryAmount, setTreasuryAmount] = useState("");
+  const [contractedRate, setContractedRate] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
   const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
@@ -217,6 +221,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
+    setSelectedTreasury(null); setContractedRate(""); setTreasuryAmount("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
@@ -258,17 +263,17 @@ function PositionForm({
   const coins = kind === "crypto" && symbol && coinCandidates?.symbol === symbol ? coinCandidates.coins : null;
   const checkedCoinId =
     check.state === "done" && check.response.status === "found" ? (check.response.coinId ?? null) : null;
-  const automaticName = !editing && definition?.ticker === "market" && kind !== "treasury";
+  const automaticName = !editing && definition?.ticker === "market";
   const response = check.state === "done" ? check.response : null;
   const identity = response?.status === "found" ? response.identity : undefined;
-  const purchaseEntry = !editing && kind !== null && (isMarketKind(kind) || kind === "crypto");
-  const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : null);
+  const purchaseEntry = !editing && kind !== null && (isMarketKind(kind) || kind === "crypto" || kind === "treasury");
+  const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : kind === "treasury" ? "BRL" : null);
   const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
   const purchaseUnit = parseLocaleNumber(purchasePrice);
   const purchaseFee = parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const typedName = automaticName
-    ? cleanName(catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
+    ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
   const treasuryMaturity = (editing?.quoteSymbol ?? (kind === "treasury" ? symbol : null))?.startsWith("TD:")
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
@@ -288,7 +293,7 @@ function PositionForm({
 
   const officialTreasuryPrice =
     treasury && isNewAsset && response?.status === "found" && month.isCurrent ? response.priceBrl : null;
-  const showPriceField = needsManualPrice || officialTreasuryPrice !== null;
+  const showPriceField = !treasury && (needsManualPrice || officialTreasuryPrice !== null);
   const ownTreasuryPrice = officialTreasuryPrice !== null && manualPriceValue !== null && manualPriceValue > 0;
 
 
@@ -319,7 +324,7 @@ function PositionForm({
 
   const quoted = editing ? Boolean(editing.quoteSymbol) : catalogAsset ? Boolean(catalogAsset.quoteSymbol) : Boolean(definition?.ticker);
   const quoteSymbol = editing ? editing.quoteSymbol : (catalogAsset?.quoteSymbol ?? symbol);
-  const amountMode = treasury && valueKind === "amount";
+  const amountMode = treasury && !purchaseEntry && valueKind === "amount";
   const valueLabel =
     !editing && !kind
       ? "Quantity or balance"
@@ -353,7 +358,7 @@ function PositionForm({
           rate: rateText(allocation.ratePercent),
         }))
       : kind
-        ? (editing ? [defaultAllocation(kind, symbol)] : isMarketKind(kind) ? identity ? marketAllocation(identity) : [] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: "" }))
+        ? (kind === "treasury" && selectedTreasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(selectedTreasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(selectedTreasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : editing ? [defaultAllocation(kind, symbol)] : isMarketKind(kind) ? identity ? marketAllocation(identity) : [] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: "" }))
         : [{ key: 0, assetClass: "", subclass: "", duration: "", weight: "100", rate: "" }];
   const allocationRows = rows ?? derivedRows;
   const weightSum = allocationRows.reduce((total, row) => total + (parseLocaleNumber(row.weight) ?? 0), 0);
@@ -403,6 +408,8 @@ function PositionForm({
     issues.push({ tab: "ativo", message: "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
 
+  if (purchaseEntry && kind === "treasury" && treasuryAmount.trim() && (parseLocaleNumber(treasuryAmount) === null || parseLocaleNumber(treasuryAmount)! <= 0)) issues.push({ tab: "ativo", message: "Enter a valid invested amount from your statement." });
+  if (purchaseEntry && kind === "treasury" && (!selectedTreasury || parseLocaleNumber(contractedRate) === null || (parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7))) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
   if (purchaseEntry && side === "SELL" && !catalogAsset) issues.push({ tab: "ativo", message: "You must own this asset before selling it." });
   if (purchaseEntry && side === "SELL" && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null && parsedValue * purchaseUnit <= purchaseFee) issues.push({ tab: "ativo", message: "Commission must be less than the sale proceeds." });
   if (!editing) {
@@ -528,7 +535,7 @@ function PositionForm({
                   },
                 }),
             value: purchaseEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
-            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate } } : {}),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)!, ...(treasuryAmount.trim() ? { amountInvested: normalizeLocaleNumberInput(treasuryAmount)! } : {}) } : {}) } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -565,7 +572,7 @@ function PositionForm({
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {editing ? `Edit ${editing.assetName}` : purchaseEntry ? "Record trade" : "Add position"}
+            {editing ? `Edit ${editing.assetName}` : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
@@ -695,7 +702,7 @@ function PositionForm({
           </PositionSection>
 
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title={purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
+            {!editing ? <SectionHeading title={kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={kind === "treasury" ? "Enter the acquisition details from your purchase confirmation." : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -716,9 +723,11 @@ function PositionForm({
                     {kind === "treasury" ? (
                       <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
+                          setSelectedTreasury(bond);
+                          setPurchasePrice(""); setContractedRate(""); setTreasuryAmount(""); setValue("");
                           setTickerText(bond.symbol);
                           setMaturity(bond.maturityDate);
-                          if (!assetName.trim()) setAssetName(bond.name);
+                          setAssetName(bond.name);
                         }} />
                       </Field>
                     ) : <Field label="Ticker">
@@ -741,7 +750,7 @@ function PositionForm({
                       monthLabel={month.label}
                       isCurrent={month.isCurrent}
                     />
-                    {purchaseEntry && response?.status === "found" && tradeCurrency && priceNative !== null ? <p className="font-mono text-sm text-muted-foreground">Market price {formatCurrency(priceNative, tradeCurrency, false, kind === "crypto" ? 8 : 2)}</p> : null}
+                    {purchaseEntry && kind !== "treasury" && response?.status === "found" && tradeCurrency && priceNative !== null ? <p className="font-mono text-sm text-muted-foreground">Market price {formatCurrency(priceNative, tradeCurrency, false, kind === "crypto" ? 8 : 2)}</p> : null}
                     {response?.status === "matches" ? <Field label="Matching listings">
                       <div className="space-y-2" aria-label="Matching European listings">
                         {response.listings.map((listing) => <button key={listing.symbol} type="button"
@@ -797,15 +806,29 @@ function PositionForm({
                 {!editing && kind && entryType !== "cash" ? <ReadOnly label="Classification" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {purchaseEntry ? <>
-                  <div role="group" aria-label="Trade side" className="flex gap-2">
+                  {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
                     {(["BUY", "SELL"] as const).map((next) => <Button key={next} type="button" variant={side === next ? "default" : "outline"} aria-pressed={side === next} onClick={() => setSide(next)}>{next === "BUY" ? "Buy" : "Sell"}</Button>)}
-                  </div>
+                  </div> : null}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label={`${side === "SELL" ? "Sale" : "Purchase"} price (${tradeCurrency ?? "…"})`}><input aria-label={side === "SELL" ? "Sale price" : "Purchase price"} inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
                     <Field label="Quantity"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
-                    <Field label={`Commission (${tradeCurrency ?? "…"})`}><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /></Field>
-                    <Field label="Trade date"><DatePicker aria-label="Trade date" value={purchaseDate} onChange={setPurchaseDate} max={latestPurchaseDay} /></Field>
+                    <Field label={`${kind === "treasury" ? "Costs paid on purchase" : "Commission"} (${tradeCurrency ?? "…"})`}><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /></Field>
+                    <Field label="Trade date"><DatePicker aria-label="Trade date" value={purchaseDate} onChange={(day) => { setPurchaseDate(day); if (kind === "treasury") setContractedRate(""); }} max={latestPurchaseDay} /></Field>
                   </div>
+                </> : null}
+                {kind === "treasury" ? <>
+                  <Field label="Amount invested (optional)"><input aria-label="Amount invested" inputMode="decimal" value={treasuryAmount} onChange={(event) => setTreasuryAmount(event.target.value)} placeholder="Exact amount from your statement, before purchase costs" className={inputClass} /></Field>
+                  <Field label={`Contracted annual rate (${selectedTreasury?.indexer || "fixed"})`}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="From your purchase confirmation" className={inputClass} /></Field>
+                  <p className="text-xs text-muted-foreground">Enter the rate agreed when you bought, not the currently offered rate.</p>
+                  {selectedTreasury ? <details className="rounded-xl border border-border p-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Security details</summary><div className="mt-3 flex flex-col gap-4">
+                    <ReadOnly label="Current purchase price" value={selectedTreasury.purchasePrice ? formatPriceBrl(selectedTreasury.purchasePrice) : "Unavailable"} />
+                    <ReadOnly label="Current gross redemption price" value={formatPriceBrl(selectedTreasury.valueBrl)} />
+                    <ReadOnly label="Currently offered annual rate" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${selectedTreasury.indexer ?? ""} ${selectedTreasury.purchaseRate ?? "—"}%`} />
+                    {selectedTreasury.paymentType === "M" ? <ReadOnly label="Income starts" value={String(selectedTreasury.targetYear)} /> : null}
+                    <ReadOnly label="Final payment date" value={selectedTreasury.maturityDate.split("-").reverse().join("/")} />
+                    {selectedTreasury.isin ? <ReadOnly label="ISIN" value={selectedTreasury.isin} mono /> : null}
+                    <p className="text-xs text-muted-foreground">Published {selectedTreasury.quoteDate}. Market value uses the gross redemption price; taxes and accrued custody fees are separate.</p>
+                  </div></details> : null}
                 </> : null}
                 {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
                 {purchaseEntry && (identity || kind === "crypto") ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
@@ -821,7 +844,7 @@ function PositionForm({
                   </div>
                 </details> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
-                  {treasury ? (
+                  {treasury && !purchaseEntry ? (
                     <Field label="Enter the position using">
                       <Picker
                         aria-label="Enter the position using"
@@ -835,7 +858,7 @@ function PositionForm({
                     </Field>
                   ) : null}
                   {!purchaseEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
-                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : "Total cost"} {formatCurrency(parsedValue * purchaseUnit + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span></p> : !purchaseEntry && impliedQuantity !== null ? (
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : "Total cost"} {formatCurrency((kind === "treasury" && parseLocaleNumber(treasuryAmount) !== null ? parseLocaleNumber(treasuryAmount)! : parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span></p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
                       {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
@@ -858,13 +881,13 @@ function PositionForm({
                     />
                   </Field>
                 ) : null}
-                {treasuryMaturity ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
+                {treasuryMaturity && !purchaseEntry ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || (isNewAsset && !autoLiquidity && entryType !== "cash") ? (
+                {editing || (isNewAsset && !autoLiquidity && entryType !== "cash" && kind !== "treasury") ? (
                   <Field label="Liquidity (optional)">
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
-                ) : catalogAsset && !autoLiquidity && entryType !== "cash" ? (
+                ) : catalogAsset && !autoLiquidity && entryType !== "cash" && kind !== "treasury" ? (
                   <ReadOnly label="Asset liquidity" value={catalogAsset.liquidity ?? "Not specified"} />
                 ) : null}
               </>
@@ -1012,7 +1035,7 @@ function PositionForm({
           <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close>
           <button type="button" onClick={submit} disabled={isSaving || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
             {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
-            {isSaving ? "Saving…" : editing ? "Save" : purchaseEntry ? "Record trade" : "Add position"}
+            {isSaving ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </button>
         </div>
       </footer>
@@ -1178,7 +1201,7 @@ function TickerStatus({
   } else if (!symbol) {
     content = <StatusLine tone="error">Invalid ticker for {englishLabel(ASSET_KIND_DEFINITIONS[kind].label)}.</StatusLine>;
   } else if (check.state === "checking" || check.state === "idle") {
-    content = <StatusLine tone="checking">Verifying {symbol} with {provider}…</StatusLine>;
+    content = <StatusLine tone="checking">{kind === "treasury" ? "Verifying security…" : <>Verifying {symbol} with {provider}…</>}</StatusLine>;
   } else if (check.state === "error") {
     content = (
       <StatusLine tone="warning">Could not verify the ticker right now.{" "}
@@ -1199,7 +1222,7 @@ function TickerStatus({
         content = <StatusLine tone="muted">No unambiguous EUR listing was found. Check the trading currency and select your investment.</StatusLine>;
         break;
       case "found":
-        if (isMarketKind(kind) || kind === "crypto") {
+        if (isMarketKind(kind) || kind === "crypto" || kind === "treasury") {
           content = <StatusLine tone="success">Verified</StatusLine>;
           break;
         }
@@ -1212,6 +1235,10 @@ function TickerStatus({
         );
         break;
       case "known":
+        if (kind === "treasury") {
+          content = <StatusLine tone="success">Verified</StatusLine>;
+          break;
+        }
         content = (
           <StatusLine tone="success">
             {symbol}already has a quote in this reporting month: {formatPriceBrl(response.priceBrl)}.

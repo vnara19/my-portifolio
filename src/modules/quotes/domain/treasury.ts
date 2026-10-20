@@ -16,9 +16,10 @@ export type TreasuryIdentity = {
   maturityDate: string;
 };
 
-export type TreasurySeries = TreasuryIdentity & { points: DayValue[] };
+export type TreasurySeries = TreasuryIdentity & { points: DayValue[]; offered?: boolean; purchasePrice?: number; purchaseRate?: number; indexer?: string; targetYear?: number; isin?: string; paymentType?: string };
+
 export type TreasuryBook = { series: Map<string, TreasurySeries> };
-export type TreasuryCatalogBond = TreasuryIdentity & { quoteDate: string; valueBrl: number };
+export type TreasuryCatalogBond = Omit<TreasurySeries, "points"> & { quoteDate: string; valueBrl: number };
 
 export function treasurySymbol(type: string, maturityDate: string) {
   const slug = type.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
@@ -201,5 +202,36 @@ export function parseTreasuryCsv(text: string): TreasuryBook {
     }
   }
 
+  return { series };
+}
+
+/** Parse the same compact public listing consumed by the official Tesouro website. */
+export function parseTreasurySnapshot(data: unknown): TreasuryBook {
+  if (!data || typeof data !== "object") throw new Error("Invalid Tesouro listing response.");
+  const payload = data as { items?: unknown[]; totalCount?: number };
+  if (!Array.isArray(payload.items) || !payload.items.length || payload.totalCount !== payload.items.length) throw new Error("Incomplete Tesouro listing response.");
+  const series = new Map<string, TreasurySeries>();
+  for (const raw of payload.items) {
+    if (!raw || typeof raw !== "object") throw new Error("Invalid Tesouro listing.");
+    const row = raw as Record<string, unknown>;
+    const name = String(row.treasuryBondName ?? "").trim();
+    const type = name.replace(/\s+\d{4}$/, "");
+    const maturityDate = String(row.maturityDate ?? "").slice(0, 10);
+    const day = String(row.dateModified ?? "").slice(0, 10);
+    const price = row.unitaryRedemptionValue;
+    if (!name.startsWith("Tesouro ") || type === name || type.includes("|") || !isTreasuryDay(maturityDate) || !isTreasuryDay(day) || typeof price !== "number" || !Number.isFinite(price) || price <= 0) throw new Error("Invalid Tesouro listing identity or redemption price.");
+    const symbol = treasurySymbol(type, maturityDate);
+    if (series.has(symbol)) throw new Error("Duplicate Tesouro listing.");
+    const buyPrice = typeof row.unitaryInvestmentValue === "number" && Number.isFinite(row.unitaryInvestmentValue) && row.unitaryInvestmentValue > 0 ? row.unitaryInvestmentValue : undefined;
+    series.set(symbol, { symbol, providerId: treasuryProviderId(type, maturityDate), name, type, maturityDate,
+      points: [{ day, value: price }], offered: Boolean(buyPrice && Number(row.availableInvestmentBondQuantity) > 0),
+      purchasePrice: buyPrice,
+      purchaseRate: typeof row.investmentProfitabilityFee === "number" && Number.isFinite(row.investmentProfitabilityFee) ? row.investmentProfitabilityFee : undefined,
+      indexer: String(row.financialIndexerName ?? ""),
+      targetYear: typeof row.targetYear === "number" ? row.targetYear : undefined,
+      isin: typeof row.isinCode === "string" ? row.isinCode : undefined,
+      paymentType: typeof row.typeReceiptInterest === "string" ? row.typeReceiptInterest : undefined,
+    });
+  }
   return { series };
 }

@@ -39,6 +39,8 @@ import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
 import { automaticAllocation } from "../domain/automatic-allocation";
 import { preparePurchase } from "./prepare-purchase";
 import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
+import { readCurrentTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { tradeBalance } from "../domain/trade-balance";
 import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
@@ -201,19 +203,31 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
   const cashKind = newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind);
-  const seeds = cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
+  const treasury = newAsset?.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", newAsset.ticker ?? "") ?? "" }) : null;
+  if (newAsset?.kind === "treasury" && (!treasury || treasury.maturityDate <= toDateKey(calendarDay(new Date())))) throw new MonthEditError("Choose an outstanding security from the official Tesouro Direto list.");
+  const seeds = treasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(treasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(treasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
   const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
   const db = input.addition.purchase ? await getUserDb() : null;
-  const existingAsset = input.addition.purchase && input.addition.assetId ? await db?.asset.findUnique({ where: { id: input.addition.assetId }, select: { baseCurrency: true, assetType: true } }) : null;
+  const existingAsset = input.addition.purchase && input.addition.assetId ? await db?.asset.findUnique({ where: { id: input.addition.assetId }, select: { baseCurrency: true, assetType: true, quoteSymbol: true } }) : null;
   const purchaseKind = newAsset?.kind ?? existingAsset?.assetType;
-  const purchaseCurrency = identity?.currency ?? (purchaseKind === "crypto" ? "USD" : existingAsset?.baseCurrency);
+  const purchaseCurrency = identity?.currency ?? (purchaseKind === "crypto" ? "USD" : purchaseKind === "treasury" ? "BRL" : existingAsset?.baseCurrency);
   const ownedMonth = input.addition.purchase ? await db?.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } }) : null;
-  if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || !automaticLiquidity(purchaseKind))) throw new MonthEditError("This asset cannot use the market purchase form.");
+  if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || (!automaticLiquidity(purchaseKind) && purchaseKind !== "treasury"))) throw new MonthEditError("This asset cannot use the market purchase form.");
   let purchase: Awaited<ReturnType<typeof preparePurchase>> | null = null;
   if (input.addition.purchase) {
-    try { purchase = await preparePurchase(input.addition.purchase, parseNonNegative(input.addition.value).toFixed(), purchaseCurrency!, toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(ownedMonth!.referenceDate).getTime())))); }
+    let purchaseInput = input.addition.purchase;
+    if (purchaseKind === "treasury") {
+      if (treasury?.offered === false && purchaseInput.occurredOn >= treasury.points[0].day) throw new MonthEditError("This security is no longer offered. Enter the original purchase date from your confirmation.");
+      const rate = purchaseInput.contractedRate;
+      if (!rate || !/^-?\d+(?:\.\d{1,8})?$/.test(rate) || new Prisma.Decimal(rate).lte(-100) || new Prisma.Decimal(rate).gt(1000)) throw new MonthEditError("Enter the contracted annual rate from your purchase confirmation.");
+      if (purchaseInput.side === "SELL") throw new MonthEditError("Use the existing redemption workflow for a Tesouro Direto sale.");
+      if (parseNonNegative(input.addition.value).decimalPlaces() > 2) throw new MonthEditError("Tesouro Direto quantities use increments of 0.01 security.");
+      const type = treasury?.type ?? existingAsset?.quoteSymbol ?? "";
+      purchaseInput = { ...purchaseInput, contractedIndexer: /IPCA|Renda|Educa/i.test(type) ? "IPCA" : /IGPM/i.test(type) ? "IGPM" : /Selic|Reserva/i.test(type) ? "Selic" : "Fixed" };
+    }
+    try { purchase = await preparePurchase(purchaseInput, parseNonNegative(input.addition.value).toFixed(), purchaseCurrency!, toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(ownedMonth!.referenceDate).getTime())))); }
     catch (error) { throw new MonthEditError(error instanceof Error ? error.message : "Could not verify purchase exchange rates."); }
   }
 
@@ -272,7 +286,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       const existingUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: purchase.date, gte: usdDate } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
       const usd = existingUsd?.valueBrl ?? new Prisma.Decimal(purchase.usd.value);
       const nativeFx = purchase.input.currency === "USD" ? usd : new Prisma.Decimal(purchase.native.value);
-      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
+      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side, purchase.input.amountInvested), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
       await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: usdDate, instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     }
     if (held && purchase) {
@@ -295,7 +309,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       } catch (error) {
         throw new MonthEditError(error instanceof Error ? error.message : "Could not validate the trade quantity.");
       }
-      if (purchase.date < month.referenceDate) throw new MonthEditError("The transaction date must fall within the open reporting month.");
+      if (purchase.date < month.referenceDate && purchaseKind !== "treasury") throw new MonthEditError("The transaction date must fall within the open reporting month.");
       await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: held.id, kind: sale ? PositionTransactionKind.WITHDRAWAL : PositionTransactionKind.CONTRIBUTION, occurredOn: purchase.date, quantity: purchase.cost.quantity, unitPriceBrl: purchase.cost.unitPriceBrl, amountBrl: purchase.cost.amountBrl, note: purchase.note } });
       await transaction.position.update({ where: { id: held.id }, data: { quantity: balance, totalBrl: balance.mul(ledger.unitPriceBrl).toDecimalPlaces(2) } });
       return { created: batch.created };
@@ -728,7 +742,8 @@ async function resolveAdditionAsset(
 
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
   const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.month.id) : null;
-  const name = requireName(identity ? identity.name.slice(0, MAX_ASSET_NAME_LENGTH) : input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
+  const officialTreasury = input.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", input.ticker ?? "") ?? "" }) : null;
+  const name = requireName(identity ? identity.name.slice(0, MAX_ASSET_NAME_LENGTH) : officialTreasury ? officialTreasury.name.slice(0, MAX_ASSET_NAME_LENGTH) : input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
   const symbol = definition.ticker === null ? null : normalizeTicker(input.kind, input.ticker ?? "");
 
   if (definition.ticker !== null && !symbol) {

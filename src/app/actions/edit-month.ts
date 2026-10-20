@@ -92,7 +92,7 @@ const addSchema = z.object({
       valueKind: z.enum(["quantity", "amount"]).optional(),
       initialKind: z.enum(["OPENING", "CONTRIBUTION"]).optional(),
       executedPriceBrl: value.nullable().optional(),
-      purchase: z.object({ side: z.enum(["BUY", "SELL"]).optional(), price: value, commission: value, currency: z.enum(["USD", "EUR", "BRL"]), occurredOn: day }).optional(),
+      purchase: z.object({ amountInvested: value.optional(), contractedRate: value.optional(), side: z.enum(["BUY", "SELL"]).optional(), price: value, commission: value, currency: z.enum(["USD", "EUR", "BRL"]), occurredOn: day }).optional(),
       strategy,
       allocations: z.union([z.tuple([]), allocationsSchema]),
     })

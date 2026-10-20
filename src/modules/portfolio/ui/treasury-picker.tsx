@@ -11,7 +11,7 @@ import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 let catalogRequest: Promise<TreasuryCatalogBond[]> | null = null;
 let requestedAt = 0;
 
-const CATALOG_TTL_MS = 30 * 60 * 1000;
+const CATALOG_TTL_MS = 5 * 60 * 1000;
 
 export function prefetchTreasuryCatalog() {
   if (catalogRequest && Date.now() - requestedAt > CATALOG_TTL_MS) {
@@ -55,10 +55,13 @@ export function TreasuryPicker({ value, onSelect }: { value: string | null; onSe
   return <div className="space-y-2">
     <Picker
       aria-label="Tesouro Direto security"
+      searchable={false}
+      readOnly
+      disabled={!bonds || bonds.length === 0}
       placeholder={bonds ? "Choose a type and maturity" : "Loading securities…"}
       emptyMessage={bonds ? "No security with this name" : "Loading Tesouro Direto securities…"}
       value={value}
-      options={(bonds ?? []).map((bond) => ({ value: bond.symbol, label: bond.name, hint: formatBrl(bond.valueBrl) }))}
+      options={(bonds ?? []).map((bond) => ({ value: bond.symbol, label: bond.name, hint: bond.offered === false ? "Existing holdings only" : bond.purchaseRate !== undefined ? `${bond.indexer ?? ""} ${bond.purchaseRate.toFixed(2)}%` : formatBrl(bond.valueBrl) }))}
       onValueChange={(symbol) => { const bond = bonds?.find((entry) => entry.symbol === symbol); if (bond) onSelect(bond); }}
     />
     {selected ? <p className="text-[11px] leading-5 text-muted-foreground">Market price for {selected.quoteDate.split("-").reverse().join("/")}. The position value changes with the official quote; this is not a projected return at maturity.</p> : null}

@@ -7,15 +7,18 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import {
   getTreasuryCatalog,
   parseTreasuryCsv,
+  parseTreasurySnapshot,
   treasuryMonthEndPoints,
   treasuryProviderId,
   treasurySeriesOf,
   treasurySymbol,
 } from "@/modules/quotes/domain/treasury";
-import { createTreasurySource, fetchTreasuryQuotes, TREASURY_CSV_URL } from "@/modules/quotes/infrastructure/treasury";
+import { createTreasurySource, fetchTreasuryQuotes, TREASURY_CURRENT_URL } from "@/modules/quotes/infrastructure/treasury";
 
 const header = "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
 const fixture = `${header}\nTesouro IPCA+;15/05/2035;02/10/2026;7,10;7,22;1.500,00;1.480,00;1.479,25\nTesouro IPCA+;15/08/2035;02/10/2026;7,10;7,22;1.600,00;1.580,00;1.579,25\nTesouro IPCA+;15/05/2035;30/09/2026;7,10;7,22;1.450,00;1.430,00;1.429,25\nTesouro IPCA+;15/05/2035;31/08/2026;7,10;7,22;1.400,00;1.380,00;1.379,25\nTesouro Prefixado com Juros Semestrais;01/01/2033;02/10/2026;13,0;13,1;1.000,00;990,00;989,50\nTesouro Prefixado;01/01/2026;31/12/2025;13,0;13,1;1.000,00;990,00;989,50\nTesouro Selic;01/03/2031;02/10/2026;0,1;0,2;20.100,00;20.000,00;0,00\n`;
+const snapshot = { totalCount: 1, items: [{ treasuryBondName: "Tesouro IPCA+ 2035", maturityDate: "2035-05-15T00:00:00Z", dateModified: "2026-10-02T15:00:00Z", unitaryRedemptionValue: 1479.25, unitaryInvestmentValue: 1500, availableInvestmentBondQuantity: 100, investmentProfitabilityFee: 7.1, financialIndexerName: "IPCA" }] };
+
 const identity = {
   symbol: treasurySymbol("Tesouro IPCA+", "2035-05-15"),
   providerId: treasuryProviderId("Tesouro IPCA+", "2035-05-15"),
@@ -107,11 +110,11 @@ test("Tesouro Direto assets use only the official provider and its quote date", 
   const urls: string[] = [];
   globalThis.fetch = async (input) => {
     urls.push(String(input));
-    return new Response(fixture, { status: 200 });
+    return Response.json(snapshot);
   };
   try {
     const [result] = await fetchCurrentQuotes([identity], {}, "2026-10-04");
-    assert.deepEqual(urls, [TREASURY_CSV_URL]);
+    assert.deepEqual(urls, [TREASURY_CURRENT_URL]);
     assert.equal(result.status, "SUCCESS");
     if (result.status === "SUCCESS") assert.equal(result.quoteDate, "2026-10-02");
   } finally {
@@ -179,4 +182,22 @@ test("the job rejects impossible or future dates without writing invalid prices"
     assert.equal(fixture.raw.some((query) => query.sql.includes('INSERT INTO "daily_quotes"')), false);
     assert.equal(fixture.raw.some((query) => query.sql.includes('UPDATE "positions"')), false);
   }
+});
+
+
+test("current catalog keeps redemption prices and outstanding titles outside the purchase offer", () => {
+  const old = { ...snapshot.items[0], treasuryBondName: "Tesouro Renda+ Aposentadoria Extra 2065", maturityDate: "2084-12-15T00:00:00Z", targetYear: 2065, unitaryInvestmentValue: 0, availableInvestmentBondQuantity: 0 };
+  const bonds = getTreasuryCatalog(parseTreasurySnapshot({ totalCount: 2, items: [...snapshot.items, old] }), "2026-10-04");
+  assert.equal(bonds.length, 2);
+  const renda = bonds.find((bond) => bond.targetYear === 2065)!;
+  assert.equal(renda.offered, false);
+  assert.equal(renda.maturityDate, "2084-12-15");
+  assert.equal(renda.valueBrl, 1479.25);
+  assert.equal(renda.providerId, "Tesouro Renda+ Aposentadoria Extra|2084-12-15");
+});
+
+test("current catalog rejects partial, duplicate or invalid official records", () => {
+  assert.throws(() => parseTreasurySnapshot({ ...snapshot, totalCount: 2 }), /Incomplete/);
+  assert.throws(() => parseTreasurySnapshot({ totalCount: 2, items: [snapshot.items[0], snapshot.items[0]] }), /Duplicate/);
+  assert.throws(() => parseTreasurySnapshot({ totalCount: 1, items: [{ ...snapshot.items[0], unitaryRedemptionValue: 0 }] }), /Invalid/);
 });
