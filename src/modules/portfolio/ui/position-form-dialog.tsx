@@ -176,7 +176,6 @@ function PositionForm({
   const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);
-  const [treasuryAmount, setTreasuryAmount] = useState("");
   const [contractedRate, setContractedRate] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
@@ -222,7 +221,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
-    setSelectedTreasury(null); setContractedRate(""); setTreasuryAmount("");
+    setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
@@ -271,7 +270,7 @@ function PositionForm({
   const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : kind === "treasury" ? "BRL" : null);
   const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
   const purchaseUnit = parseLocaleNumber(purchasePrice);
-  const purchaseFee = parseLocaleNumber(commission);
+  const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const typedName = automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
@@ -406,10 +405,9 @@ function PositionForm({
 
   const issues: Issue[] = [];
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
-    issues.push({ tab: "ativo", message: "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
+    issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the price per title, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
 
-  if (purchaseEntry && kind === "treasury" && treasuryAmount.trim() && (parseLocaleNumber(treasuryAmount) === null || parseLocaleNumber(treasuryAmount)! <= 0)) issues.push({ tab: "ativo", message: "Enter a valid invested amount from your statement." });
   if (purchaseEntry && kind === "treasury" && (!selectedTreasury || parseLocaleNumber(contractedRate) === null || (parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7))) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
   if (purchaseEntry && side === "SELL" && !catalogAsset) issues.push({ tab: "ativo", message: "You must own this asset before selling it." });
   if (purchaseEntry && side === "SELL" && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null && parsedValue * purchaseUnit <= purchaseFee) issues.push({ tab: "ativo", message: "Commission must be less than the sale proceeds." });
@@ -536,7 +534,7 @@ function PositionForm({
                   },
                 }),
             value: purchaseEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
-            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)!, ...(treasuryAmount.trim() ? { amountInvested: normalizeLocaleNumberInput(treasuryAmount)! } : {}) } : {}) } } : {}),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: kind === "treasury" ? "0" : normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)! } : {}) } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -725,7 +723,7 @@ function PositionForm({
                       <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
                           setSelectedTreasury(bond); setCommission("0");
-                          setPurchasePrice(""); setContractedRate(""); setTreasuryAmount(""); setValue("");
+                          setPurchasePrice(""); setContractedRate(""); setValue("");
                           setTickerText(bond.symbol);
                           setMaturity(bond.maturityDate);
                           setAssetName(bond.name);
@@ -813,13 +811,9 @@ function PositionForm({
                   {kind === "treasury" ? <>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={(day) => { if (day === purchaseDate) return; setPurchaseDate(day); setContractedRate(""); }} max={latestPurchaseDay} /></Field>
-                      <Field label="Bonds purchased"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="e.g. 10.60" className={inputClass} /></Field>
-                      <Field label="Price per bond (BRL)"><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="e.g. 153.32" className={inputClass} /></Field>
-                      <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="e.g. 7.23" className={inputClass} /></Field>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field label="Purchase fee (BRL, optional)"><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
-                      <Field label="Invested amount (BRL, optional)"><input aria-label="Amount invested" inputMode="decimal" value={treasuryAmount} onChange={(event) => setTreasuryAmount(event.target.value)} placeholder="Quantity × price if blank" className={inputClass} /></Field>
+                      <Field label="Titles Purchased"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
+                      <Field label="Price per Title (BRL)"><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="153.32" className={inputClass} /></Field>
+                      <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="7.23" className={inputClass} /></Field>
                     </div>
                   </> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label={`${side === "SELL" ? "Sale" : "Purchase"} price (${tradeCurrency ?? "…"})`}><input aria-label={side === "SELL" ? "Sale price" : "Purchase price"} inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
@@ -867,7 +861,7 @@ function PositionForm({
                     </Field>
                   ) : null}
                   {!purchaseEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
-                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : kind === "treasury" ? "Total invested" : "Total cost"} {formatCurrency((kind === "treasury" && parseLocaleNumber(treasuryAmount) !== null ? parseLocaleNumber(treasuryAmount)! : parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} {kind !== "treasury" ? <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span> : null}</p> : !purchaseEntry && impliedQuantity !== null ? (
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : kind === "treasury" ? "Total invested" : "Total cost"} {formatCurrency((parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} {kind !== "treasury" ? <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span> : null}</p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
                       {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>

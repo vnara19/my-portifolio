@@ -217,9 +217,9 @@ IPCA/Selic cash-flow model, nor does it infer guaranteed future indexed returns.
 
 
 Treasury acquisition inputs are manual: purchase date, titles purchased, price per
-title and contracted yield, plus visible optional purchase-fee and exact-principal
-fields. An empty exact principal uses quantity × unit price. Extra fees default to
-zero. The form has no public-offer autofill or explanatory paragraphs below inputs.
+title and contracted yield. New form submissions use quantity × unit price,
+zero purchase commission and no principal override. Historical acquisition fees
+and exact-principal adjustments remain supported by the ledger and backups. The form has no public-offer autofill or explanatory paragraphs below inputs.
 Official prices still power portfolio valuation and the security catalog; they never
 replace the personal acquisition data. Yield labels distinguish IPCA/IGP-M and Selic
 spreads from fixed annual yields. Official indexer display labels normalize Prefixado,
