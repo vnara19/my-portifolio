@@ -214,3 +214,15 @@ current market prices never replace original purchase cost.
 Public data does not expose a customer's tax basis, accrued custody fees or exact
 net redemption. This change does not add an IR/IOF/custody estimator or a projected
 IPCA/Selic cash-flow model, nor does it infer guaranteed future indexed returns.
+
+
+Treasury purchase labels distinguish price paid per security from total invested.
+Quantity × acquisition unit price produces the default total. Extra acquisition
+fees (zero by default) and exact statement-principal adjustments are collapsed
+under optional adjustments. Annual-yield labels distinguish IPCA/IGP-M and Selic
+spreads from fixed annual yields. An explicit reference-fill action is available
+only for an offered security whose official publication day matches the selected
+purchase day. It copies offer price/rate, never redemption price or quantity, and
+warns that these are public references rather than a confirmed personal execution.
+Changing that date clears reference-filled values; old purchases still require the
+original receipt. No current offer is silently substituted for historical terms.
