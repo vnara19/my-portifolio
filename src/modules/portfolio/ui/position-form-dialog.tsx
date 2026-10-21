@@ -54,7 +54,7 @@ import {
 import { automaticLiquidity, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
-import { treasuryPurchaseReference, treasuryYieldLabel } from "@/modules/portfolio/domain/treasury-purchase";
+import { treasuryYieldLabel, treasuryIndexerLabel } from "@/modules/portfolio/domain/treasury-purchase";
 import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
 import { formatBrl, formatPriceBrl, formatCurrency, parseLocaleNumber, normalizeLocaleNumberInput } from "@/modules/portfolio/presentation/portfolio-format";
@@ -176,7 +176,6 @@ function PositionForm({
   const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);
-  const [treasuryReferenceUsed, setTreasuryReferenceUsed] = useState(false);
   const [treasuryAmount, setTreasuryAmount] = useState("");
   const [contractedRate, setContractedRate] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
@@ -223,7 +222,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
-    setTreasuryReferenceUsed(false); setSelectedTreasury(null); setContractedRate(""); setTreasuryAmount("");
+    setSelectedTreasury(null); setContractedRate(""); setTreasuryAmount("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
@@ -273,7 +272,6 @@ function PositionForm({
   const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
   const purchaseUnit = parseLocaleNumber(purchasePrice);
   const purchaseFee = parseLocaleNumber(commission);
-  const treasuryReference = treasuryPurchaseReference(selectedTreasury, purchaseDate);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const typedName = automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
@@ -705,7 +703,7 @@ function PositionForm({
           </PositionSection>
 
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title={kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={kind === "treasury" ? "Enter the acquisition details from your purchase confirmation." : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
+            {!editing ? <SectionHeading title={kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -726,7 +724,7 @@ function PositionForm({
                     {kind === "treasury" ? (
                       <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
-                          setSelectedTreasury(bond); setTreasuryReferenceUsed(false); setCommission("0");
+                          setSelectedTreasury(bond); setCommission("0");
                           setPurchasePrice(""); setContractedRate(""); setTreasuryAmount(""); setValue("");
                           setTickerText(bond.symbol);
                           setMaturity(bond.maturityDate);
@@ -814,19 +812,15 @@ function PositionForm({
                   </div> : null}
                   {kind === "treasury" ? <>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={(day) => { if (day === purchaseDate) return; setPurchaseDate(day); setContractedRate(""); if (treasuryReferenceUsed) setPurchasePrice(""); setTreasuryReferenceUsed(false); }} max={latestPurchaseDay} /></Field>
-                      <Field label="Number of securities"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="For example, 10.60" className={inputClass} /><p className="text-xs text-muted-foreground">Copy the quantity from your receipt; fractions are accepted.</p></Field>
-                      <Field label="Price paid per security (BRL)"><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="Price of 1 security" className={inputClass} /></Field>
-                      <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="Annual rate from your receipt" className={inputClass} /></Field>
+                      <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={(day) => { if (day === purchaseDate) return; setPurchaseDate(day); setContractedRate(""); }} max={latestPurchaseDay} /></Field>
+                      <Field label="Bonds purchased"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="e.g. 10.60" className={inputClass} /></Field>
+                      <Field label="Price per bond (BRL)"><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="e.g. 153.32" className={inputClass} /></Field>
+                      <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="e.g. 7.23" className={inputClass} /></Field>
                     </div>
-                    {treasuryReference ? <div className="space-y-2">
-                      <Button type="button" variant="outline" onClick={() => { setPurchasePrice(treasuryReference.price); setContractedRate(treasuryReference.rate); setTreasuryAmount(""); setTreasuryReferenceUsed(true); }}>Use official reference for this date</Button>
-                      <p className="text-xs text-muted-foreground">{treasuryReferenceUsed ? "Reference price and rate filled. " : ""}The public offer can change during the day. Confirm both values against your receipt.</p>
-                    </div> : <p className="text-xs text-muted-foreground">Enter the price and annual rate from your purchase receipt. The current offer does not identify the terms of a past purchase.</p>}
-                    <details className="rounded-xl border border-border p-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Fees and statement adjustments (optional)</summary><div className="mt-3 flex flex-col gap-4">
-                      <Field label="Extra fee paid when buying (BRL)"><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /><p className="text-xs text-muted-foreground">Leave zero if none. Only an extra fee already paid; do not enter the investment amount or future custody charges.</p></Field>
-                      <Field label="Exact investment from receipt (BRL)"><input aria-label="Amount invested" inputMode="decimal" value={treasuryAmount} onChange={(event) => setTreasuryAmount(event.target.value)} placeholder="Leave blank to calculate automatically" className={inputClass} /><p className="text-xs text-muted-foreground">Only use this if your receipt differs by cents from quantity × unit price. Excludes the extra fee above.</p></Field>
-                    </div></details>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Purchase fee (BRL, optional)"><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
+                      <Field label="Invested amount (BRL, optional)"><input aria-label="Amount invested" inputMode="decimal" value={treasuryAmount} onChange={(event) => setTreasuryAmount(event.target.value)} placeholder="Quantity × price if blank" className={inputClass} /></Field>
+                    </div>
                   </> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label={`${side === "SELL" ? "Sale" : "Purchase"} price (${tradeCurrency ?? "…"})`}><input aria-label={side === "SELL" ? "Sale price" : "Purchase price"} inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
                     <Field label="Quantity"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
@@ -838,11 +832,11 @@ function PositionForm({
                   {selectedTreasury ? <details className="rounded-xl border border-border p-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Security details</summary><div className="mt-3 flex flex-col gap-4">
                     <ReadOnly label="Current purchase price" value={selectedTreasury.purchasePrice ? formatPriceBrl(selectedTreasury.purchasePrice) : "Unavailable"} />
                     <ReadOnly label="Current gross redemption price" value={formatPriceBrl(selectedTreasury.valueBrl)} />
-                    <ReadOnly label="Currently offered annual rate" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${selectedTreasury.indexer ?? ""} ${selectedTreasury.purchaseRate ?? "—"}%`} />
+                    <ReadOnly label="Currently offered annual rate" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${treasuryIndexerLabel(selectedTreasury.indexer)} ${selectedTreasury.purchaseRate ?? "—"}%`} />
                     {selectedTreasury.paymentType === "M" ? <ReadOnly label="Income starts" value={String(selectedTreasury.targetYear)} /> : null}
                     <ReadOnly label="Final payment date" value={selectedTreasury.maturityDate.split("-").reverse().join("/")} />
                     {selectedTreasury.isin ? <ReadOnly label="ISIN" value={selectedTreasury.isin} mono /> : null}
-                    <p className="text-xs text-muted-foreground">Published {selectedTreasury.quoteDate}. Market value uses the gross redemption price; taxes and accrued custody fees are separate.</p>
+                    <ReadOnly label="Quote date" value={selectedTreasury.quoteDate.split("-").reverse().join("/")} />
                   </div></details> : null}
                 </> : null}
                 {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
@@ -873,7 +867,7 @@ function PositionForm({
                     </Field>
                   ) : null}
                   {!purchaseEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
-                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : kind === "treasury" ? "Total invested" : "Total cost"} {formatCurrency((kind === "treasury" && parseLocaleNumber(treasuryAmount) !== null ? parseLocaleNumber(treasuryAmount)! : parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : kind === "treasury" ? purchaseFee > 0 ? "including the extra fee" : treasuryAmount.trim() ? "from your receipt" : "quantity × unit price" : "including commission"}</span></p> : !purchaseEntry && impliedQuantity !== null ? (
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : kind === "treasury" ? "Total invested" : "Total cost"} {formatCurrency((kind === "treasury" && parseLocaleNumber(treasuryAmount) !== null ? parseLocaleNumber(treasuryAmount)! : parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} {kind !== "treasury" ? <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span> : null}</p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
                       {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
@@ -1058,8 +1052,8 @@ function PositionForm({
   );
 }
 
-function SectionHeading({ title, description }: { title: string; description: string }) {
-  return <div className="mb-4"><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></div>;
+function SectionHeading({ title, description }: { title: string; description: string | null }) {
+  return <div className="mb-4"><h2 className="text-base font-semibold">{title}</h2>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div>;
 }
 
 function PositionSection({ single, value, className, children }: { single: boolean; value: string; className?: string; children: ReactNode }) {

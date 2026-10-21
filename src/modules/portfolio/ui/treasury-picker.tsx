@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Picker } from "@/components/ui/picker";
+import { treasuryIndexerLabel } from "@/modules/portfolio/domain/treasury-purchase";
 import { formatBrl } from "@/modules/portfolio/presentation/portfolio-format";
 import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 
@@ -51,7 +52,6 @@ export function TreasuryPicker({ value, onSelect }: { value: string | null; onSe
     return () => { active = false; };
   }, [attempt]);
 
-  const selected = bonds?.find((bond) => bond.symbol === value);
   return <div className="space-y-2">
     <Picker
       aria-label="Tesouro Direto security"
@@ -61,10 +61,9 @@ export function TreasuryPicker({ value, onSelect }: { value: string | null; onSe
       placeholder={bonds ? "Choose a type and maturity" : "Loading securities…"}
       emptyMessage={bonds ? "No security with this name" : "Loading Tesouro Direto securities…"}
       value={value}
-      options={(bonds ?? []).map((bond) => ({ value: bond.symbol, label: bond.name, hint: bond.offered === false ? "Existing holdings only" : bond.purchaseRate !== undefined ? `${bond.indexer ?? ""} ${bond.purchaseRate.toFixed(2)}%` : formatBrl(bond.valueBrl) }))}
+      options={(bonds ?? []).map((bond) => ({ value: bond.symbol, label: bond.name, hint: bond.offered === false ? "Existing Holdings Only" : bond.purchaseRate !== undefined ? `${treasuryIndexerLabel(bond.indexer)} ${bond.purchaseRate.toFixed(2)}%` : formatBrl(bond.valueBrl) }))}
       onValueChange={(symbol) => { const bond = bonds?.find((entry) => entry.symbol === symbol); if (bond) onSelect(bond); }}
     />
-    {selected ? <p className="text-[11px] leading-5 text-muted-foreground">Market price for {selected.quoteDate.split("-").reverse().join("/")}. The position value changes with the official quote; this is not a projected return at maturity.</p> : null}
     {bonds?.length === 0 ? <p className="text-xs text-muted-foreground">No securities with an official price available.</p> : null}
     {error ? <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={() => { setError(null); setAttempt((value) => value + 1); }} className="underline">Try again</button></p> : null}
   </div>;

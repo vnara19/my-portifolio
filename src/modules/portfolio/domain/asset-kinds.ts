@@ -102,7 +102,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   treasury: {
     kind: "treasury",
     label: "Tesouro Direto",
-    hint: "Official quote · BRL",
+    hint: "Tesouro Direto Bonds",
     ticker: "market",
     provider: "tesouro",
     instrumentType: "TESOURO",

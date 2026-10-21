@@ -216,13 +216,11 @@ net redemption. This change does not add an IR/IOF/custody estimator or a projec
 IPCA/Selic cash-flow model, nor does it infer guaranteed future indexed returns.
 
 
-Treasury purchase labels distinguish price paid per security from total invested.
-Quantity × acquisition unit price produces the default total. Extra acquisition
-fees (zero by default) and exact statement-principal adjustments are collapsed
-under optional adjustments. Annual-yield labels distinguish IPCA/IGP-M and Selic
-spreads from fixed annual yields. An explicit reference-fill action is available
-only for an offered security whose official publication day matches the selected
-purchase day. It copies offer price/rate, never redemption price or quantity, and
-warns that these are public references rather than a confirmed personal execution.
-Changing that date clears reference-filled values; old purchases still require the
-original receipt. No current offer is silently substituted for historical terms.
+Treasury acquisition inputs are manual: purchase date, titles purchased, price per
+title and contracted yield, plus visible optional purchase-fee and exact-principal
+fields. An empty exact principal uses quantity × unit price. Extra fees default to
+zero. The form has no public-offer autofill or explanatory paragraphs below inputs.
+Official prices still power portfolio valuation and the security catalog; they never
+replace the personal acquisition data. Yield labels distinguish IPCA/IGP-M and Selic
+spreads from fixed annual yields. Official indexer display labels normalize Prefixado,
+Selic and acronyms without changing provider values or stored security identities.

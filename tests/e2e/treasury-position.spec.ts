@@ -26,6 +26,9 @@ test("Treasury uses a closed official list and separates acquisition cost from r
   await security.click();
   await page.getByRole("option", { name: /2065/ }).click();
   await expect(dialog.getByRole("textbox", { name: "Asset name", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /Use official reference/ })).toHaveCount(0);
+  await expect(dialog.getByRole("textbox", { name: "Commission", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Amount invested", exact: true })).toBeVisible();
   await expect(dialog.getByText("Fixed income", { exact: true })).toBeVisible();
   await dialog.getByRole("textbox", { name: "Purchase price", exact: true }).fill("153.32");
   await dialog.getByRole("textbox", { name: "Quantity", exact: true }).fill("81");
