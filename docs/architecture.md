@@ -230,23 +230,26 @@ Selic and acronyms without changing provider values or stored security identitie
 
 Brazilian Fixed Income covers CDB, LCI and LCA with principal and interest paid at
 maturity, in BRL. Product, issuer, invested principal, purchase/maturity dates,
-rate, redemption and (for fixed/IPCA) interest basis are explicit. It generates a
+rate and redemption are explicit. New contracts use 252 Brazilian business days;
+legacy 365-calendar-day terms remain readable without rewriting saved contracts. It generates a
 lot-specific asset name, automatic fixed-income allocation and dated original cost.
 A nullable fixedIncomeContract JSON column preserves the terms through backups.
 No CRI/CRA coupon, amortization, bank-account connection or net-redemption tax
 calculator is implied by this form. US/European direct bonds remain separate work.
 
-CDI uses observed BCB SGS 12 daily rates. Fixed annual yield supports 252 Brazilian
-business days or 365 calendar days. Both stop at maturity. IPCA+ is explicitly a
-reference estimate: published SGS 433 monthly inflation is compounded pro rata by
-calendar days, multiplied by the contracted real-yield factor. Missing future
-inflation contributes no invented inflation; the contractual fixed component can
-continue. This is not an issuer-specific anniversary/lag calculation or a bank
-redemption quote. Gaps inside observed inflation coverage fail without replacing
-the known balance. Contract holdings are recalculated from original dated cash
-movements across reporting months so late inflation releases are not permanently
-lost at month rollover. Estimates are identified in the form, position list and
-income panel. The automatic quote job refreshes both rate series.
+CDI uses observed BCB SGS 12 daily rates. New fixed and IPCA contracts use 252
+Brazilian business days and stop at maturity. IPCA balances stop all accrual,
+including the real-yield component, after the latest published SGS 433 month.
+Published monthly inflation is allocated across Brazilian business days within
+that month, multiplied by the contracted real-yield factor. Weekends and holidays
+add no factor for business-day contracts. Saved legacy calendar-day contracts keep
+their recorded convention. This is a gross reference calculation, not confirmation
+of an issuer-specific anniversary/lag calculation or a bank redemption quote.
+Gaps inside observed inflation coverage fail without replacing the known balance.
+Contract holdings are recalculated from original dated cash movements across
+reporting months so late inflation releases are not permanently lost at rollover.
+The income panel shows the last accrual date and published inflation reference.
+The automatic quote job refreshes both rate series.
 
 The asynchronous open check also refreshes the signed-in user's structured bank
 deposits, reusing the three-hour shared rate cache, and refreshes the view only when

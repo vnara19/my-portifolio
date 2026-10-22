@@ -204,7 +204,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const newAsset = input.addition.newAsset;
   const fixed = newAsset?.kind === "fixed-income" && newAsset.fixedIncomeContract ? brazilianFixedIncomeSchema.parse(newAsset.fixedIncomeContract) : null;
   if (fixed) {
-    if (fixed.indexer === "CDI") fixed.basis = "BUSINESS_252";
+    fixed.basis = "BUSINESS_252";
     newAsset!.fixedIncomeContract = fixed;
     if (!newAsset!.appliedOn || !newAsset!.maturityDate || newAsset!.maturityDate <= newAsset!.appliedOn) throw new MonthEditError("Enter a maturity date after the purchase date.");
     if (fixed.indexer !== "CDI" && Number(fixed.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");

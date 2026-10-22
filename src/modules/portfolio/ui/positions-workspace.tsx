@@ -685,7 +685,7 @@ function PositionRow({
           >
             {position.assetName}
           </Link>
-          {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">IPCA estimate</span> : null}
+          {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}
           {position.liquidated ? (
             <span
               data-testid="position-liquidated"

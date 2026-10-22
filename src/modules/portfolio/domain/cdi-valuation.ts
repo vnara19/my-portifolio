@@ -82,12 +82,21 @@ export function calculateIncomeMonth(input: MonthInput & {
       return { weight, factor: (day: string): ReturnType<DailyFactor> => {
         if (!lastMonth) return { error: "Official monthly IPCA data is unavailable. The known balance was preserved." };
         const month = day.slice(0, 7);
+        if (month > lastMonth) return { skip: true };
+        if (input.annualBasis !== "CALENDAR_365" && !isBusinessDay(day)) return { skip: true };
         const observed = monthly.get(month);
         if (observed === undefined && month <= lastMonth) return { error: `Missing official IPCA observation for ${month}. The known balance was preserved.` };
-        const value = observed === undefined ? new Decimal(0) : decimal(observed);
+        const value = decimal(observed!);
         if (!value || value.lte(-100)) return { error: `Invalid IPCA observation for ${month}.` };
         const days = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0)).getUTCDate();
-        const inflation = new Decimal(1).plus(value.div(100)).pow(new Decimal(1).div(days));
+        let accrualDays = days;
+        if (input.annualBasis !== "CALENDAR_365") {
+          accrualDays = 0;
+          for (let date = `${month}-01`; date.slice(0, 7) === month; date = nextDay(date)) {
+            if (isBusinessDay(date)) accrualDays += 1;
+          }
+        }
+        const inflation = new Decimal(1).plus(value.div(100)).pow(new Decimal(1).div(accrualDays));
         const interest = input.annualBasis === "CALENDAR_365" || isBusinessDay(day) ? fixed : new Decimal(1);
         return { factor: inflation.mul(interest) };
       } };

@@ -31,7 +31,7 @@ export function CdiPanel({ cdi }: { cdi: CdiView }) {
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Item label="Month opening balance" value={formatBrl(cdi.baseBrl)} />
         <Item label="Calculated return" value={formatBrl(cdi.incomeBrl)} />
-        <Item label={cdi.parts.some((part) => part.indexer === "IPCA") ? "Estimated gross balance" : "Gross balance"} value={formatBrl(cdi.balanceBrl)} />
+        <Item label={cdi.parts.some((part) => part.indexer === "IPCA") ? "Gross reference balance" : "Gross balance"} value={formatBrl(cdi.balanceBrl)} />
         <Item label="Accrued through" value={cdi.through ? day(cdi.through) : "—"} />
       </dl>
 

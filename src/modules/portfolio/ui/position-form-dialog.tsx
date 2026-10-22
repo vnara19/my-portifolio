@@ -171,7 +171,6 @@ function PositionForm({
   const [fiIssuer, setFiIssuer] = useState("");
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
   const [fiRate, setFiRate] = useState("");
-  const [fiBasis, setFiBasis] = useState<"BUSINESS_252" | "CALENDAR_365">("BUSINESS_252");
   const [kind, setKind] = useState<AssetKind | null>(null);
   const [verificationEpoch, setVerificationEpoch] = useState(0);
   const [entryType, setEntryType] = useState<"asset" | "cash">("asset");
@@ -227,7 +226,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
-    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate(""); setFiBasis("BUSINESS_252");
+    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate(""); 
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
@@ -281,7 +280,7 @@ function PositionForm({
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const fixedIncomeEntry = !editing && kind === "fixed-income";
-  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: fiIndexer === "CDI" ? "BUSINESS_252" : fiBasis } : null;
+  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252" } : null;
   const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
@@ -825,10 +824,9 @@ function PositionForm({
                     <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>
                     <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
                     <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
-                    {fiIndexer !== "CDI" ? <Field label="Interest basis"><Picker aria-label="Interest basis" searchable={false} value={fiBasis} options={[{ value: "BUSINESS_252", label: "252 Business Days" }, { value: "CALENDAR_365", label: "365 Calendar Days" }]} onValueChange={(value) => setFiBasis(value as typeof fiBasis)} /></Field> : null}
                     <Field label="Redemption"><Picker aria-label="Redemption" searchable={false} value={liquidity || "No vencimento"} options={[{ value: "No vencimento", label: "At maturity" }, { value: "D+0", label: "Daily liquidity" }]} onValueChange={setLiquidity} /></Field>
                   </div>
-                  <p className="text-xs text-muted-foreground">{fiIndexer === "IPCA" ? "Estimated gross accrual · published IPCA only" : "Gross contractual accrual"}</p>
+                  <p className="text-xs text-muted-foreground">{fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
                 </> : null}
                 {purchaseEntry ? <>
                   {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
