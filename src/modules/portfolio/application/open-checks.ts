@@ -1,3 +1,4 @@
+import { refreshBondsForUser } from "./international-bonds";
 import { refreshFixedIncomeForUser } from "@/modules/portfolio/application/cdi-positions";
 import { checkMonthsUpToDate } from "@/modules/portfolio/application/month-rollover";
 import type { MonthRolloverOutcome, OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
@@ -12,7 +13,7 @@ export async function runOpenChecks({ now = new Date() }: { now?: Date } = {}): 
     }),
   );
 
-  const fixedIncomeChanged = await refreshFixedIncomeForUser(now).catch(() => false);
+  const fixedIncomeChanged = (await Promise.all([refreshFixedIncomeForUser(now).catch(() => false), refreshBondsForUser().catch(() => false)])).some(Boolean);
   return { fixedIncomeChanged, rollover, targetPlan: "disabled", summary: await getQuoteRefreshSummary(now) };
 }
 

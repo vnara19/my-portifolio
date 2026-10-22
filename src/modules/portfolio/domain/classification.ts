@@ -12,7 +12,7 @@ export type AssetClass = (typeof ASSET_CLASSES)[number];
 export const SUBCLASSES_BY_CLASS: Record<AssetClass, readonly string[]> = {
   Caixa: ["Pós-fixado", "Prefixado", "Stablecoin"],
   Cripto: ["BTC", "Altcoin", "Stablecoin"],
-  "Renda Fixa": ["Pós-fixado", "Prefixado", "IPCA", "Bond ETF"],
+  "Renda Fixa": ["Pós-fixado", "Prefixado", "IPCA", "Bond ETF", "International Bonds", "Inflation Linked"],
   "Renda Variável": ["Ações EUA", "Ações - Ex: USA", "Ações BR", "Imobiliário BR", "Commoditie"],
   Reserva: ["Commoditie"],
 };
@@ -76,7 +76,7 @@ export const ASSET_TYPES = [
   "br-stock",
   "crypto",
   "treasury",
-  "fixed-income",
+  "fixed-income", "international-bond",
   "pension",
   "brl-cash",
   "usd-balance",
@@ -94,6 +94,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   crypto: "Crypto",
   treasury: "Tesouro Direto",
   "fixed-income": "Fixed income",
+  "international-bond": "International Bonds",
   pension: "Pension",
   "brl-cash": "BRL Cash",
   "usd-balance": "USD Cash",

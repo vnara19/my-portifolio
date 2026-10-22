@@ -24,6 +24,7 @@ import {
   updateTransaction,
 } from "@/modules/portfolio/application/position-transactions";
 import { requireSessionUser } from "@/modules/auth/session";
+import { internationalBondSchema } from "@/modules/portfolio/domain/international-bond";
 import { brazilianFixedIncomeSchema } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { ASSET_KINDS } from "@/modules/portfolio/domain/asset-kinds";
 import { ASSET_TYPES } from "@/modules/portfolio/domain/classification";
@@ -70,6 +71,7 @@ const newAccountSchema = z
 
 const newAssetSchema = z.object({
   fixedIncomeContract: brazilianFixedIncomeSchema.optional(),
+  bondContract: internationalBondSchema.optional(),
   name: label(80),
   kind: z.enum(ASSET_KINDS),
   ticker: z.string().trim().max(120).nullable(),

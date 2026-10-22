@@ -13,6 +13,7 @@ export type GainMovement = {
   amountBrl: number;
   usdRate: number | null;
   transferId: string | null;
+  costRecoveryUsd?: number;
 };
 export type GainSnapshot = { holding: string; quantity: number; valueUsd: number | null };
 export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, totalUsd: null });
@@ -39,7 +40,10 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
       realized = realized.plus(amount.minus(removed));
     } else if (units.eq(0)) {
       // Paid income is realized, but generic income is not necessarily a dividend.
-      realized = realized.plus(amount);
+      const recovery = new Prisma.Decimal(movement.costRecoveryUsd ?? 0);
+      if (!recovery.isFinite() || recovery.lt(0) || recovery.gt(state.cost)) return unavailableGains();
+      state.cost = state.cost.minus(recovery);
+      realized = realized.plus(amount.minus(recovery));
     } else {
       state.units = amount.lt(0) ? state.units.minus(units) : state.units.plus(units);
       if (state.units.lt(0)) return unavailableGains();

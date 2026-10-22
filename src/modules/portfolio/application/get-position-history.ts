@@ -1,3 +1,4 @@
+import { readInternationalBond, type InternationalBond } from "../domain/international-bond";
 
 /** Assemble user-scoped position, cost and transaction history without contacting market-data providers. */
 import { readFixedIncomeContract, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
@@ -66,6 +67,7 @@ export type PositionHistoryView = {
 
   transactions: PositionTransactionView[];
 
+  bond?: InternationalBond | null;
   cdi: CdiView | null;
 
   rate: { parts: RatePart[]; automatic: boolean } | null;
@@ -138,6 +140,7 @@ export async function getPositionHistory({
         where: { id: assetId },
         select: {
           name: true,
+          fixedIncomeContract: true,
           ticker: true,
           quoteSymbol: true,
           baseCurrency: true,
@@ -222,7 +225,7 @@ export async function getPositionHistory({
       })),
     }; });
 
-    const quoted = Boolean(asset.quoteSymbol);
+    const quoted = Boolean(asset.quoteSymbol) || Boolean(readInternationalBond(asset.fixedIncomeContract));
     const monthTotals = months.map((month) => ({ month: month.month, totalBrl: month.totalBrl }));
     const selectedMonth = selected.month;
     const scope = (scopeAccountId: string | null): PositionScopeView => {
@@ -290,6 +293,7 @@ export async function getPositionHistory({
       prices: asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null,
       history: asset.quoteSymbol ? await readHistoryState(asset.quoteSymbol) : null,
       transactions: transactions.filter((entry) => entry.accountId === accountId),
+      bond: readInternationalBond(asset.fixedIncomeContract),
       cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate) : null,
       rate: rateOf(positions, accountId, selected.id, asset.autoIncome),
     };

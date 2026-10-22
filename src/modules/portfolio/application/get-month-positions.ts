@@ -1,3 +1,4 @@
+import { readInternationalBond } from "../domain/international-bond";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { assetTypeOf, type AssetType } from "@/modules/portfolio/domain/classification";
@@ -36,6 +37,7 @@ export type MonthPosition = {
   assetTypeInferred: boolean;
 
   fixedIncomeEstimate?: boolean;
+  bondValuationDate?: string | null;
   autoIncome?: boolean;
   appliedOn?: string | null;
   calculationStartDate?: string | null;
@@ -207,6 +209,7 @@ export async function getMonthPositions(
             cashAccount: position.asset.cashAccount,
             assetType: assetTypeOf(position.asset),
             assetTypeInferred: position.asset.assetType === null,
+            bondValuationDate: readInternationalBond(position.asset.fixedIncomeContract)?.quotes.filter((q) => q.date <= toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay)).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
             fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,

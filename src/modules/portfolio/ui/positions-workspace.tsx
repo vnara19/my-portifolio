@@ -685,6 +685,7 @@ function PositionRow({
           >
             {position.assetName}
           </Link>
+          {position.bondValuationDate ? <span className="ml-2 text-[10px] text-muted-foreground">Manual · {position.bondValuationDate}</span> : null}
           {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}
           {position.liquidated ? (
             <span
@@ -856,6 +857,7 @@ function PositionDetails({
 }
 
 function QuantityText({ position }: { position: MonthPosition }) {
+  if (position.assetType === "international-bond") return <span className="font-mono text-xs">{position.baseCurrency} {position.quantity.toLocaleString("en-US")} Nominal</span>;
   return (
     <span className="font-mono text-xs text-foreground/85">
       {position.quoteSymbol

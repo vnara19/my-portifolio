@@ -255,3 +255,42 @@ The asynchronous open check also refreshes the signed-in user's structured bank
 deposits, reusing the three-hour shared rate cache, and refreshes the view only when
 balances/errors change. It does not run a full market quote sync or block page
 navigation. Scheduled rate jobs still perform portfolio-wide refreshes.
+
+## International bonds
+
+International Bonds combines direct sovereign, corporate, agency, municipal,
+supranational, negotiable CD, covered and securitized holdings. Issuer country and
+USD/EUR denomination are independent. ETFs remain in their market categories.
+The manual form accepts any checksum-valid ISIN/CUSIP, not just reference examples.
+Issuer metadata is manual except the Brazil 2037 and Ireland 2037 public references.
+It does not claim to verify arbitrary issuer terms or provide an automatic price feed.
+
+Tagged international-bond metadata shares the existing nullable fixedIncomeContract
+JSON column. Brazilian contract readers reject this separate shape. No database
+migration or backup-version change is required. Acquisition lots preserve face
+amount, actual settlement date and the total paid in the bond denomination, including
+fees and accrued interest. ECB reference FX converts reporting values; a broker's
+EUR payment conversion is not a change in the bond denomination.
+
+Manual observations are full monetary holding values including accrued interest and
+any principal/index factor, not clean prices per 100. They are dated and user-scoped;
+no daily market price or yield is invented. The current open month refreshes FX on
+the existing asynchronous open check while retaining the native quote's date.
+A new acquisition is not daily compounded using the Brazilian deposit engine.
+
+The bond panel records actual coupon receipts separately from principal repayments,
+atomically with the post-payment full holding valuation. Coupons have zero quantity
+and count as realized income after recovering any interest paid at acquisition.
+The form records that prepaid interest separately within the total paid, and the
+gains engine removes the recovered portion from acquisition cost exactly once.
+Principal repayments remove face quantity and average
+acquisition cost; a full redemption requires zero remaining valuation. Repeated
+cash receipts on the same holding/date are rejected. Cash receipts do not fabricate
+a matching cash-account deposit or automatic reinvestment. Generic balance edits,
+transactions and liquidation are blocked for bonds to preserve native face semantics.
+
+Current totals and overview fixed-income allocation use the latest saved full
+valuation. Gains use the original acquisition FX and recorded actual receipts.
+Expected coupon schedules, yield to maturity, projected floating/indexed cash flows,
+automatic broker access and early-sale proceeds are not implemented. These require
+verified instrument terms and/or a separately entitled market feed.

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@/generated/prisma/client";
 import { cleanName, normalizeKey, USD_SYMBOL } from "@/modules/portfolio/domain/asset-kinds";
 import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
@@ -37,6 +38,8 @@ export type AssetAttributes = {
 
 
 export type AssetState = {
+  fixedIncomeContract?: Prisma.InputJsonValue;
+  expectedFixedIncomeContract?: Prisma.InputJsonValue;
   id: string;
   name: string;
   normalizedKey: string;
@@ -73,6 +76,7 @@ export async function applyAssetAttributes(
     throw new AssetAttributeError("Asset not found.");
   }
 
+  if (asset.assetType === "international-bond") throw new AssetAttributeError("Manage this bond from its valuation panel.");
   const name = cleanName(next.name);
   const normalizedName = normalizeKey(name);
 
@@ -180,6 +184,10 @@ export async function applyAssetAttributes(
 
 
 export async function restoreAssetState(transaction: Prisma.TransactionClient, state: AssetState) {
+  if (state.expectedFixedIncomeContract) {
+    const current = await transaction.asset.findUnique({ where: { id: state.id }, select: { fixedIncomeContract: true } });
+    if (!isDeepStrictEqual(current?.fixedIncomeContract, state.expectedFixedIncomeContract)) throw new AssetAttributeError("This bond has changed since the update; it cannot be undone safely.");
+  }
   const twin = await transaction.asset.findFirst({ where: { normalizedKey: state.normalizedKey }, select: { id: true } });
 
   if (twin && twin.id !== state.id) {
@@ -196,6 +204,7 @@ export async function restoreAssetState(transaction: Prisma.TransactionClient, s
       cashAccount: state.cashAccount,
       autoIncome: state.autoIncome,
       assetType: state.assetType,
+      ...(state.fixedIncomeContract ? { fixedIncomeContract: state.fixedIncomeContract } : {}),
     },
   });
 }

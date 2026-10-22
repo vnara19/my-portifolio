@@ -15,7 +15,7 @@ export const ASSET_KINDS = [
   "br-stock",
   "crypto",
   "treasury",
-  "fixed-income",
+  "fixed-income", "international-bond",
   "brl-cash",
   "usd-balance",
   "eur-balance",
@@ -99,6 +99,7 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
     instrumentType: null,
     allowsMaturity: true,
   },
+  "international-bond": { kind: "international-bond", label: "International Bonds", hint: "Government, Corporate Bonds and CDs", ticker: null, provider: null, instrumentType: null, allowsMaturity: true },
   treasury: {
     kind: "treasury",
     label: "Tesouro Direto",
@@ -225,6 +226,8 @@ export function defaultAllocation(kind: AssetKind, symbol: string | null): Alloc
         subclass: symbol === "BTC" ? "BTC" : symbol && STABLECOINS.has(symbol) ? "Stablecoin" : "Altcoin",
         duration: "-",
       };
+    case "international-bond":
+      return { assetClass: "Renda Fixa", subclass: "International Bonds", duration: "Longo" };
     case "fixed-income":
 
       return { assetClass: "Renda Fixa", subclass: "", duration: "" };

@@ -43,3 +43,10 @@ their application screens and routes are retired from the investment-only worksp
 without it continue to restore. It retains the Brazilian bank-deposit product,
 issuer, indexer, contracted rate and interest basis. The shared monthly IPCA
 observations are regenerated, like CDI; they are not private backup data.
+
+The optional assets.fixedIncomeContract JSON also accepts the tagged
+`type: international-bond` document: issuer, identifier, denomination, original
+acquisition cost/face amount and private dated full-value observations. Actual
+coupons and principal receipts remain position transactions. Preserve both to
+restore valuation and realized/unrealized gains. Existing backups without this
+column continue to import. No version bump is required.

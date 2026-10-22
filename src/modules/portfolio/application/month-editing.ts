@@ -45,6 +45,8 @@ import { treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { tradeBalance } from "../domain/trade-balance";
 import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
+import { internationalBondSchema, bondAllocation, bondName, bondValue, type InternationalBond } from "@/modules/portfolio/domain/international-bond";
+
 type Transaction = Prisma.TransactionClient;
 
 export class MonthEditError extends Error {
@@ -63,6 +65,7 @@ export type NewAccountInput = {
 
 export type NewAssetInput = {
   fixedIncomeContract?: BrazilianFixedIncome;
+  bondContract?: InternationalBond;
   name: string;
   kind: AssetKind;
   ticker: string | null;
@@ -202,6 +205,19 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const newAsset = input.addition.newAsset;
+  if (newAsset?.bondContract && newAsset.kind !== "international-bond") throw new MonthEditError("Bond terms require International Bonds.");
+  const bond = newAsset?.kind === "international-bond" ? internationalBondSchema.parse(newAsset.bondContract) : null;
+  const today = toDateKey(calendarDay(new Date()));
+  if (bond) {
+    if (bond.settlementDate > today || bond.quotes.some((quote) => quote.date > today)) throw new MonthEditError("Bond dates cannot be in the future.");
+    newAsset!.bondContract = bond;
+    newAsset!.name = bondName(bond);
+    newAsset!.maturityDate = bond.maturityDate;
+    newAsset!.autoIncome = false;
+    newAsset!.appliedOn = bond.settlementDate;
+    if (input.addition.purchase) throw new MonthEditError("Use the direct bond form for this holding.");
+    input.addition.value = bond.faceAmount;
+  }
   const fixed = newAsset?.kind === "fixed-income" && newAsset.fixedIncomeContract ? brazilianFixedIncomeSchema.parse(newAsset.fixedIncomeContract) : null;
   if (fixed) {
     fixed.basis = "BUSINESS_252";
@@ -216,7 +232,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const cashKind = newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind);
   const treasury = newAsset?.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", newAsset.ticker ?? "") ?? "" }) : null;
   if (newAsset?.kind === "treasury" && (!treasury || treasury.maturityDate <= toDateKey(calendarDay(new Date())))) throw new MonthEditError("Choose an outstanding security from the official Tesouro Direto list.");
-  const seeds = fixed ? [fixedIncomeAllocation(fixed, newAsset!.appliedOn!, newAsset!.maturityDate!)] : treasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(treasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(treasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
+  const seeds = bond ? [bondAllocation(bond)] : fixed ? [fixedIncomeAllocation(fixed, newAsset!.appliedOn!, newAsset!.maturityDate!)] : treasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(treasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(treasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
   const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: fixed?.rate ?? null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
@@ -259,6 +275,16 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     }
   }
 
+  let bondFx: { acquisition: Awaited<ReturnType<typeof fetchReferenceFxLatest>>; current: Awaited<ReturnType<typeof fetchReferenceFxLatest>>; usd: Awaited<ReturnType<typeof fetchReferenceFxLatest>> } | null = null;
+  if (bond) {
+    const bondDb = await getUserDb();
+    const bondMonth = await bondDb?.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } });
+    if (!bondMonth) throw new MonthEditError("The reporting month does not exist.");
+    const asOf = toDateKey(new Date(Math.min(Date.parse(today), lastDayOf(bondMonth.referenceDate).getTime())));
+    if (bond.settlementDate > asOf || bond.quotes.some((quote) => quote.date > asOf)) throw new MonthEditError("Bond dates must be within or before the reporting month.");
+    const [acquisition, current, usd] = await Promise.all([fetchReferenceFxLatest(bond.currency, bond.settlementDate), fetchReferenceFxLatest(bond.currency, asOf), fetchReferenceFxLatest("USD", bond.settlementDate)]);
+    bondFx = { acquisition, current, usd };
+  }
   let fixedFx: Awaited<ReturnType<typeof fetchReferenceFxLatest>> | null = null;
   if (fixed) {
     const fixedDb = await requirePrisma();
@@ -267,6 +293,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     await primeFixedIncomeRates(fixedDb, fixed.indexer, newAsset!.appliedOn!);
   }
   return withUndo(input.monthId, async (transaction, month) => {
+    if (bondFx) await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(bondFx.usd.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: bondFx.usd.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     if (fixedFx) await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(fixedFx.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fixedFx.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     const positions = await transaction.position.findMany({
       where: { portfolioMonthId: month.id },
@@ -278,6 +305,13 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       await transaction.marketQuote.createMany({ data: [{ referenceDate: month.referenceDate, symbol: cashQuote.symbol, instrumentType: "FIAT", baseCurrency: cashQuote.symbol, valueBrl: cashQuote.value, quoteDate: new Date(`${cashQuote.day}T00:00:00Z`) }], skipDuplicates: true });
       const current = await readMonthQuoteValues(transaction, month.referenceDate, [cashQuote.symbol]);
       quoteBySymbol.set(cashQuote.symbol, current.get(cashQuote.symbol)!.valueBrl);
+    }
+
+    if (bond && bondFx && !quoteBySymbol.has(bond.currency)) {
+      await transaction.marketQuote.createMany({ data: [{ referenceDate: month.referenceDate, symbol: bond.currency, instrumentType: "FIAT", baseCurrency: bond.currency, valueBrl: bondFx.current.value, quoteDate: new Date(bondFx.current.day) }], skipDuplicates: true });
+      const current = await readMonthQuoteValues(transaction, month.referenceDate, [bond.currency]);
+      const value = current.get(bond.currency)?.valueBrl;
+      if (value) quoteBySymbol.set(bond.currency, value);
     }
 
     const batch: AdditionBatch = {
@@ -293,6 +327,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     const account = await resolveAdditionAccount(transaction, addition, batch);
     const asset = await resolveAdditionAsset(transaction, addition, account, batch);
 
+    if (!bond && (await transaction.asset.findUnique({ where: { id: asset.id }, select: { assetType: true } }))?.assetType === "international-bond") throw new MonthEditError("Use International Bonds to record a separate purchase lot.");
     const matches = positions.filter((position) => position.assetId === asset.id);
     const held = matches.find((position) => position.accountId === account.id) ?? (purchase && matches.length === 1 ? matches[0] : undefined);
     if (purchase && !held && matches.length > 1) throw new MonthEditError("This asset is held in multiple accounts. Record the transaction from the position you want to change.");
@@ -331,6 +366,17 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       if (purchase.date < month.referenceDate && purchaseKind !== "treasury") throw new MonthEditError("The transaction date must fall within the open reporting month.");
       await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: held.id, kind: sale ? PositionTransactionKind.WITHDRAWAL : PositionTransactionKind.CONTRIBUTION, occurredOn: purchase.date, quantity: purchase.cost.quantity, unitPriceBrl: purchase.cost.unitPriceBrl, amountBrl: purchase.cost.amountBrl, note: purchase.note } });
       await transaction.position.update({ where: { id: held.id }, data: { quantity: balance, totalBrl: balance.mul(ledger.unitPriceBrl).toDecimalPlaces(2) } });
+      return { created: batch.created };
+    }
+    if (bond && bondFx) {
+      const asOf = toDateKey(new Date(Math.min(Date.parse(today), lastDayOf(month.referenceDate).getTime())));
+      const currentFx = quoteBySymbol.get(bond.currency) ?? new Prisma.Decimal(bondFx.current.value);
+      const storedUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: new Date(bond.settlementDate), gte: new Date(bondFx.usd.day) } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
+      const acquisitionFx = bond.currency === "USD" && storedUsd ? storedUsd.valueBrl : new Prisma.Decimal(bondFx.acquisition.value);
+      const valuation = bondValue(bond, asOf, currentFx.toString());
+      const created = await transaction.position.create({ data: { userId: SCOPED_USER, portfolioMonthId: month.id, accountId: account.id, assetId: asset.id, quantity: bond.faceAmount, unitPriceBrl: valuation.unitPriceBrl, totalBrl: valuation.totalBrl, exchangeRateBrl: currentFx, strategy: normalizeStrategy(addition.strategy) } });
+      await transaction.positionAllocation.createMany({ data: allocations.map((allocation) => ({ ...allocation, userId: SCOPED_USER, positionId: created.id })) });
+      await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: created.id, kind: PositionTransactionKind.CONTRIBUTION, occurredOn: new Date(bond.settlementDate), quantity: bond.faceAmount, amountBrl: new Prisma.Decimal(bond.totalPaid).mul(acquisitionFx).toDecimalPlaces(2), note: `Bond acquisition: ${bond.currency} ${bond.totalPaid} total paid including accrued interest and fees; FX ${acquisitionFx.toString()} BRL/${bond.currency}.` } });
       return { created: batch.created };
     }
     const value = parseNonNegative(addition.value);
@@ -824,15 +870,16 @@ async function resolveAdditionAsset(
       userId: SCOPED_USER,
       normalizedKey,
       name,
-      ticker: symbol,
+      ticker: input.bondContract?.identifier ?? symbol,
       quoteSymbol: symbol,
-      baseCurrency: identity?.currency ?? baseCurrencyOf(input.kind, symbol),
+      baseCurrency: input.bondContract?.currency ?? identity?.currency ?? baseCurrencyOf(input.kind, symbol),
       maturityDate,
       liquidity: automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance" || input.kind === "eur-balance"),
 
       assetType: identity?.assetType ?? input.kind,
+      ...(input.kind === "international-bond" && input.bondContract ? { fixedIncomeContract: input.bondContract } : {}),
       ...(input.kind === "fixed-income" && input.fixedIncomeContract ? { fixedIncomeContract: input.fixedIncomeContract } : {}),
       ...incomeOfNewAsset(input),
     },

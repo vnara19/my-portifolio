@@ -69,6 +69,7 @@ import {
   type TransactionEdit,
 } from "@/modules/portfolio/ui/position-transaction-dialog";
 import { PositionTransactions } from "@/modules/portfolio/ui/position-transactions";
+import { InternationalBondPanel } from "./international-bond-panel";
 import { CdiPanel } from "@/modules/portfolio/ui/cdi-panel";
 import { ratesLabel } from "@/modules/portfolio/presentation/income-rate";
 import { recordedByMonth } from "@/modules/portfolio/domain/position-transactions";
@@ -183,7 +184,7 @@ export function PositionDetail({
         : null;
   const strategy = snapshot ? (snapshot.strategy ?? NO_STRATEGY) : null;
 
-  const canLiquidate = editBlocked === null && editPosition !== null && !editPosition.liquidated;
+  const canLiquidate = !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
   const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
 
 
@@ -305,7 +306,7 @@ export function PositionDetail({
             <button
               type="button"
               onClick={() => setMovement((value) => ({ open: true, key: value.key + 1, edit: null }))}
-              disabled={editBlocked !== null}
+              disabled={editBlocked !== null || Boolean(history.bond)}
               title={editBlocked ?? `Contribution, withdrawal or return in ${selectedLabel}`}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
             >
@@ -314,7 +315,7 @@ export function PositionDetail({
             <button
               type="button"
               onClick={() => setForm((value) => ({ open: true, key: value.key + 1 }))}
-              disabled={editBlocked !== null}
+              disabled={editBlocked !== null || Boolean(history.bond)}
               title={editBlocked ?? `Edit the position in ${selectedLabel}`}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
             >
@@ -456,13 +457,14 @@ export function PositionDetail({
             <BalanceChangeChart slots={slots} selectedMonth={history.selectedMonth} scope={scope} />
           </div>
         </section>
-        <PositionAttribution summary={summary} quoted={quoted} />
+        <PositionAttribution summary={summary} quoted={quoted || Boolean(history.bond)} />
       </div>
 
       {singleAllocation ? null : (
         <PositionAllocation slot={snapshot} selectedMonth={history.selectedMonth} classTotals={history.classTotals} />
       )}
 
+      {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} monthId={editing && !editing.month.isLocked ? editing.month.id : null} positionId={editing?.position?.id ?? null} /> : null}
       {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
 
       <PositionMonthsTable
@@ -479,7 +481,7 @@ export function PositionDetail({
         transactions={transactions}
         quoted={quoted}
         dollars={dollarBalance}
-        editableMonthId={editing && !editing.month.isLocked ? editing.month.id : null}
+        editableMonthId={editing && !editing.month.isLocked && !history.bond ? editing.month.id : null}
         editableAccountId={history.accountId}
         showAccountLabels={scope === "all"}
         removing={isRemoving}

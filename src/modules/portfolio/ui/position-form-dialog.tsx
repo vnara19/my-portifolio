@@ -2,6 +2,7 @@
 
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
+import { InternationalBondForm } from "./international-bond-form";
 import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
@@ -576,6 +577,8 @@ function PositionForm({
   const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? identity?.currency ?? (kind && !isMarketKind(kind) ? baseCurrencyOf(kind, symbol) : null);
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
 
+
+  if (!editing && kind === "international-bond") return <InternationalBondForm month={month} account={account} onSaved={onSaved} onBack={() => { resetFields(); setKind(null); }} />;
 
   return (
     <>

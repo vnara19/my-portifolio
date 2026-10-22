@@ -194,7 +194,7 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
       unitPriceBrl: true,
       totalBrl: true,
       calculationStartDate: true,
-      asset: { select: { quoteSymbol: true, name: true, autoIncome: true } },
+      asset: { select: { quoteSymbol: true, name: true, autoIncome: true, assetType: true } },
     },
   });
 
@@ -202,19 +202,21 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
     throw new MonthEditError("The position does not belong to this reporting month.");
   }
 
+  if (position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and coupon form to change this holding.");
   return position;
 }
 
 async function findMonthTransaction(transaction: Transaction, monthId: string, transactionId: string) {
   const entry = await transaction.positionTransaction.findFirst({
     where: { id: transactionId, position: { portfolioMonthId: monthId } },
-    select: { id: true, kind: true, positionId: true, transferId: true },
+    select: { id: true, kind: true, positionId: true, transferId: true, position: { select: { asset: { select: { assetType: true } } } } },
   });
 
   if (!entry) {
     throw new MonthEditError("The transaction does not belong to the open reporting month or has already been deleted.");
   }
 
+  if (entry.position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and cash receipt form for this holding.");
   return entry;
 }
 
