@@ -226,7 +226,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
-    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate(""); 
+    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
