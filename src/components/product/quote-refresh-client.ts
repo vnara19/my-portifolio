@@ -158,7 +158,7 @@ async function execute(onDataChanged: () => void) {
     }
 
     const payload = (await response.json()) as OpenCheckResponse;
-    const quotesChanged = payload.summary ? noteSummary(payload.summary) : false;
+    const quotesChanged = (payload.summary ? noteSummary(payload.summary) : false) || payload.fixedIncomeChanged === true;
 
     if (payload.summary) {
       setState({ summary: payload.summary });

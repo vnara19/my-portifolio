@@ -129,3 +129,18 @@ export async function fetchCdiDailySoap(startDay: string, endDay: string) {
     return [{ date: `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`, dailyPercent: value[1].replace(",", ".") }];
   });
 }
+
+/** SGS 433 observations are monthly inflation percentages, not daily rates. */
+export async function fetchIpcaMonthly(startDay: string, endDay: string) {
+  const url = new URL("https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados");
+  url.searchParams.set("formato", "json");
+  url.searchParams.set("dataInicial", sgsDate(`${startDay.slice(0, 7)}-01`));
+  url.searchParams.set("dataFinal", sgsDate(endDay));
+  const payload = cdiSchema.parse(await fetchJson(url));
+  return payload.map((entry) => {
+    const [day, month, year] = entry.data.split("/");
+    const value = entry.valor.replace(",", ".");
+    if (day !== "01" || !/^-?\d+(?:\.\d+)?$/.test(value) || Number(value) <= -100) throw new ProviderRefusalError("INVALID_RESPONSE", "Invalid monthly IPCA observation.");
+    return { date: `${year}-${month}-01`, dailyPercent: value };
+  });
+}

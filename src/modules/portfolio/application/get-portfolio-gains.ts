@@ -1,3 +1,4 @@
+import { readFixedIncomeContract } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { getUserDb } from "@/lib/user-db";
 import { portfolioGains, unavailableGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { convertBrl } from "@/modules/portfolio/domain/reporting-currency";
@@ -13,7 +14,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
       orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: { kind: true, occurredOn: true, quantity: true, amountBrl: true, transferId: true, position: { select: { accountId: true, assetId: true } } },
     }),
-    db.position.findMany({ where: { portfolioMonth: { referenceDate }, quantity: { gt: 0 } }, select: { accountId: true, assetId: true, quantity: true, totalBrl: true } }),
+    db.position.findMany({ where: { portfolioMonth: { referenceDate }, quantity: { gt: 0 } }, select: { accountId: true, assetId: true, quantity: true, totalBrl: true, asset: { select: { fixedIncomeContract: true, quoteSymbol: true } } } }),
     db.dailyQuote.findMany({ where: { symbol: "USD", quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
   ]);
   const historicalRate = (date: Date) => {
@@ -24,5 +25,5 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   const holding = (row: { accountId: string; assetId: string }) => `${row.accountId}:${row.assetId}`;
   return portfolioGains(transactions.map((row) => ({
     holding: holding(row.position), kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: row.amountBrl.toNumber(), usdRate: historicalRate(row.occurredOn), transferId: row.transferId,
-  })), positions.map((row) => ({ holding: holding(row), quantity: row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) })));
+  })), positions.map((row) => ({ holding: holding(row), quantity: readFixedIncomeContract(row.asset?.fixedIncomeContract) && !row.asset.quoteSymbol ? transactions.filter((entry) => holding(entry.position) === holding(row)).reduce((sum, entry) => sum + (entry.kind === "WITHDRAWAL" ? -1 : 1) * entry.quantity.toNumber(), 0) : row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) })));
 }

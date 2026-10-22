@@ -224,3 +224,31 @@ Official prices still power portfolio valuation and the security catalog; they n
 replace the personal acquisition data. Yield labels distinguish IPCA/IGP-M and Selic
 spreads from fixed annual yields. Official indexer display labels normalize Prefixado,
 Selic and acronyms without changing provider values or stored security identities.
+
+
+## Brazilian bank deposits
+
+Brazilian Fixed Income covers CDB, LCI and LCA with principal and interest paid at
+maturity, in BRL. Product, issuer, invested principal, purchase/maturity dates,
+rate, redemption and (for fixed/IPCA) interest basis are explicit. It generates a
+lot-specific asset name, automatic fixed-income allocation and dated original cost.
+A nullable fixedIncomeContract JSON column preserves the terms through backups.
+No CRI/CRA coupon, amortization, bank-account connection or net-redemption tax
+calculator is implied by this form. US/European direct bonds remain separate work.
+
+CDI uses observed BCB SGS 12 daily rates. Fixed annual yield supports 252 Brazilian
+business days or 365 calendar days. Both stop at maturity. IPCA+ is explicitly a
+reference estimate: published SGS 433 monthly inflation is compounded pro rata by
+calendar days, multiplied by the contracted real-yield factor. Missing future
+inflation contributes no invented inflation; the contractual fixed component can
+continue. This is not an issuer-specific anniversary/lag calculation or a bank
+redemption quote. Gaps inside observed inflation coverage fail without replacing
+the known balance. Contract holdings are recalculated from original dated cash
+movements across reporting months so late inflation releases are not permanently
+lost at month rollover. Estimates are identified in the form, position list and
+income panel. The automatic quote job refreshes both rate series.
+
+The asynchronous open check also refreshes the signed-in user's structured bank
+deposits, reusing the three-hour shared rate cache, and refreshes the view only when
+balances/errors change. It does not run a full market quote sync or block page
+navigation. Scheduled rate jobs still perform portfolio-wide refreshes.

@@ -5,7 +5,8 @@ import { addDays as addCalendarDays, isBusinessDay } from "@/modules/portfolio/d
 import { calculateIncomeMonth, type CdiMovement } from "@/modules/portfolio/domain/cdi-valuation";
 import { autoIncomeParts } from "@/modules/portfolio/domain/fixed-income-policy";
 import { calendarDay, toDateKey } from "@/modules/quotes/domain/calendar";
-import { fetchCdiDaily } from "@/modules/quotes/infrastructure/bcb";
+import { readFixedIncomeContract } from "@/modules/portfolio/domain/brazilian-fixed-income";
+import { fetchCdiDaily, fetchIpcaMonthly } from "@/modules/quotes/infrastructure/bcb";
 import { describeProviderError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
 
 
@@ -27,11 +28,14 @@ const MAX_WINDOW_DAYS = 5 * 365;
 
 const CDI_POSITION_SELECT = {
   id: true,
+  userId: true,
+  accountId: true,
+  assetId: true,
   openingQuantity: true,
   calculationStartDate: true,
   calculatedIncomeBrl: true,
   portfolioMonth: { select: { referenceDate: true } },
-  asset: { select: { autoIncome: true, maturityDate: true, quoteSymbol: true } },
+  asset: { select: { autoIncome: true, maturityDate: true, quoteSymbol: true, fixedIncomeContract: true, appliedOn: true } },
   allocations: { select: { subclass: true, weight: true, ratePercent: true } },
   transactions: {
     orderBy: [{ occurredOn: "asc" as const }, { createdAt: "asc" as const }],
@@ -153,9 +157,10 @@ export async function valueCdiPositions(
     return results;
   }
 
+  const rateStart = (position: CdiPosition) => readFixedIncomeContract(position.asset.fixedIncomeContract) && position.asset.appliedOn ? position.asset.appliedOn : position.calculationStartDate!;
   const cdiPositions = positions.filter((position) => position.allocations.some((allocation) => allocation.subclass === "Pós-fixado"));
   const earliest = cdiPositions.reduce<Date | null>(
-    (min, position) => (!min || position.calculationStartDate! < min ? position.calculationStartDate! : min),
+    (min, position) => (!min || rateStart(position) < min ? rateStart(position) : min),
     null,
   );
 
@@ -176,12 +181,20 @@ export async function valueCdiPositions(
   const until = asOf ?? toDateKey(calendarDay(now));
   const verifiedUntil = lastVerified ? minDay(until, nextDay(lastVerified)) : until;
 
+  const ipcaStart = positions.filter((position) => position.allocations.some((allocation) => allocation.subclass === "IPCA")).reduce<Date | null>((earliest, position) => !earliest || rateStart(position) < earliest ? rateStart(position) : earliest, null);
+  const ipcaRates = ipcaStart ? await client.rateObservation.findMany({ where: { indexer: "IPCA", date: { gte: new Date(previousMonthStart(toDateKey(ipcaStart))) } }, select: { date: true, dailyPercent: true } }) : [];
+  const ipcaList = ipcaRates.map((rate) => ({ date: toDateKey(rate.date), dailyPercent: rate.dailyPercent.toString() }));
   for (const position of positions) {
     const prefixed = !cdiPositions.includes(position);
 
 
     const evaluation = minDay(prefixed ? until : verifiedUntil, nextMonthStart(position.portfolioMonth.referenceDate));
-    const result = valueOne(position, { rates: rateList, windows, asOf: evaluation });
+    let calculation = position;
+    if (readFixedIncomeContract(position.asset.fixedIncomeContract) && position.asset.appliedOn) {
+      const movements = await client.positionTransaction.findMany({ where: { userId: position.userId, position: { accountId: position.accountId, assetId: position.assetId, portfolioMonth: { referenceDate: { lte: position.portfolioMonth.referenceDate } } } }, orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }], select: { kind: true, occurredOn: true, amountBrl: true } });
+      calculation = { ...position, openingQuantity: new Prisma.Decimal(0), calculationStartDate: position.asset.appliedOn, transactions: movements };
+    }
+    const result = valueOne(calculation, { rates: rateList, windows, asOf: evaluation, ipcaRates: ipcaList });
 
     if (result.state === "calculated") {
       await client.position.update({
@@ -189,7 +202,9 @@ export async function valueCdiPositions(
         data: {
           quantity: new Prisma.Decimal(result.balance),
           totalBrl: new Prisma.Decimal(result.balance),
-          calculatedIncomeBrl: new Prisma.Decimal(result.income),
+          calculatedIncomeBrl: readFixedIncomeContract(position.asset.fixedIncomeContract)
+            ? new Prisma.Decimal(result.balance).minus(position.openingQuantity).minus(position.transactions.reduce((sum, movement) => sum.plus(movement.kind === "WITHDRAWAL" ? movement.amountBrl.negated() : movement.amountBrl), new Prisma.Decimal(0)))
+            : new Prisma.Decimal(result.income),
           incomeCalculatedThrough: result.lastRateDate ? new Date(`${result.lastRateDate}T00:00:00.000Z`) : null,
           incomeCalculationError: null,
         },
@@ -209,7 +224,7 @@ export async function valueCdiPositions(
 
 function valueOne(
   position: CdiPosition,
-  { rates, windows, asOf }: { rates: { date: string; dailyPercent: string }[]; windows: { from: string; through: string }[]; asOf: string },
+  { rates, windows, asOf, ipcaRates = [] }: { ipcaRates?: { date: string; dailyPercent: string }[]; rates: { date: string; dailyPercent: string }[]; windows: { from: string; through: string }[]; asOf: string },
 ) {
   const start = toDateKey(position.calculationStartDate!);
   const parts = autoIncomeParts(position.asset, position.allocations);
@@ -223,6 +238,8 @@ function valueOne(
   }
 
   return calculateIncomeMonth({
+    annualBasis: readFixedIncomeContract(position.asset.fixedIncomeContract)?.basis,
+    ipcaRates,
     openingBalance: position.openingQuantity.toString(),
     startDate: start,
     asOf: asOf < start ? start : asOf,
@@ -274,6 +291,12 @@ export async function syncCdi(
   }
 
   const rates = await syncCdiRates(prisma, { now, fetchRates, monthIds });
+  await syncIpcaRates(prisma, monthIds, now);
+  const contracts = await prisma.asset.findMany({ where: { fixedIncomeContract: { not: Prisma.DbNull }, positions: { some: { portfolioMonthId: { in: monthIds } } } }, select: { fixedIncomeContract: true, appliedOn: true } });
+  for (const asset of contracts) {
+    const contract = readFixedIncomeContract(asset.fixedIncomeContract);
+    if (contract && asset.appliedOn) await primeFixedIncomeRates(prisma, contract.indexer, toDateKey(asset.appliedOn), now);
+  }
   await completePreviousCloses(prisma, monthIds);
 
   const results = await valueCdiPositions(prisma, { where: { portfolioMonthId: { in: monthIds } }, now });
@@ -353,4 +376,70 @@ function lastBusinessDayBefore(day: string) {
   }
 
   return cursor;
+}
+
+
+/** Monthly observations are reused; no projection or daily inflation series is invented. */
+export async function syncIpcaRates(prisma: PrismaClient, monthIds: string[], now = new Date(), fetchRates = fetchIpcaMonthly) {
+  const first = await prisma.position.findFirst({ where: { ...CDI_POSITION_WHERE, portfolioMonthId: { in: monthIds }, allocations: { some: { subclass: "IPCA" } } }, orderBy: { calculationStartDate: "asc" }, select: { calculationStartDate: true } });
+  if (!first?.calculationStartDate) return;
+  const start = previousMonthStart(toDateKey(first.calculationStartDate));
+  const latest = await prisma.rateCoverage.findFirst({ where: { indexer: "IPCA", fromDate: { lte: new Date(start) } }, orderBy: { fetchedAt: "desc" } });
+  if (latest && now.getTime() - latest.fetchedAt.getTime() < RATES_REFRESH_MS) return;
+  try {
+    const observations = await fetchRates(start, toDateKey(calendarDay(now)));
+    if (!observations.length) return;
+    const valid = observations.filter((rate) => rate.date >= start && rate.date <= toDateKey(calendarDay(now)) && /^\d{4}-\d{2}-01$/.test(rate.date) && Number.isFinite(Number(rate.dailyPercent)) && Number(rate.dailyPercent) > -100);
+    if (valid.length !== observations.length) throw new Error("Invalid IPCA observations.");
+    await prisma.rateObservation.createMany({ data: valid.map((rate) => ({ indexer: "IPCA", date: new Date(rate.date), dailyPercent: rate.dailyPercent, source: "bcb-sgs-433-monthly", fetchedAt: now })), skipDuplicates: true });
+    const through = valid.map((rate) => rate.date).sort().at(-1)!;
+    await prisma.rateCoverage.upsert({ where: { indexer_fromDate_throughDate: { indexer: "IPCA", fromDate: new Date(start), throughDate: new Date(through) } }, create: { indexer: "IPCA", fromDate: new Date(start), throughDate: new Date(through), lastPublishedDate: new Date(through), fetchedAt: now }, update: { fetchedAt: now } });
+  } catch { /* Valuation reports unavailable if no official observations are present. */ }
+}
+
+/** Warm shared observations before opening the private position-write transaction. */
+export async function primeFixedIncomeRates(prisma: PrismaClient, indexer: string, from: string, now = new Date()) {
+  if (indexer === "PRE") return;
+  const today = toDateKey(calendarDay(now));
+  const start = indexer === "IPCA" ? previousMonthStart(from) : from;
+  const cached = await prisma.rateCoverage.findFirst({ where: { indexer, fromDate: { lte: new Date(start) } }, orderBy: { fetchedAt: "desc" } });
+  if (cached && now.getTime() - cached.fetchedAt.getTime() < RATES_REFRESH_MS) return;
+  try {
+    const observations: { date: string; dailyPercent: string }[] = [];
+    for (let cursor = start; cursor <= today; cursor = nextDay(addDays(cursor, MAX_WINDOW_DAYS))) {
+      const end = minDay(today, addDays(cursor, MAX_WINDOW_DAYS));
+      observations.push(...await (indexer === "IPCA" ? fetchIpcaMonthly : fetchCdiDaily)(cursor, end));
+    }
+    if (!observations.length) return;
+    if (observations.some((rate) => rate.date < start || rate.date > today || !/^\d{4}-\d{2}-\d{2}$/.test(rate.date) || !Number.isFinite(Number(rate.dailyPercent)) || (indexer === "CDI" ? Number(rate.dailyPercent) < 0 : Number(rate.dailyPercent) <= -100))) throw new Error("Invalid reference observations.");
+    await prisma.rateObservation.createMany({ data: observations.map((rate) => ({ indexer, date: new Date(rate.date), dailyPercent: rate.dailyPercent, source: indexer === "IPCA" ? "bcb-sgs-433-monthly" : "bcb-sgs-12", fetchedAt: now })), skipDuplicates: true });
+    const through = observations.map((rate) => rate.date).sort().at(-1)!;
+    await prisma.rateCoverage.upsert({ where: { indexer_fromDate_throughDate: { indexer, fromDate: new Date(start), throughDate: new Date(through) } }, create: { indexer, fromDate: new Date(start), throughDate: new Date(through), lastPublishedDate: new Date(through), fetchedAt: now }, update: { fetchedAt: now } });
+  } catch { /* Keep the acquisition; valuation exposes missing data rather than a fabricated return. */ }
+}
+
+
+function previousMonthStart(day: string) {
+  return new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10);
+}
+
+/** Refresh only the current user's structured bank deposits, outside navigation's render path. */
+export async function refreshFixedIncomeForUser(now = new Date()) {
+  const { getUserDb } = await import("@/lib/user-db");
+  const db = await getUserDb();
+  if (!db) return false;
+  const day = calendarDay(now);
+  const referenceDate = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1));
+  const before = await db.position.findMany({ where: { portfolioMonth: { referenceDate }, asset: { autoIncome: true, fixedIncomeContract: { not: Prisma.DbNull } } }, select: { id: true, userId: true, portfolioMonthId: true, totalBrl: true, incomeCalculationError: true, asset: { select: { fixedIncomeContract: true, appliedOn: true } } } });
+  if (!before.length) return false;
+  for (const row of before) {
+    const contract = readFixedIncomeContract(row.asset.fixedIncomeContract);
+    if (contract && row.asset.appliedOn) await primeFixedIncomeRates(db, contract.indexer, toDateKey(row.asset.appliedOn), now);
+  }
+  await db.$transaction(async (transaction) => {
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${before[0].userId}), hashtext(${before[0].portfolioMonthId}))`;
+    await valueCdiPositions(transaction, { where: { id: { in: before.map((row) => row.id) } }, now });
+  }, { maxWait: 10_000, timeout: 30_000 });
+  const after = await db.position.findMany({ where: { id: { in: before.map((row) => row.id) } }, select: { id: true, totalBrl: true, incomeCalculationError: true } });
+  return after.some((row) => { const old = before.find((entry) => entry.id === row.id)!; return !row.totalBrl.equals(old.totalBrl) || row.incomeCalculationError !== old.incomeCalculationError; });
 }

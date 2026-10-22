@@ -28,7 +28,7 @@ type MonthInput = {
 };
 
 
-export type IncomeMonthPart = { indexer: "CDI" | "PRE"; weight: string; ratePercent: string };
+export type IncomeMonthPart = { indexer: "CDI" | "PRE" | "IPCA"; weight: string; ratePercent: string };
 
 
 type DailyFactor = (day: string) => { factor: InstanceType<typeof Decimal> } | { skip: true } | { error: string };
@@ -56,6 +56,8 @@ export function calculateIncomeMonth(input: MonthInput & {
   parts: IncomeMonthPart[];
   rates: CdiRate[];
   verifiedCoverage: RateWindow[];
+  ipcaRates?: CdiRate[];
+  annualBasis?: "BUSINESS_252" | "CALENDAR_365";
 }): CdiValuation {
   const parts = input.parts.map((part) => ({ ...part, weight: decimal(part.weight), rate: decimal(part.ratePercent) }));
 
@@ -73,9 +75,27 @@ export function calculateIncomeMonth(input: MonthInput & {
   const factors = parts.map((part) => {
     const weight = part.weight!.div(total);
 
+    if (part.indexer === "IPCA") {
+      const monthly = new Map((input.ipcaRates ?? []).map((rate) => [rate.date.slice(0, 7), rate.dailyPercent]));
+      const lastMonth = [...monthly.keys()].sort().at(-1);
+      const fixed = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(input.annualBasis === "CALENDAR_365" ? 365 : 252));
+      return { weight, factor: (day: string): ReturnType<DailyFactor> => {
+        if (!lastMonth) return { error: "Official monthly IPCA data is unavailable. The known balance was preserved." };
+        const month = day.slice(0, 7);
+        const observed = monthly.get(month);
+        if (observed === undefined && month <= lastMonth) return { error: `Missing official IPCA observation for ${month}. The known balance was preserved.` };
+        const value = observed === undefined ? new Decimal(0) : decimal(observed);
+        if (!value || value.lte(-100)) return { error: `Invalid IPCA observation for ${month}.` };
+        const days = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0)).getUTCDate();
+        const inflation = new Decimal(1).plus(value.div(100)).pow(new Decimal(1).div(days));
+        const interest = input.annualBasis === "CALENDAR_365" || isBusinessDay(day) ? fixed : new Decimal(1);
+        return { factor: inflation.mul(interest) };
+      } };
+    }
+
     if (part.indexer === "PRE") {
-      const daily = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(252));
-      return { weight, factor: (day: string) => (isBusinessDay(day) ? { factor: daily } : { skip: true as const }) };
+      const daily = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(input.annualBasis === "CALENDAR_365" ? 365 : 252));
+      return { weight, factor: (day: string) => ((input.annualBasis === "CALENDAR_365" || isBusinessDay(day)) ? { factor: daily } : { skip: true as const }) };
     }
 
     const percentage = part.rate!.div(100);

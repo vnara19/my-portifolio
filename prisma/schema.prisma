@@ -489,6 +489,7 @@ model Account {
 }
 
 model Asset {
+  fixedIncomeContract Json? @map("fixed_income_contract")
   id              String     @id @default(uuid()) @db.Uuid
   userId          String     @map("user_id") @db.Uuid
   normalizedKey   String     @map("normalized_key")

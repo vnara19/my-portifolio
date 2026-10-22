@@ -30,13 +30,14 @@ import { autoIncomeParts, indexerOfSubclass, supportsAutoIncome } from "@/module
 import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import { classificationIssue } from "@/modules/portfolio/domain/classification";
 import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
-import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
+import { primeFixedIncomeRates, valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
 import { readVerifiedTicker } from "@/modules/quotes/application/check-ticker";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
 import { addMonths, calendarDay, currentReferenceMonth, lastDayOf, toDateKey } from "@/modules/quotes/domain/calendar";
 import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
 
 import { automaticAllocation } from "../domain/automatic-allocation";
+import { brazilianFixedIncomeSchema, fixedIncomeName, fixedIncomeAllocation, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { preparePurchase } from "./prepare-purchase";
 import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
 import { readCurrentTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
@@ -61,6 +62,7 @@ export type NewAccountInput = {
 };
 
 export type NewAssetInput = {
+  fixedIncomeContract?: BrazilianFixedIncome;
   name: string;
   kind: AssetKind;
   ticker: string | null;
@@ -200,13 +202,22 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const newAsset = input.addition.newAsset;
+  const fixed = newAsset?.kind === "fixed-income" && newAsset.fixedIncomeContract ? brazilianFixedIncomeSchema.parse(newAsset.fixedIncomeContract) : null;
+  if (fixed) {
+    if (fixed.indexer === "CDI") fixed.basis = "BUSINESS_252";
+    newAsset!.fixedIncomeContract = fixed;
+    if (!newAsset!.appliedOn || !newAsset!.maturityDate || newAsset!.maturityDate <= newAsset!.appliedOn) throw new MonthEditError("Enter a maturity date after the purchase date.");
+    if (fixed.indexer !== "CDI" && Number(fixed.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");
+    newAsset!.name = fixedIncomeName(fixed, newAsset!.maturityDate!, newAsset!.appliedOn!);
+    newAsset!.autoIncome = true;
+  }
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
   const cashKind = newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind);
   const treasury = newAsset?.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", newAsset.ticker ?? "") ?? "" }) : null;
   if (newAsset?.kind === "treasury" && (!treasury || treasury.maturityDate <= toDateKey(calendarDay(new Date())))) throw new MonthEditError("Choose an outstanding security from the official Tesouro Direto list.");
-  const seeds = treasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(treasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(treasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
-  const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: null })) : input.addition.allocations;
+  const seeds = fixed ? [fixedIncomeAllocation(fixed, newAsset!.appliedOn!, newAsset!.maturityDate!)] : treasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(treasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(treasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : cashKind ? automaticAllocation(newAsset.kind, normalizeTicker(newAsset.kind, "")) : identity ? marketAllocation(identity) : newAsset?.kind === "crypto" ? automaticAllocation("crypto", newAsset.ticker) : null;
+  const allocationInputs = seeds ? seeds.map((seed) => ({ ...seed, weightPercent: "100", ratePercent: fixed?.rate ?? null })) : input.addition.allocations;
   const allocations = allocationInputs.length ? parseAllocations(allocationInputs) : [];
 
   const db = input.addition.purchase ? await getUserDb() : null;
@@ -248,7 +259,15 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     }
   }
 
+  let fixedFx: Awaited<ReturnType<typeof fetchReferenceFxLatest>> | null = null;
+  if (fixed) {
+    const fixedDb = await requirePrisma();
+    if (newAsset!.appliedOn! > toDateKey(calendarDay(new Date()))) throw new MonthEditError("The purchase date cannot be in the future.");
+    fixedFx = await fetchReferenceFxLatest("USD", newAsset!.appliedOn!);
+    await primeFixedIncomeRates(fixedDb, fixed.indexer, newAsset!.appliedOn!);
+  }
   return withUndo(input.monthId, async (transaction, month) => {
+    if (fixedFx) await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(fixedFx.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fixedFx.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     const positions = await transaction.position.findMany({
       where: { portfolioMonthId: month.id },
       select: { id: true, accountId: true, assetId: true },
@@ -814,6 +833,7 @@ async function resolveAdditionAsset(
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance" || input.kind === "eur-balance"),
 
       assetType: identity?.assetType ?? input.kind,
+      ...(input.kind === "fixed-income" && input.fixedIncomeContract ? { fixedIncomeContract: input.fixedIncomeContract } : {}),
       ...incomeOfNewAsset(input),
     },
     select: { id: true },

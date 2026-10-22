@@ -69,7 +69,7 @@ const TABLE_SPECS: Record<BackupTableKey, TableSpec> = {
     omit: OWNED,
     references: { institutionId: "institutions" },
   },
-  assets: { model: "asset", table: "assets", fields: Prisma.AssetScalarFieldEnum, omit: OWNED },
+  assets: { model: "asset", table: "assets", fields: Prisma.AssetScalarFieldEnum, omit: OWNED, nullableJson: ["fixedIncomeContract"] },
   portfolioMonths: {
     model: "portfolioMonth",
     table: "portfolio_months",

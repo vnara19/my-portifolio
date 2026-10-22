@@ -109,7 +109,7 @@ test("transactions after the latest rate accrue once coverage arrives", () => {
 test("automatic accrual requires rates for every eligible allocation and excludes market quotes", () => {
   assert.equal(indexerOfSubclass("Pós-fixado"), "CDI");
   assert.equal(indexerOfSubclass("Prefixado"), "PRE");
-  assert.equal(indexerOfSubclass("IPCA"), null);
+  assert.equal(indexerOfSubclass("IPCA"), "IPCA");
   const post = { subclass: "Pós-fixado", weight: "0.7", ratePercent: "105" };
   const pre = { subclass: "Prefixado", weight: "0.3", ratePercent: "12" };
   assert.deepEqual(incomeParts([post, pre]), [

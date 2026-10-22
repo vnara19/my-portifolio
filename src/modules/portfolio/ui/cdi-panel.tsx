@@ -23,13 +23,19 @@ export function CdiPanel({ cdi }: { cdi: CdiView }) {
         </h2>
       </div>
 
+      {cdi.contract ? <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Item label="Product" value={cdi.contract.product} />
+        <Item label="Issuer" value={cdi.contract.issuer} />
+        <Item label="Interest basis" value={cdi.contract.basis === "CALENDAR_365" ? "365 calendar days" : "252 business days"} />
+      </dl> : null}
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Item label="Month opening balance" value={formatBrl(cdi.baseBrl)} />
         <Item label="Calculated return" value={formatBrl(cdi.incomeBrl)} />
-        <Item label="Gross balance" value={formatBrl(cdi.balanceBrl)} />
+        <Item label={cdi.parts.some((part) => part.indexer === "IPCA") ? "Estimated gross balance" : "Gross balance"} value={formatBrl(cdi.balanceBrl)} />
         <Item label="Accrued through" value={cdi.through ? day(cdi.through) : "—"} />
       </dl>
 
+      {cdi.parts.some((part) => part.indexer === "IPCA") ? <div className="mt-2"><Item label="Published IPCA through" value={cdi.inflationThrough ? cdi.inflationThrough.split("-").reverse().join("/") : "Unavailable"} /></div> : null}
       {cdi.error ? (
         <p role="status" className="mt-3 text-[11px] text-warning-foreground">
           {cdi.error}

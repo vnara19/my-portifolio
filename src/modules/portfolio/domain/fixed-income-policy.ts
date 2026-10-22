@@ -2,7 +2,7 @@
 /** Automatic accrual applies only to eligible fixed-income and BRL cash allocations; market-quoted assets are excluded. */
 
 
-export type AutoIncomeIndexer = "CDI" | "PRE";
+export type AutoIncomeIndexer = "CDI" | "PRE" | "IPCA";
 
 
 export const AUTO_INCOME_TYPES = ["fixed-income", "brl-cash"] as const;
@@ -11,6 +11,7 @@ export const AUTO_INCOME_TYPES = ["fixed-income", "brl-cash"] as const;
 export const AUTO_INCOME_SUBCLASSES: Record<string, AutoIncomeIndexer> = {
   "Pós-fixado": "CDI",
   Prefixado: "PRE",
+  IPCA: "IPCA",
 };
 
 export function supportsAutoIncome(assetType: string | null | undefined) {

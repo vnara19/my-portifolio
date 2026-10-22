@@ -92,8 +92,8 @@ export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
   },
   "fixed-income": {
     kind: "fixed-income",
-    label: "Fixed Income",
-    hint: "BRL balance",
+    label: "Brazilian Fixed Income",
+    hint: "CDB, LCI and LCA",
     ticker: null,
     provider: null,
     instrumentType: null,

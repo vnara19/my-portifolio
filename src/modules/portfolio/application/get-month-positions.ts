@@ -35,6 +35,7 @@ export type MonthPosition = {
 
   assetTypeInferred: boolean;
 
+  fixedIncomeEstimate?: boolean;
   autoIncome?: boolean;
   appliedOn?: string | null;
   calculationStartDate?: string | null;
@@ -118,6 +119,7 @@ export async function getMonthPositions(
                   maturityDate: true,
                   liquidity: true,
                   cashAccount: true,
+                  fixedIncomeContract: true,
                   autoIncome: true,
                   appliedOn: true,
                   assetType: true,
@@ -205,6 +207,7 @@ export async function getMonthPositions(
             cashAccount: position.asset.cashAccount,
             assetType: assetTypeOf(position.asset),
             assetTypeInferred: position.asset.assetType === null,
+            fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,
             calculationStartDate: position.calculationStartDate ? toDateKey(position.calculationStartDate) : null,

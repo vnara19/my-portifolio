@@ -37,3 +37,9 @@ exports must continue restoring. Financial JSON exports remain outside Git.
 
 Legacy family/income backup formats and database tables are retained historically;
 their application screens and routes are retired from the investment-only workspace.
+
+
+`assets.fixedIncomeContract` is optional nullable JSON in version 5. Older backups
+without it continue to restore. It retains the Brazilian bank-deposit product,
+issuer, indexer, contracted rate and interest basis. The shared monthly IPCA
+observations are regenerated, like CDI; they are not private backup data.
