@@ -266,16 +266,6 @@ Issuer metadata is manual except the Brazil 2037, Ireland 2037 and Citigroup
 US172967KU42 public references. Citigroup fixed-coupon terms are verified against
 the SEC note (4.125%, semi-annual, 30/360 US, maturity 2028-07-25).
 It does not claim to verify arbitrary issuer terms or provide an automatic price feed.
-The form begins with the identifier. Complete reference terms appear as a read-only
-summary; only missing metadata is requested. Unknown identifiers never default to a
-country, currency, family or structure. A recognized Citigroup entry needs six user
-inputs: identifier, quantity, total paid, actual purchase settlement date, price
-including interest per bond and its observation date. Price type/format are optional
-alternative inputs and reset the entered price when changed back to the normal
-format. The interest basis is not a user guess: verified reference rules calculate
-interest, otherwise actual purchase interest must be entered explicitly. Regular
-fixed-coupon entries require rate, frequency and a coupon anchor if not known.
-An optional purchase-interest adjustment accepts the exact receipt amount.
 
 Tagged international-bond metadata shares the existing nullable fixedIncomeContract
 JSON column. Brazilian contract readers reject this separate shape. No database
