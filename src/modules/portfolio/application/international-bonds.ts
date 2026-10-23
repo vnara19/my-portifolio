@@ -7,12 +7,15 @@ import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfur
 import { calendarDay, lastDayOf, toDateKey, currentReferenceMonth } from "@/modules/quotes/domain/calendar";
 
 /** Quotes and actual cash receipts are private. Editing shares the portfolio month lock. */
-export async function updateBond(input: { monthId: string; positionId: string; date: string; marketValue: string; source: string; coupon?: string; redeemedFace?: string; principalReceived?: string }) {
+export async function updateBond(input: { monthId: string; positionId: string; date: string; marketValue?: string; source?: string; coupon?: string; redeemedFace?: string; principalReceived?: string }) {
   const db = await getUserDb();
   if (!db) throw new MonthEditError("The database is unavailable.");
   const owned = await db.position.findFirst({ where: { id: input.positionId, portfolioMonthId: input.monthId }, select: { asset: { select: { fixedIncomeContract: true } }, portfolioMonth: { select: { referenceDate: true } } } });
   const original = readInternationalBond(owned?.asset.fixedIncomeContract);
   if (!original) throw new MonthEditError("This position is not an international bond.");
+  const atCost = original.valuationMode === "Cost";
+  if (atCost && (input.marketValue !== undefined || (!input.coupon && !input.redeemedFace))) throw new MonthEditError("Record a coupon or principal receipt without a market price.");
+  if (!atCost && (input.marketValue === undefined || !input.source)) throw new MonthEditError("Enter the full market value and source.");
   if (input.date < original.settlementDate || input.date > toDateKey(calendarDay(new Date()))) throw new MonthEditError("Enter a valuation date between settlement and today.");
   const valuationDay = toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(owned!.portfolioMonth.referenceDate).getTime())));
   const [fx, couponFx, usd] = await Promise.all([fetchReferenceFxLatest(original.currency, valuationDay), fetchReferenceFxLatest(original.currency, input.date), fetchReferenceFxLatest("USD", input.date)]);
@@ -24,6 +27,7 @@ export async function updateBond(input: { monthId: string; positionId: string; d
     if (input.date < bond.settlementDate || input.date > end) throw new MonthEditError("The valuation date must follow settlement and cannot exceed the reporting date.");
     if ((input.coupon || input.redeemedFace) && input.date < toDateKey(position.portfolioMonth.referenceDate)) throw new MonthEditError("Record coupon receipts in their actual reporting month.");
     if ((input.coupon || input.redeemedFace) && bond.quotes.some((q) => q.date > input.date)) throw new MonthEditError("Cash receipts must include a valuation no earlier than the latest saved valuation.");
+    if (atCost && bond.costEvents?.some((event) => event.date > input.date)) throw new MonthEditError("Record receipts in date order.");
     const currentQuotes = await readMonthQuoteValues(tx, position.portfolioMonth.referenceDate, [bond.currency]);
     const currentFx = currentQuotes.get(bond.currency)?.valueBrl ?? new Prisma.Decimal(fx.value);
     if (input.coupon || input.redeemedFace) await tx.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(usd.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
@@ -36,10 +40,12 @@ export async function updateBond(input: { monthId: string; positionId: string; d
       const duplicate = await tx.positionTransaction.findFirst({ where: { occurredOn: new Date(input.date), kind: "WITHDRAWAL", note: { startsWith: "Bond principal:" }, position: { assetId: position.assetId, accountId: position.accountId } } });
       if (duplicate) throw new MonthEditError("A principal repayment is already recorded for this holding on that date.");
       faceHeld = faceHeld.minus(face);
-      if (faceHeld.eq(0) && new Prisma.Decimal(input.marketValue).gt(0)) throw new MonthEditError("Enter zero market value after full redemption.");
+      if (!atCost && faceHeld.eq(0) && new Prisma.Decimal(input.marketValue!).gt(0)) throw new MonthEditError("Enter zero market value after full redemption.");
       await tx.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: position.id, kind: "WITHDRAWAL", occurredOn: new Date(input.date), quantity: face, amountBrl: new Prisma.Decimal(input.principalReceived).mul(cashFx).toDecimalPlaces(2), note: `Bond principal: ${bond.currency} ${input.principalReceived}; face redeemed ${input.redeemedFace}.` } });
     }
-    const updated: InternationalBond = { ...bond, quotes: [...bond.quotes.filter((q) => q.date !== input.date), { date: input.date, marketValue: input.marketValue, source: input.source }] };
+    const updated: InternationalBond = atCost
+      ? { ...bond, costEvents: [...(bond.costEvents ?? []), { date: input.date, coupon: input.coupon ?? "0", redeemedFace: input.redeemedFace ?? "0" }] }
+      : { ...bond, quotes: [...bond.quotes.filter((q) => q.date !== input.date), { date: input.date, marketValue: input.marketValue!, source: input.source! }] };
     internationalBondSchema.parse(updated);
     // The supplied full valuation is after any coupon received on this date.
     if (input.coupon) {

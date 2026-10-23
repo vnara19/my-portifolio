@@ -14,13 +14,13 @@ test("full broker value is converted once and does not add coupon accrual again"
   const valuation = bondValue(bond, "2026-10-22", "5");
   assert.equal(valuation.totalBrl.toFixed(2), "52500.00");
   assert.equal(valuation.unitPriceBrl.toFixed(8), "5.25000000");
-  assert.equal(valuation.quote.date, "2026-10-01");
+  assert.equal(valuation.quote!.date, "2026-10-01");
   const euro = bondValue({ ...bond, currency: "EUR", issuerCountry: "United States" }, "2026-10-22", "6");
   assert.equal(euro.totalBrl.toFixed(2), "63000.00");
 });
 test("bond valuation selects dated history, preserves zero values and handles principal repayments", () => {
   const later = { ...bond, quotes: [...bond.quotes, { date: "2026-11-01", marketValue: "10600", source: "Broker" }] };
-  assert.equal(bondValue(later, "2026-10-31", 5).quote.marketValue, "10500");
+  assert.equal(bondValue(later, "2026-10-31", 5).quote!.marketValue, "10500");
   assert.throws(() => bondValue(later, "2026-09-01", 5));
   assert.throws(() => bondValue(later, "2026-10-31", 0));
   assert.equal(bondValue({ ...bond, quotes: [{ date: "2026-10-22", marketValue: "5000", source: "Broker" }] }, "2026-10-22", 5, "5000").unitPriceBrl.toString(), "5");
@@ -94,4 +94,46 @@ test("purchase accrued interest is entered per bond and stored for the fractiona
   assert.throws(() => purchaseBondInterest("", "1.5"));
   assert.throws(() => purchaseBondInterest("-1", "1.5"));
   assert.throws(() => purchaseBondInterest("10.43", "0"));
+});
+
+test("hold-to-maturity entries need no quotation and carry actual cost without forecast income", async () => {
+  const { bondCostState } = await import("@/modules/portfolio/domain/international-bond");
+  const cost = internationalBondSchema.parse({ ...bond, valuationMode: "Cost", quotes: [], totalPaid: "9800", accruedInterestPaid: "50" });
+  const value = bondValue(cost, "2026-10-23", 5);
+  assert.equal(value.quote, null);
+  assert.equal(value.totalBrl.toString(), "49000");
+  assert.equal(bondValue(cost, "2026-12-31", 5).totalBrl.toString(), "49000");
+  assert.equal(bondCostState(cost, "2026-10-23").interest.toString(), "50");
+  assert.equal(readInternationalBond({ ...cost, quotes: bond.quotes }), null);
+  assert.equal(readInternationalBond({ ...bond, quotes: [] }), null);
+  assert.throws(() => bondValue(cost, "2025-01-01", 5));
+});
+
+test("cost receipts recover prepaid interest without creating unrealized gains and preserve historical values", async () => {
+  const cost = internationalBondSchema.parse({ ...bond, valuationMode: "Cost", quotes: [], totalPaid: "9800", accruedInterestPaid: "50", costEvents: [{ date: "2026-10-23", coupon: "100", redeemedFace: "0" }, { date: "2026-11-23", coupon: "0", redeemedFace: "5000" }] });
+  assert.equal(bondValue(cost, "2026-10-22", 1).totalBrl.toString(), "9800");
+  assert.equal(bondValue(cost, "2026-10-23", 1).totalBrl.toString(), "9750");
+  assert.equal(bondValue(cost, "2026-11-23", 1, "5000").totalBrl.toString(), "4875");
+  assert.throws(() => bondValue(cost, "2026-11-23", 1, "10000"));
+  const { portfolioGains } = await import("@/modules/portfolio/domain/portfolio-gains");
+  const gains = portfolioGains([
+    { holding: "bond", kind: "CONTRIBUTION", quantity: 10000, amountBrl: 9800, usdRate: 1, transferId: null },
+    { holding: "bond", kind: "INCOME", quantity: 0, amountBrl: 100, costRecoveryUsd: 50, usdRate: 1, transferId: null },
+  ], [{ holding: "bond", quantity: 10000, valueUsd: bondValue(cost, "2026-10-23", 1).totalBrl.toNumber() }]);
+  assert.equal(gains.unrealizedUsd, 0); assert.equal(gains.realizedUsd, 50);
+  assert.deepEqual(readInternationalBond(JSON.parse(JSON.stringify(cost))), cost);
+});
+
+test("cost cash history rejects invalid repayments and never changes legacy market tracking", () => {
+  const cost = { ...bond, valuationMode: "Cost", quotes: [], costEvents: [{ date: "2026-10-23", coupon: "0", redeemedFace: "10000" }] };
+  assert.equal(bondValue(internationalBondSchema.parse(cost), "2026-10-23", 5, "0").totalBrl.toString(), "0");
+  assert.equal(readInternationalBond({ ...cost, costEvents: [{ date: "2026-10-23", coupon: "0", redeemedFace: "10001" }] }), null);
+  assert.equal(readInternationalBond({ ...cost, costEvents: [{ date: "2025-01-01", coupon: "0", redeemedFace: "0" }] }), null);
+  assert.equal(bondValue(bond, "2026-10-23", 5).quote?.marketValue, "10500");
+});
+
+test("cost-tracked detail return includes received coupons and principal without a price gain", async () => {
+  const { bondCostReturn } = await import("@/modules/portfolio/domain/international-bond");
+  assert.deepEqual(bondCostReturn(9750, [{ kind: "CONTRIBUTION", amountBrl: 9800 }, { kind: "INCOME", amountBrl: 100 }]), { gainBrl: 50, contributionsBrl: 9800 });
+  assert.equal(bondCostReturn(4875, [{ kind: "CONTRIBUTION", amountBrl: 9800 }, { kind: "INCOME", amountBrl: 100 }, { kind: "WITHDRAWAL", amountBrl: 5000 }]).gainBrl, 175);
 });

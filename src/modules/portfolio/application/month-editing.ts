@@ -209,6 +209,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const bond = newAsset?.kind === "international-bond" ? internationalBondSchema.parse(newAsset.bondContract) : null;
   const today = toDateKey(calendarDay(new Date()));
   if (bond) {
+    if (bond.valuationMode === "Cost" && bond.costEvents?.length) throw new MonthEditError("Record cash receipts after creating the bond purchase.");
     if (bond.settlementDate > today || bond.quotes.some((quote) => quote.date > today)) throw new MonthEditError("Bond dates cannot be in the future.");
     newAsset!.bondContract = bond;
     newAsset!.name = bondName(bond);

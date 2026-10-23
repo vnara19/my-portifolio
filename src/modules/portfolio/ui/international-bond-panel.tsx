@@ -5,12 +5,13 @@ import { undoChangeAction } from "@/app/actions/edit-month";
 import { updateBondAction } from "@/app/actions/international-bonds";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { type InternationalBond, BOND_FAMILIES, scheduledBondCoupons, fixedBondAccrued, bondPriceToHoldingValue } from "../domain/international-bond";
+import { type InternationalBond, BOND_FAMILIES, scheduledBondCoupons, fixedBondAccrued, bondPriceToHoldingValue, bondCostState } from "../domain/international-bond";
 import { Prisma } from "@/generated/prisma/browser";
 import { Picker } from "@/components/ui/picker";
 import { formatCurrency, normalizeLocaleNumberInput } from "../presentation/portfolio-format";
 import { Field, inputClass } from "./edit-dialogs";
 export function InternationalBondPanel({ bond, asOf, monthId, positionId, faceHeld }: { bond: InternationalBond; asOf: string; monthId: string | null; positionId: string | null; faceHeld: number }) {
+  const atCost = bond.valuationMode === "Cost";
   const quote = bond.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0];
   const [value, setValue] = useState(""); const [date, setDate] = useState(""); const [coupon, setCoupon] = useState("");
   const [priceType, setPriceType] = useState("Dirty"); const [quoteAccrued, setQuoteAccrued] = useState("");
@@ -28,7 +29,7 @@ export function InternationalBondPanel({ bond, asOf, monthId, positionId, faceHe
     if (!monthId || !positionId) return;
     let marketValue = normalizeLocaleNumberInput(value) ?? value;
     try {
-      if (bond.faceValuePerBond && faceHeld > 0) {
+      if (!atCost && bond.faceValuePerBond && faceHeld > 0) {
         const remainingFace = new Prisma.Decimal(faceHeld).sub(normalizeLocaleNumberInput(redeemed) ?? (redeemed || "0"));
         let accruedInterest = "0";
         if (priceType === "Clean") {
@@ -42,7 +43,7 @@ export function InternationalBondPanel({ bond, asOf, monthId, positionId, faceHe
       }
     } catch (e) { setMessage(e instanceof Error ? e.message : "Review the price."); return; }
     start(async () => {
-      const result = await updateBondAction({ monthId, positionId, date, source: "User Price", marketValue, ...(coupon.trim() ? { coupon: normalizeLocaleNumberInput(coupon) ?? coupon } : {}), ...(redeemed.trim() || principal.trim() ? { redeemedFace: normalizeLocaleNumberInput(redeemed) ?? redeemed, principalReceived: normalizeLocaleNumberInput(principal) ?? principal } : {}) });
+      const result = await updateBondAction({ monthId, positionId, date, ...(atCost ? {} : { source: "User Price", marketValue }), ...(coupon.trim() ? { coupon: normalizeLocaleNumberInput(coupon) ?? coupon } : {}), ...(redeemed.trim() || principal.trim() ? { redeemedFace: normalizeLocaleNumberInput(redeemed) ?? redeemed, principalReceived: normalizeLocaleNumberInput(principal) ?? principal } : {}) });
       setMessage(result.message);
       if (result.ok) { setUndoToken(result.undoToken ?? null); setValue(""); setCoupon(""); setRedeemed(""); setPrincipal(""); router.refresh(); }
     });
@@ -52,8 +53,8 @@ export function InternationalBondPanel({ bond, asOf, monthId, positionId, faceHe
     <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
       {field("ISIN / CUSIP", bond.identifier)}{field("Issuer", bond.issuer)}{field("Issuer Country", bond.issuerCountry)}
       {field("Bond Type", BOND_FAMILIES[bond.family])}{field("Bond Currency", bond.currency)}{field("Nominal Amount Held", money(String(faceHeld)))}
-      {field("Original Total Paid, Including Interest and Fees", money(bond.totalPaid))}{field("Full Market Value", quote ? money(quote.marketValue) : "Unavailable")}
-      {field("Price Date", quote?.date ?? "Unavailable")}
+      {field("Original Total Paid, Including Interest and Fees", money(bond.totalPaid))}
+      {atCost ? field("Carrying Value at Cost", money(bondCostState(bond, asOf).cost.toFixed())) : <>{field("Full Market Value", quote ? money(quote.marketValue) : "Unavailable")}{field("Price Date", quote?.date ?? "Unavailable")}</>}
       {bond.maturityDate ? field("Maturity Date", bond.maturityDate) : null}
       {bond.fixedCoupon ? field("Annual Coupon", `${bond.fixedCoupon.annualRate}%`) : null}
       {schedule[0] ? field("Next Scheduled Coupon", `${schedule[0].date} · ${money(schedule[0].amount)} Gross`) : null}
@@ -67,19 +68,19 @@ export function InternationalBondPanel({ bond, asOf, monthId, positionId, faceHe
       <p className="text-xs text-muted-foreground">Contractual dates · Before taxes · No reinvestment · Receipts recorded separately</p>
     </div> : null}
     {monthId && positionId && (faceHeld > 0 || undoToken) ? <div className="mt-5 space-y-3 border-t border-border pt-4">
-      <h3 className="text-sm font-medium">Valuation / Cash Receipts</h3>
+      <h3 className="text-sm font-medium">{atCost ? "Cash Receipts" : "Valuation / Cash Receipts"}</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={bond.faceValuePerBond && priceBasis === "Percent" ? "Current Price (%)" : `${bond.faceValuePerBond ? "Current Price per Bond" : "Position Value After Payment"} (${bond.currency})`}><input aria-label="Bond current price" inputMode="decimal" placeholder={bond.faceValuePerBond ? priceBasis === "Percent" ? "99.231" : "992.31" : "10150.00"} className={inputClass} value={value} onChange={(e) => setValue(e.target.value)} /></Field>
-        <Field label="Valuation / Receipt Date"><DatePicker aria-label="Bond valuation date" value={date} onChange={setDate} /></Field>
-        {bond.faceValuePerBond ? <Field label="Price Type"><Picker aria-label="Updated bond price type" searchable={false} value={priceType} onValueChange={setPriceType} options={[{ value: "Dirty", label: "Dirty Price · Includes Interest" }, { value: "Clean", label: "Clean Price · Excludes Interest" }]} /></Field> : null}
-        {bond.faceValuePerBond ? <Field label="Price Format"><Picker aria-label="Updated bond price format" searchable={false} value={priceBasis} onValueChange={setPriceBasis} options={[{ value: "PerBond", label: `Amount per Bond (${bond.currency})` }, { value: "Percent", label: "Percentage of Face Value" }]} /></Field> : null}
-        {bond.faceValuePerBond && priceType === "Clean" && bond.fixedCoupon?.dayCount !== "30/360 US" ? <Field label={`Current Accrued Interest per Bond (${bond.currency})`}><input aria-label="Current accrued interest per bond" inputMode="decimal" className={inputClass} value={quoteAccrued} onChange={(e) => setQuoteAccrued(e.target.value)} /></Field> : null}
+        {!atCost ? <Field label={bond.faceValuePerBond && priceBasis === "Percent" ? "Current Price (%)" : `${bond.faceValuePerBond ? "Current Price per Bond" : "Position Value After Payment"} (${bond.currency})`}><input aria-label="Bond current price" inputMode="decimal" placeholder={bond.faceValuePerBond ? priceBasis === "Percent" ? "99.231" : "992.31" : "10150.00"} className={inputClass} value={value} onChange={(e) => setValue(e.target.value)} /></Field> : null}
+        <Field label={atCost ? "Receipt Date" : "Valuation / Receipt Date"}><DatePicker aria-label={atCost ? "Bond receipt date" : "Bond valuation date"} value={date} onChange={setDate} /></Field>
+        {!atCost && bond.faceValuePerBond ? <Field label="Price Type"><Picker aria-label="Updated bond price type" searchable={false} value={priceType} onValueChange={setPriceType} options={[{ value: "Dirty", label: "Dirty Price · Includes Interest" }, { value: "Clean", label: "Clean Price · Excludes Interest" }]} /></Field> : null}
+        {!atCost && bond.faceValuePerBond ? <Field label="Price Format"><Picker aria-label="Updated bond price format" searchable={false} value={priceBasis} onValueChange={setPriceBasis} options={[{ value: "PerBond", label: `Amount per Bond (${bond.currency})` }, { value: "Percent", label: "Percentage of Face Value" }]} /></Field> : null}
+        {!atCost && bond.faceValuePerBond && priceType === "Clean" && bond.fixedCoupon?.dayCount !== "30/360 US" ? <Field label={`Current Accrued Interest per Bond (${bond.currency})`}><input aria-label="Current accrued interest per bond" inputMode="decimal" className={inputClass} value={quoteAccrued} onChange={(e) => setQuoteAccrued(e.target.value)} /></Field> : null}
         <Field label={`Coupon Received (${bond.currency}, Optional)`}><input aria-label="Bond coupon received" inputMode="decimal" className={inputClass} placeholder="250.00" value={coupon} onChange={(e) => setCoupon(e.target.value)} /></Field>
         <Field label={`Face Amount Repaid (${bond.currency}, Optional)`}><input aria-label="Bond face amount repaid" inputMode="decimal" className={inputClass} placeholder="1000.00" value={redeemed} onChange={(e) => setRedeemed(e.target.value)} /></Field>
         <Field label={`Principal Received (${bond.currency}, Optional)`}><input aria-label="Bond principal received" inputMode="decimal" className={inputClass} placeholder="1000.00" value={principal} onChange={(e) => setPrincipal(e.target.value)} /></Field>
       </div>
       {message ? <p role="status" className="text-sm">{message}</p> : null}
-      <div className="flex gap-2"><Button disabled={pending || faceHeld <= 0} onClick={save}>{pending ? "Saving…" : "Save Valuation"}</Button>{undoToken ? <Button variant="outline" disabled={pending} onClick={() => start(async () => { const result = await undoChangeAction(undoToken); setMessage(result.message); if (result.ok) { setUndoToken(null); router.refresh(); } })}>Undo Update</Button> : null}</div>
+      <div className="flex gap-2"><Button disabled={pending || faceHeld <= 0} onClick={save}>{pending ? "Saving…" : atCost ? "Record Receipt" : "Save Valuation"}</Button>{undoToken ? <Button variant="outline" disabled={pending} onClick={() => start(async () => { const result = await undoChangeAction(undoToken); setMessage(result.message); if (result.ok) { setUndoToken(null); router.refresh(); } })}>Undo Update</Button> : null}</div>
     </div> : null}
   </section>;
 }

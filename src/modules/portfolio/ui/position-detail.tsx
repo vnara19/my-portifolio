@@ -1,4 +1,5 @@
 "use client";
+import { bondCostReturn } from "../domain/international-bond";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -164,6 +165,8 @@ export function PositionDetail({
 
   const transactions = view.transactions;
   const quoted = Boolean(history.quoteSymbol);
+  const atCost = history.bond?.valuationMode === "Cost";
+  const costReturn = atCost && summary.current ? bondCostReturn(summary.current.valueBrl, transactions.filter((entry) => entry.occurredOn <= history.referenceDay)) : null;
   const dollarBalance = history.quoteSymbol === "USD";
   const current = summary.current;
   const snapshot = current ?? lastPresentUpTo(slots, history.selectedMonth) ?? firstPresent(slots);
@@ -393,6 +396,8 @@ export function PositionDetail({
 
       <div className="mt-7">
         <PositionKpis
+          costReturn={costReturn}
+          atCost={atCost}
           summary={summary}
           quoted={quoted}
           quoteSymbol={history.quoteSymbol}
@@ -406,7 +411,7 @@ export function PositionDetail({
 
 
       <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="position-evolution-title">
-        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">Position value over time
+        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">{atCost ? "Carrying value over time" : "Position value over time"}
         </h2>
         <div className="mt-5">
           <PositionEvolutionChart
@@ -457,7 +462,7 @@ export function PositionDetail({
             <BalanceChangeChart slots={slots} selectedMonth={history.selectedMonth} scope={scope} />
           </div>
         </section>
-        <PositionAttribution summary={summary} quoted={quoted || Boolean(history.bond)} />
+        {!atCost ? <PositionAttribution summary={summary} quoted={quoted || Boolean(history.bond)} /> : null}
       </div>
 
       {singleAllocation ? null : (
@@ -617,6 +622,8 @@ export function PositionDetail({
 }
 
 function PositionKpis({
+  costReturn,
+  atCost,
   summary,
   quoted,
   quoteSymbol,
@@ -626,6 +633,8 @@ function PositionKpis({
   firstEver,
   dollarBalance,
 }: {
+  costReturn?: { gainBrl: number; contributionsBrl: number } | null;
+  atCost?: boolean;
   summary: PositionSummary;
   quoted: boolean;
   quoteSymbol: string | null;
@@ -638,8 +647,9 @@ function PositionKpis({
   const current = summary.current;
   const step = summary.monthStep;
   const applied = summary.appliedBrl ?? null;
-  const gain = summary.gainBrl ?? null;
-  const gainPercent = gain !== null && applied ? (gain / applied) * 100 : null;
+  const gain = costReturn?.gainBrl ?? summary.gainBrl ?? null;
+  const denominator = costReturn?.contributionsBrl ?? applied;
+  const gainPercent = gain !== null && denominator ? (gain / denominator) * 100 : null;
   const average = summary.averagePriceBrl;
   const absent = !current
     ? summary.state === "before" && firstEver
@@ -651,7 +661,7 @@ function PositionKpis({
   return (
     <section aria-label="Position metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
-        label="Position value"
+        label={atCost ? "Carrying value at cost" : "Position value"}
         testId="position-value"
         valueText={current ? brlWhole.format(current.valueBrl) : "—"}
         icon={<CoinsIcon aria-hidden="true" size={18} weight="duotone" />}

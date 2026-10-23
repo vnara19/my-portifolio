@@ -40,8 +40,18 @@ export const internationalBondSchema = z.object({
   accruedInterestPaid: nonnegative.default("0"),
   fixedCoupon: fixedBondCouponSchema.optional(),
   faceValuePerBond: amount.optional(),
-  quotes: z.array(bondQuoteSchema).min(1).max(5000),
+  valuationMode: z.enum(["Cost", "Market"]).optional(),
+  costEvents: z.array(z.object({ date: bondDay, coupon: nonnegative, redeemedFace: nonnegative })).max(5000).optional(),
+  quotes: z.array(bondQuoteSchema).max(5000),
 }).superRefine((bond, ctx) => {
+  if (bond.valuationMode !== "Cost" && !bond.quotes.length) ctx.addIssue({ code: "custom", path: ["quotes"], message: "Enter a dated market valuation." });
+  if (bond.valuationMode === "Cost" && bond.quotes.length) ctx.addIssue({ code: "custom", path: ["quotes"], message: "Cost holdings do not accept market quotations." });
+  if (bond.costEvents?.length && bond.valuationMode !== "Cost") ctx.addIssue({ code: "custom", path: ["costEvents"], message: "Cost events require cost tracking." });
+  if (bond.costEvents?.some((event, i, events) => event.date < bond.settlementDate || (i > 0 && event.date < events[i - 1].date))) ctx.addIssue({ code: "custom", path: ["costEvents"], message: "Cash receipts must follow the purchase and prior receipts." });
+  if (bond.valuationMode === "Cost") {
+    try { bondCostState(bond, "2100-12-31"); }
+    catch { ctx.addIssue({ code: "custom", path: ["costEvents"], message: "The cost history repays more than the original holding." }); }
+  }
   if (new Prisma.Decimal(bond.accruedInterestPaid).gte(bond.totalPaid)) ctx.addIssue({ code: "custom", path: ["accruedInterestPaid"], message: "Accrued interest must be less than the total paid." });
   if (bond.maturityDate && bond.maturityDate <= bond.settlementDate) ctx.addIssue({ code: "custom", path: ["maturityDate"], message: "Maturity must follow settlement." });
   if (bond.quotes.some((quote) => quote.date < bond.settlementDate)) ctx.addIssue({ code: "custom", path: ["quotes"], message: "A quote cannot precede settlement." });
@@ -56,19 +66,49 @@ export function purchaseBondInterest(perBond: string, quantity: string) {
   amount.parse(quantity);
   return new Prisma.Decimal(perBond).mul(quantity).toDecimalPlaces(8).toFixed();
 }
+export function bondCostReturn(currentBrl: number, movements: { kind: string; amountBrl: number }[]) {
+  const contributions = movements.filter((m) => m.kind === "OPENING" || m.kind === "CONTRIBUTION").reduce((sum, m) => sum.add(m.amountBrl), new Prisma.Decimal(0));
+  const receipts = movements.filter((m) => m.kind === "INCOME" || m.kind === "WITHDRAWAL").reduce((sum, m) => sum.add(m.amountBrl), new Prisma.Decimal(0));
+  return { gainBrl: new Prisma.Decimal(currentBrl).add(receipts).sub(contributions).toDecimalPlaces(2).toNumber(), contributionsBrl: contributions.toNumber() };
+}
 export function readInternationalBond(value: unknown): InternationalBond | null { const parsed = internationalBondSchema.safeParse(value); return parsed.success ? parsed.data : null; }
 export function bondName(bond: InternationalBond) { return `${bond.issuer.slice(0, 28)} · ${bond.identifier} · ${bond.settlementDate}`; }
 export function bondAllocation(bond: InternationalBond) {
   return { assetClass: "Renda Fixa", subclass: bond.structure === "Floating" ? "Pós-fixado" : bond.structure === "Inflation" ? "Inflation Linked" : bond.structure === "Fixed" || bond.structure === "Zero" ? "Prefixado" : "International Bonds", duration: bond.maturityDate && Date.parse(bond.maturityDate) - Date.parse(bond.settlementDate) <= 2 * 366 * 86400000 ? "Curto" : bond.maturityDate && Date.parse(bond.maturityDate) - Date.parse(bond.settlementDate) <= 5 * 366 * 86400000 ? "Médio" : "Longo" };
 }
 /** A full broker valuation includes accrued interest and principal/index factors. It is never a clean bond quote. */
-export function bondValue(bond: InternationalBond, asOf: string, fxBrl: string | number, faceHeld: string = bond.faceAmount) {
-  const quote = bond.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (!quote) throw new Error("No dated full market value is available for this reporting month.");
+export function bondCostState(bond: { settlementDate: string; faceAmount: string; totalPaid: string; accruedInterestPaid: string; costEvents?: { date: string; coupon: string; redeemedFace: string }[] }, asOf: string) {
+  if (asOf < bond.settlementDate) throw new Error("The reporting date precedes the purchase.");
+  let face = new Prisma.Decimal(bond.faceAmount), cost = new Prisma.Decimal(bond.totalPaid), interest = new Prisma.Decimal(bond.accruedInterestPaid);
+  for (const event of (bond.costEvents ?? []).filter((e) => e.date <= asOf)) {
+    const redeemed = new Prisma.Decimal(event.redeemedFace);
+    if (redeemed.gt(face)) throw new Error("The principal repayment exceeds the remaining holding.");
+    if (redeemed.gt(0)) {
+      const proportion = redeemed.div(face);
+      cost = cost.mul(new Prisma.Decimal(1).sub(proportion));
+      interest = interest.mul(new Prisma.Decimal(1).sub(proportion));
+      face = face.sub(redeemed);
+    }
+    const recovered = Prisma.Decimal.min(interest, new Prisma.Decimal(event.coupon));
+    interest = interest.sub(recovered);
+    cost = cost.sub(recovered);
+  }
+  return { face, cost, interest };
+}
+export function bondValue(bond: InternationalBond, asOf: string, fxBrl: string | number, faceHeld?: string) {
   const fx = new Prisma.Decimal(fxBrl);
   if (!fx.isFinite() || fx.lte(0)) throw new Error("The bond currency exchange rate is unavailable.");
+  if (bond.valuationMode === "Cost") {
+    const state = bondCostState(bond, asOf);
+    if (faceHeld !== undefined && state.face.sub(faceHeld).abs().gt("0.00000001")) throw new Error("The holding does not match its cost history.");
+    const total = state.cost.mul(fx);
+    return { quote: null, unitPriceBrl: state.face.gt(0) ? total.div(state.face).toDecimalPlaces(8) : new Prisma.Decimal(0), totalBrl: total.toDecimalPlaces(2) };
+  }
+  const quote = bond.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (!quote) throw new Error("No dated full market value is available for this reporting month.");
+  const held = new Prisma.Decimal(faceHeld ?? bond.faceAmount);
   const total = new Prisma.Decimal(quote.marketValue).mul(fx);
-  return { quote, unitPriceBrl: new Prisma.Decimal(faceHeld).gt(0) ? total.div(faceHeld).toDecimalPlaces(8) : new Prisma.Decimal(0), totalBrl: total.toDecimalPlaces(2) };
+  return { quote, unitPriceBrl: held.gt(0) ? total.div(held).toDecimalPlaces(8) : new Prisma.Decimal(0), totalBrl: total.toDecimalPlaces(2) };
 }
 
 function shiftCouponDate(anchor: string, months: number) {

@@ -270,13 +270,21 @@ It does not claim to verify arbitrary issuer terms or provide an automatic price
 Tagged international-bond metadata shares the existing nullable fixedIncomeContract
 JSON column. Brazilian contract readers reject this separate shape. No database
 migration or backup-version change is required. Acquisition lots preserve face
-amount, actual settlement date and the total paid in the bond denomination, including
+amount, acquisition date (settlement date for legacy market records) and the total paid in the bond denomination, including
 fees and accrued interest. ECB reference FX converts reporting values; a broker's
 EUR payment conversion is not a change in the bond denomination.
 
-Stored observations remain full monetary holding values including accrued interest
-and any principal/index factor. New entries accept fractional quantity, face value
-per bond and dated prices per bond or as a percentage of par. Dirty prices already
+Legacy market-tracked holdings retain their dated observations and receipt workflow.
+New International Bonds entries use `valuationMode: Cost` with an empty quotation
+array. The Current Price section is absent. Purchase Date is the actual acquisition
+date (stored in the legacy `settlementDate` timeline key); no settlement date or
+settlement-based purchase-interest calculation is inferred. Receipt interest is
+entered per bond, except zero-coupon holdings which require no prepaid coupon.
+The remaining form fields and regular coupon terms are unchanged.
+
+For legacy market tracking, stored observations remain full monetary holding values including accrued interest
+and any principal/index factor. Holdings accept fractional quantity and face value per bond. Legacy market-tracked
+holdings accept dated price observations as before. Dirty prices already
 include interest; clean prices add contractual 30/360 US accrual or explicitly
 entered broker accrual. Total paid is the actual debit, including interest and fees.
 New entries require maturity; legacy perpetual records remain readable. The source
@@ -293,8 +301,8 @@ Interest Basis selector is replaced by purchase accrued interest per bond, in th
 regular coupon section (or the purchase section for other structures). A value
 entered from the purchase receipt is multiplied by fractional quantity before
 storing total prepaid interest; it is not added again to the total paid. The same
-field is not duplicated. Only verified reference terms enable automatic 30/360 US
-accrual when the field is blank; unknown rules require an explicit receipt value. The
+field is not duplicated. New cost-tracked purchases use the actual receipt interest
+rather than assuming Purchase Date is a settlement date. The
 gains engine removes the recovered portion from acquisition cost exactly once.
 Principal repayments remove face quantity and average
 acquisition cost; a full redemption requires zero remaining valuation. Repeated
@@ -303,7 +311,10 @@ a matching cash-account deposit or automatic reinvestment. Generic balance edits
 transactions and liquidation are blocked for bonds to preserve native face semantics.
 
 Current totals and overview fixed-income allocation use the latest saved full
-valuation. Gains use the original acquisition FX and recorded actual receipts.
+valuation for legacy market holdings, or remaining acquisition cost for cost
+holdings, converted with reporting FX. Gains use the original acquisition FX and
+recorded actual receipts. Cost detail return includes actual coupon and principal
+receipts; forecast coupons never enter recorded performance.
 Optional regular fixed-coupon terms preserve annual rate, frequency, an anchor
 coupon date and interest basis in the existing JSON contract. Contractual coupon
 schedules, remaining principal and original gross gain to maturity are calculated
@@ -317,3 +328,14 @@ market price. Legacy backups without the optional terms still restore.
 Yield to maturity, projected floating/indexed cash flows, automatic broker access
 and early-sale proceeds are not implemented. A new live price feed requires verified
 ISIN coverage and access; no subscription or broker connection has been created.
+
+Cost tracking carries the actual native acquisition cost, with daily reporting FX,
+and is labeled At Cost in Positions and Carrying Value at Cost in details. It never
+inserts a market quote, forecasts a market price or books scheduled coupons. Actual
+receipts need only a date and the coupon/principal amounts, without a valuation.
+Dated cost events reduce prepaid interest upon coupon reimbursement and reduce cost
+and remaining prepaid interest proportionally upon principal repayment. This keeps
+realized coupon profit separate from recovery of paid interest and avoids a false
+unrealized gain. Historical as-of costs, subsequent months, Undo and JSON backups
+retain these events. The cost-only mode is optional in the contract so prior market
+records continue to parse and keep their original financial semantics.
