@@ -43,3 +43,45 @@ test("coupon reimbursement of interest paid at purchase reduces cost without bec
   ], [{ holding: "bond", quantity: 10000, valueUsd: 10100 }]);
   assert.equal(gains.unrealizedUsd, 350); assert.equal(gains.realizedUsd, 50); assert.equal(gains.totalUsd, 400);
 });
+
+test("verified Citigroup terms produce fractional gross coupons and contractual 30/360 accrual", async () => {
+  const { bondReference } = await import("@/modules/portfolio/domain/bond-reference");
+  const { scheduledBondCoupons, fixedBondAccrued } = await import("@/modules/portfolio/domain/international-bond");
+  const citi = bondReference("US172967KU42")!;
+  assert.equal(bondReference("172967KU4")?.issuer, "Citigroup Inc.");
+  assert.equal(bondReference("US61690D6W39"), null);
+  const terms = citi.fixedCoupon!;
+  const schedule = scheduledBondCoupons(terms, "2026-10-23", citi.maturityDate, "1500");
+  assert.deepEqual(schedule, [
+    { date: "2027-01-25", amount: "30.9375" }, { date: "2027-07-25", amount: "30.9375" },
+    { date: "2028-01-25", amount: "30.9375" }, { date: "2028-07-25", amount: "30.9375" },
+  ]);
+  assert.equal(fixedBondAccrued(terms, "2026-10-23", "1000", citi.maturityDate).toFixed(8), "10.08333333");
+  assert.equal(fixedBondAccrued(terms, "2027-01-25", "1000", citi.maturityDate).toString(), "0");
+  assert.equal(fixedBondAccrued(terms, "2028-07-25", "1000", citi.maturityDate).toString(), "0");
+  assert.equal(scheduledBondCoupons(terms, "2028-07-25", citi.maturityDate, "1000").length, 0);
+  assert.throws(() => fixedBondAccrued({ ...terms, dayCount: "Manual" }, "2026-10-23", "1000", citi.maturityDate));
+});
+
+test("bond price formats convert fractional units once, adding interest only to clean prices", async () => {
+  const { bondPriceToHoldingValue } = await import("@/modules/portfolio/domain/international-bond");
+  const input = { price: "992.31", quantity: "1.5", faceValuePerBond: "1000", priceBasis: "PerBond" as const, priceType: "Dirty" as const, accruedInterest: "15.645" };
+  assert.equal(bondPriceToHoldingValue(input), "1488.465");
+  assert.equal(bondPriceToHoldingValue({ ...input, price: "99.231", priceBasis: "Percent" }), "1488.465");
+  assert.equal(bondPriceToHoldingValue({ ...input, price: "981.89", priceType: "Clean" }), "1488.48");
+  assert.throws(() => bondPriceToHoldingValue({ ...input, quantity: "0" }));
+  assert.throws(() => bondPriceToHoldingValue({ ...input, accruedInterest: "-10" }));
+});
+
+test("regular coupon metadata survives JSON restoration and rejects unsupported schedules", async () => {
+  const { bondReference } = await import("@/modules/portfolio/domain/bond-reference");
+  const citi = bondReference("US172967KU42")!;
+  const fixed = { ...bond, identifier: "US172967KU42", issuer: citi.issuer, maturityDate: citi.maturityDate, fixedCoupon: citi.fixedCoupon, faceValuePerBond: "1000" };
+  assert.deepEqual(readInternationalBond(JSON.parse(JSON.stringify(fixed))), fixed);
+  assert.equal(readInternationalBond({ ...fixed, maturityDate: "2028-08-10" }), null);
+  assert.equal(readInternationalBond({ ...fixed, structure: "Floating" }), null);
+  assert.equal(readInternationalBond({ ...fixed, fixedCoupon: { ...fixed.fixedCoupon, annualRate: "NaN" } }), null);
+  assert.equal(readInternationalBond({ ...fixed, fixedCoupon: { ...fixed.fixedCoupon, frequency: 3 } }), null);
+  assert.equal(readInternationalBond({ ...fixed, maturityDate: null }), null);
+  assert.notEqual(readInternationalBond(bond), null);
+});

@@ -262,7 +262,9 @@ International Bonds combines direct sovereign, corporate, agency, municipal,
 supranational, negotiable CD, covered and securitized holdings. Issuer country and
 USD/EUR denomination are independent. ETFs remain in their market categories.
 The manual form accepts any checksum-valid ISIN/CUSIP, not just reference examples.
-Issuer metadata is manual except the Brazil 2037 and Ireland 2037 public references.
+Issuer metadata is manual except the Brazil 2037, Ireland 2037 and Citigroup
+US172967KU42 public references. Citigroup fixed-coupon terms are verified against
+the SEC note (4.125%, semi-annual, 30/360 US, maturity 2028-07-25).
 It does not claim to verify arbitrary issuer terms or provide an automatic price feed.
 
 Tagged international-bond metadata shares the existing nullable fixedIncomeContract
@@ -272,8 +274,13 @@ amount, actual settlement date and the total paid in the bond denomination, incl
 fees and accrued interest. ECB reference FX converts reporting values; a broker's
 EUR payment conversion is not a change in the bond denomination.
 
-Manual observations are full monetary holding values including accrued interest and
-any principal/index factor, not clean prices per 100. They are dated and user-scoped;
+Stored observations remain full monetary holding values including accrued interest
+and any principal/index factor. New entries accept fractional quantity, face value
+per bond and dated prices per bond or as a percentage of par. Dirty prices already
+include interest; clean prices add contractual 30/360 US accrual or explicitly
+entered broker accrual. Total paid is the actual debit, including interest and fees.
+New entries require maturity; legacy perpetual records remain readable. The source
+is recorded internally without an IBKR default or a source input. Values are user-scoped;
 no daily market price or yield is invented. The current open month refreshes FX on
 the existing asynchronous open check while retaining the native quote's date.
 A new acquisition is not daily compounded using the Brazilian deposit engine.
@@ -291,6 +298,15 @@ transactions and liquidation are blocked for bonds to preserve native face seman
 
 Current totals and overview fixed-income allocation use the latest saved full
 valuation. Gains use the original acquisition FX and recorded actual receipts.
-Expected coupon schedules, yield to maturity, projected floating/indexed cash flows,
-automatic broker access and early-sale proceeds are not implemented. These require
-verified instrument terms and/or a separately entitled market feed.
+Optional regular fixed-coupon terms preserve annual rate, frequency, an anchor
+coupon date and interest basis in the existing JSON contract. Contractual coupon
+schedules, remaining principal and original gross gain to maturity are calculated
+without reinvestment or taxes and assume full contractual payment. Scheduled dates
+are not broker credit dates and do not insert cash receipts. 30/360 US accrual is
+available only when explicitly selected; other bases require broker accrued interest.
+Irregular schedules and non-fixed structures do not use this calculator. Price
+observations are never rolled forward with accrued interest to invent a current
+market price. Legacy backups without the optional terms still restore.
+Yield to maturity, projected floating/indexed cash flows, automatic broker access
+and early-sale proceeds are not implemented. A new live price feed requires verified
+ISIN coverage and access; no subscription or broker connection has been created.
