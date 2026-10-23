@@ -2,6 +2,7 @@
 
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
+import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
 import { InternationalBondForm } from "./international-bond-form";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -22,7 +23,7 @@ import { useEffect, useId, useState, useTransition, type ReactNode } from "react
 
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { Button } from "@/components/ui/button";
-import { fixedIncomeName, fixedIncomeAllocation, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
+import { fixedIncomeName, fixedIncomeAllocation, brazilianFixedIncomeSchema, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
 import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -168,6 +169,7 @@ function PositionForm({
   const [isSaving, startSaving] = useTransition();
   const bondFormId = useId();
   const [bondSaving, setBondSaving] = useState(false);
+  const [bondIssues, setBondIssues] = useState<string[]>(["Bond details"]);
 
 
   // General settings.
@@ -232,6 +234,7 @@ function PositionForm({
   const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
 
   const resetFields = () => {
+    setBondIssues(["Bond details"]);
     setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
@@ -419,7 +422,7 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
-  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
     issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the price per title, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
@@ -487,7 +490,7 @@ function PositionForm({
   }
 
   const tabsWithIssues = new Set(issues.map((issue) => issue.tab));
-  const visibleIssue = showIssues ? (issues.find((issue) => issue.tab === tab) ?? issues[0] ?? null) : null;
+  const visibleIssue = (showIssues || !editing) ? (issues.find((issue) => issue.tab === tab) ?? issues[0] ?? null) : null;
 
   const submit = () => {
     setError(null);
@@ -583,8 +586,36 @@ function PositionForm({
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
 
 
+  const fieldFeedback: Record<string, FieldFeedback> = {};
+  const requireField = (label: string, valid: boolean) => { fieldFeedback[label] = { valid }; };
+  requireField(entryType === "cash" ? "Currency" : "Asset type", Boolean(editing ? assetType : kind));
+  if (editing) requireField("Asset name", Boolean(typedName));
+  if (!editing && kind && !bondEntry) {
+    if (fixedIncomeEntry) {
+      requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
+      requireField("Amount invested", parsedValue !== null && parsedValue > 0);
+      requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
+      requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
+      requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success);
+    } else if (purchaseEntry) {
+      requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
+      requireField(kind === "treasury" ? "Titles Purchased" : "Quantity", parsedValue !== null && parsedValue > 0 && (kind !== "treasury" || Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) < 1e-7));
+      requireField(kind === "treasury" ? "Price per Title" : side === "SELL" ? "Sale price" : "Purchase price", purchaseUnit !== null && purchaseUnit > 0);
+      requireField(kind === "treasury" ? "Purchase date" : "Trade date", Boolean(purchaseDate) && purchaseDate <= latestPurchaseDay);
+      if (kind === "treasury") requireField(treasuryYieldLabel(selectedTreasury?.indexer), parseLocaleNumber(contractedRate) !== null);
+      else requireField("Commission", purchaseFee !== null && purchaseFee >= 0);
+      if (needsManualPrice) requireField("Quote in BRL", manualPriceValue !== null && manualPriceValue > 0);
+    } else {
+      requireField(entryType === "cash" ? "Cash name" : "Asset name", Boolean(typedName));
+      requireField(valueLabel, parsedValue !== null && parsedValue >= 0);
+    }
+  }
+  const remainingFields = Object.entries(fieldFeedback).filter(([, state]) => !state.valid).map(([label]) => label);
+  const activeIssues = bondEntry ? bondIssues : remainingFields;
+  const ready = bondEntry ? bondIssues.length === 0 : issues.length === 0;
+
   return (
-    <>
+    <FieldFeedbackProvider fields={fieldFeedback}>
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
@@ -717,7 +748,7 @@ function PositionForm({
 
           </PositionSection>
 
-          {bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} /> : <>
+          {bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
             {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
@@ -1050,7 +1081,7 @@ function PositionForm({
 
 
       <footer
-        data-issue-count={bondEntry ? 0 : issues.length}
+        data-issue-count={bondEntry ? bondIssues.length : issues.length}
         className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-4 sm:px-6"
       >
         <div className="min-w-0 flex-1 basis-56" aria-live="polite">
@@ -1059,6 +1090,14 @@ function PositionForm({
               <XCircleIcon aria-hidden="true" className="mt-px shrink-0" size={13} weight="fill" />
               {error}
             </p>
+          ) : !editing ? (
+            <div className="space-y-1.5" data-testid="position-form-progress">
+              <p className={cn("flex items-center gap-1.5 text-[11px]", ready ? "text-primary" : "text-destructive")}>
+                {ready ? <CheckCircleIcon aria-hidden="true" size={13} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={13} />}
+                {ready ? "Ready to add" : activeIssues.length ? `${activeIssues.length} required ${activeIssues.length === 1 ? "field" : "fields"} remaining` : "Review the details"}
+              </p>
+              {!ready ? <p className="text-[10px] leading-snug text-muted-foreground">{activeIssues.slice(0, 3).join(" · ") || visibleIssue?.message}{activeIssues.length > 3 ? " · …" : ""}</p> : null}
+            </div>
           ) : visibleIssue ? (
             <p className="flex items-start gap-1.5 text-[11px] leading-snug text-warning-foreground" data-testid="position-form-issue">
               <WarningCircleIcon aria-hidden="true" className="mt-px shrink-0" size={13} weight="fill" />
@@ -1068,13 +1107,13 @@ function PositionForm({
         </div>
         <div className="ml-auto flex gap-2">
           <Dialog.Close className={secondaryButtonClass} disabled={busy}>Cancel</Dialog.Close>
-          <button type={bondEntry ? "submit" : "button"} form={bondEntry ? bondFormId : undefined} onClick={bondEntry ? undefined : submit} disabled={busy || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
+          <button type={bondEntry ? "submit" : "button"} form={bondEntry ? bondFormId : undefined} onClick={bondEntry ? undefined : submit} disabled={busy || (!editing && !ready) || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
             {busy ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
             {busy ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </button>
         </div>
       </footer>
-    </>
+    </FieldFeedbackProvider>
   );
 }
 

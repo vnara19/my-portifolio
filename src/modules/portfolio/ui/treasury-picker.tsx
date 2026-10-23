@@ -34,7 +34,7 @@ export function prefetchTreasuryCatalog() {
 }
 
 
-export function TreasuryPicker({ value, onSelect }: { value: string | null; onSelect: (bond: TreasuryCatalogBond) => void }) {
+export function TreasuryPicker({ value, onSelect, invalid = false }: { invalid?: boolean; value: string | null; onSelect: (bond: TreasuryCatalogBond) => void }) {
   const [bonds, setBonds] = useState<TreasuryCatalogBond[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -54,6 +54,7 @@ export function TreasuryPicker({ value, onSelect }: { value: string | null; onSe
 
   return <div className="space-y-2">
     <Picker
+      invalid={invalid}
       aria-label="Tesouro Direto security"
       searchable={false}
       readOnly

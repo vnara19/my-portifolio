@@ -76,9 +76,7 @@ export function DatePicker({
 
     const day = masked.length === 10 ? fromDisplay(masked) : null;
 
-    if (day && withinRange(day, min, max)) {
-      onChange(day);
-    }
+    onChange(day && withinRange(day, min, max) ? day : "");
   };
 
   return (

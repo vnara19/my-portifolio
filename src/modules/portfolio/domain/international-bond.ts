@@ -44,6 +44,9 @@ export const internationalBondSchema = z.object({
   costEvents: z.array(z.object({ date: bondDay, coupon: nonnegative, redeemedFace: nonnegative })).max(5000).optional(),
   quotes: z.array(bondQuoteSchema).max(5000),
 }).superRefine((bond, ctx) => {
+  // Live form validation may reach refinements with incomplete decimal strings.
+  // Let the field schemas report those before performing Decimal arithmetic.
+  if (!amount.safeParse(bond.faceAmount).success || !amount.safeParse(bond.totalPaid).success || !nonnegative.safeParse(bond.accruedInterestPaid).success) return;
   if (bond.valuationMode !== "Cost" && !bond.quotes.length) ctx.addIssue({ code: "custom", path: ["quotes"], message: "Enter a dated market valuation." });
   if (bond.valuationMode === "Cost" && bond.quotes.length) ctx.addIssue({ code: "custom", path: ["quotes"], message: "Cost holdings do not accept market quotations." });
   if (bond.costEvents?.length && bond.valuationMode !== "Cost") ctx.addIssue({ code: "custom", path: ["costEvents"], message: "Cost events require cost tracking." });

@@ -262,8 +262,33 @@ International Bonds combines direct sovereign, corporate, agency, municipal,
 supranational, negotiable CD, covered and securitized holdings. Issuer country and
 USD/EUR denomination are independent. ETFs remain in their market categories.
 The manual form accepts any checksum-valid ISIN/CUSIP, not just reference examples.
-Issuer metadata is manual except the Brazil 2037, Ireland 2037 and Citigroup
-US172967KU42 public references. Citigroup fixed-coupon terms are verified against
+An authenticated same-origin `/api/bonds/reference` lookup accepts checksum-valid
+ISIN/CUSIP identifiers. OpenFIGI supplies instrument identification (not a presumed
+legal issuer or terms parsed from ticker text); U.S. Treasury Fiscal Data supplies
+confirmed sovereign terms by embedded/entered Treasury CUSIP. Queries run in
+parallel with bounded timeouts and an in-memory TTL cache. The Brazil 2037,
+Ireland 2037 and Citigroup US172967KU42 verified issuer references supplement
+available fields. No purchase amounts, dates or receipt interest are sent to providers.
+ESMA queries returned HTTP 502 during verification and are not presented as an
+operational provider. Paid services are not enabled. No universal free security
+master or complete coupon-calendar coverage is claimed.
+
+Only empty, untouched fields are auto-filled; identifier changes abort old lookups
+and reset the prior instrument. Conflicting provider terms are left manual. Each
+lookup reports source links and partial/unavailable results without blocking manual
+entry. Neither ISIN prefixes nor auction prices/minimum bids are used to infer
+issuer country, personal purchase cost or face value per bond.
+
+All position categories show live required/complete field indicators and a compact
+footer with outstanding fields. Add is disabled while validation is incomplete;
+server validation remains authoritative. Bond entry validation shares the contract
+schema, checks monetary relationships and regular coupon schedules, and requires
+the existing regular-coupon fields for Fixed Coupon entries. Other structures keep
+manual receipts. Blank selectors do not imply USD/corporate/fixed terms for an
+unknown identifier. Date controls clear their underlying value on invalid partial
+input, preventing an earlier valid date from silently keeping Add enabled.
+
+Citigroup fixed-coupon terms are verified against
 the SEC note (4.125%, semi-annual, 30/360 US, maturity 2028-07-25).
 It does not claim to verify arbitrary issuer terms or provide an automatic price feed.
 

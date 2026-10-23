@@ -2,7 +2,10 @@
 
 import { englishLabel } from "@/lib/english-labels";
 
-import type { ReactNode } from "react";
+import { cloneElement, isValidElement, type ReactNode, type ReactElement } from "react";
+import { CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react/dist/ssr";
+import { useFieldFeedback, fieldFeedbackBadge } from "./field-feedback";
+import { cn } from "@/lib/utils";
 
 import { headerButton } from "@/components/product/page-controls";
 import { Picker } from "@/components/ui/picker";
@@ -122,10 +125,22 @@ export function LiquidityPicker({
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
+  const feedback = useFieldFeedback(label);
+  const control = feedback && isValidElement(children)
+    ? cloneElement(children as ReactElement<Record<string, unknown>>, typeof children.type === "string"
+      ? { "aria-required": true, "aria-invalid": !feedback.valid, className: cn((children.props as { className?: string }).className, !feedback.valid && "border-destructive/60 focus-visible:ring-destructive/30") }
+      : { invalid: !feedback.valid, "aria-required": true })
+    : children;
   return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
-      {children}
+    <label className="block" data-field-state={feedback ? feedback.valid ? "complete" : "required" : undefined}>
+      <span className="mb-1 flex items-center justify-between gap-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">
+        <span>{englishLabel(label)}</span>
+        {feedback ? <span className={fieldFeedbackBadge({ valid: feedback.valid })} title={feedback.message}>
+          {feedback.valid ? <CheckCircleIcon aria-hidden="true" size={12} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={12} />}
+          <span className={feedback.valid && !feedback.automatic ? "sr-only" : undefined}>{feedback.valid ? feedback.automatic ? "Auto-filled" : "Complete" : "Required"}</span>
+        </span> : null}
+      </span>
+      {control}
     </label>
   );
 }
