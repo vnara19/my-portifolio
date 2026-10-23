@@ -288,7 +288,13 @@ A new acquisition is not daily compounded using the Brazilian deposit engine.
 The bond panel records actual coupon receipts separately from principal repayments,
 atomically with the post-payment full holding valuation. Coupons have zero quantity
 and count as realized income after recovering any interest paid at acquisition.
-The form records that prepaid interest separately within the total paid, and the
+The form records that prepaid interest separately within the total paid. The former
+Interest Basis selector is replaced by purchase accrued interest per bond, in the
+regular coupon section (or the purchase section for other structures). A value
+entered from the purchase receipt is multiplied by fractional quantity before
+storing total prepaid interest; it is not added again to the total paid. The same
+field is not duplicated. Only verified reference terms enable automatic 30/360 US
+accrual when the field is blank; unknown rules require an explicit receipt value. The
 gains engine removes the recovered portion from acquisition cost exactly once.
 Principal repayments remove face quantity and average
 acquisition cost; a full redemption requires zero remaining valuation. Repeated
@@ -303,7 +309,8 @@ coupon date and interest basis in the existing JSON contract. Contractual coupon
 schedules, remaining principal and original gross gain to maturity are calculated
 without reinvestment or taxes and assume full contractual payment. Scheduled dates
 are not broker credit dates and do not insert cash receipts. 30/360 US accrual is
-available only when explicitly selected; other bases require broker accrued interest.
+available only from verified reference terms in new entries; other bases require
+broker accrued interest. Existing stored contracts retain their original basis.
 Irregular schedules and non-fixed structures do not use this calculator. Price
 observations are never rolled forward with accrued interest to invent a current
 market price. Legacy backups without the optional terms still restore.

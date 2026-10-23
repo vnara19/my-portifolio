@@ -50,6 +50,12 @@ export const internationalBondSchema = z.object({
   if (bond.fixedCoupon?.accrualStartDate && bond.settlementDate < bond.fixedCoupon.accrualStartDate) ctx.addIssue({ code: "custom", path: ["settlementDate"], message: "Settlement cannot precede the bond's interest start date." });
 });
 export type InternationalBond = z.infer<typeof internationalBondSchema>;
+/** Entry is per bond; stored acquisition interest is for the whole holding. */
+export function purchaseBondInterest(perBond: string, quantity: string) {
+  nonnegative.parse(perBond);
+  amount.parse(quantity);
+  return new Prisma.Decimal(perBond).mul(quantity).toDecimalPlaces(8).toFixed();
+}
 export function readInternationalBond(value: unknown): InternationalBond | null { const parsed = internationalBondSchema.safeParse(value); return parsed.success ? parsed.data : null; }
 export function bondName(bond: InternationalBond) { return `${bond.issuer.slice(0, 28)} · ${bond.identifier} · ${bond.settlementDate}`; }
 export function bondAllocation(bond: InternationalBond) {

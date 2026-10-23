@@ -5,7 +5,7 @@ import { Prisma } from "@/generated/prisma/browser";
 import { addPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker } from "@/components/ui/picker";
-import { BOND_FAMILIES, internationalBondSchema, bondName, fixedBondCouponSchema, fixedBondAccrued, bondPriceToHoldingValue, bondDay } from "../domain/international-bond";
+import { BOND_FAMILIES, internationalBondSchema, bondName, fixedBondCouponSchema, fixedBondAccrued, bondPriceToHoldingValue, bondDay, purchaseBondInterest } from "../domain/international-bond";
 import { bondReference } from "../domain/bond-reference";
 import { Field, inputClass } from "./edit-dialogs";
 import { formatCurrency, normalizeLocaleNumberInput } from "../presentation/portfolio-format";
@@ -13,7 +13,7 @@ import type { PositionFormMonth } from "./position-form-dialog";
 import type { NewAccountInput } from "../application/month-editing";
 
 const structures = { Fixed: "Fixed Coupon", Zero: "Zero Coupon / Treasury Bills / STRIPS", Floating: "Floating Rate / FRNs", Inflation: "Inflation Linked / TIPS", Callable: "Callable / Putable / Convertible", Amortizing: "Amortizing / Securitized", Other: "Other / Structured" };
-const emptyFields = () => ({ identifier: "", issuer: "", issuerCountry: "", family: "Corporate", currency: "USD", structure: "Fixed", quantity: "", faceValuePerBond: "", settlementDate: "", maturityDate: "", totalPaid: "", accruedInterestPaid: "", price: "", quoteDate: "", priceBasis: "PerBond", priceType: "Dirty", quoteAccrued: "", annualRate: "", frequency: "", anchorDate: "", dayCount: "Manual" });
+const emptyFields = () => ({ identifier: "", issuer: "", issuerCountry: "", family: "Corporate", currency: "USD", structure: "Fixed", quantity: "", faceValuePerBond: "", settlementDate: "", maturityDate: "", totalPaid: "", purchaseAccruedPerBond: "", price: "", quoteDate: "", priceBasis: "PerBond", priceType: "Dirty", quoteAccrued: "", annualRate: "", frequency: "", anchorDate: "", dayCount: "Manual" });
 export function InternationalBondForm({ month, account, onSaved, formId, onPendingChange }: { month: PositionFormMonth; account: { accountId?: string; newAccount?: NewAccountInput } | null; onSaved: (result: EditActionResult) => void; formId: string; onPendingChange: (pending: boolean) => void }) {
   const [fields, setFields] = useState(emptyFields);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +34,8 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
     if (!/^\d+(\.\d{1,8})?$/.test(quantity) || !/^\d+(\.\d{1,8})?$/.test(denomination)) throw new Error("Enter the quantity and face value per bond.");
     const faceAmount = new Prisma.Decimal(quantity).mul(denomination).toFixed();
     const autoInterest = fixedCoupon?.dayCount === "30/360 US" && bondDay.safeParse(fields.settlementDate).success && bondDay.safeParse(fields.maturityDate).success ? fixedBondAccrued(fixedCoupon, fields.settlementDate, faceAmount, fields.maturityDate).toFixed() : fields.structure === "Zero" ? "0" : null;
-    const accruedInterestPaid = fields.accruedInterestPaid.trim() ? number("accruedInterestPaid") : autoInterest;
-    if (accruedInterestPaid === null) throw new Error("Enter purchase accrued interest from the receipt; enter 0 only if none was paid.");
+    const accruedInterestPaid = fields.purchaseAccruedPerBond.trim() ? purchaseBondInterest(number("purchaseAccruedPerBond"), quantity) : autoInterest;
+    if (accruedInterestPaid === null) throw new Error("Enter accrued interest per bond from the purchase receipt; enter 0 only if none was paid.");
     let quoteAccrued = "0";
     if (fields.priceType === "Clean") {
       if (fixedCoupon?.dayCount === "30/360 US" && bondDay.safeParse(fields.quoteDate).success) quoteAccrued = fixedBondAccrued(fixedCoupon, fields.quoteDate, faceAmount, fields.maturityDate).toFixed();
@@ -75,7 +75,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       <Field label="Bond Type"><Picker aria-label="Bond type" searchable={false} options={Object.entries(BOND_FAMILIES).map(([value, label]) => ({ value, label }))} value={fields.family} onValueChange={(v) => set("family", v)} /></Field>
       {text("issuer", "Issuer", "Citigroup Inc.")}{text("issuerCountry", "Issuer Country", "United States")}
       <Field label="Bond Currency"><Picker aria-label="Bond currency" searchable={false} value={fields.currency} onValueChange={(v) => set("currency", v)} options={[{ value: "USD", label: "USD · US Dollar" }, { value: "EUR", label: "EUR · Euro" }]} /></Field>
-      <Field label="Structure"><Picker aria-label="Bond structure" searchable={false} value={fields.structure} onValueChange={(v) => { setFields((p) => ({ ...p, structure: v, annualRate: "", frequency: "", anchorDate: "", dayCount: "Manual", accruedInterestPaid: "" })); }} options={Object.entries(structures).map(([value, label]) => ({ value, label }))} /></Field>
+      <Field label="Structure"><Picker aria-label="Bond structure" searchable={false} value={fields.structure} onValueChange={(v) => { setFields((p) => ({ ...p, structure: v, annualRate: "", frequency: "", anchorDate: "", dayCount: "Manual", purchaseAccruedPerBond: "" })); }} options={Object.entries(structures).map(([value, label]) => ({ value, label }))} /></Field>
       <Field label="Maturity Date"><DatePicker aria-label="Bond maturity date" value={fields.maturityDate} onChange={(v) => set("maturityDate", v)} /></Field>
       {text("faceValuePerBond", `Face Value per Bond (${fields.currency})`, "1000", true)}
     </div>
@@ -85,7 +85,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
         {text("annualRate", "Annual Coupon Rate (%)", "4.125", true)}
         <Field label="Coupon Frequency"><Picker aria-label="Coupon frequency" value={fields.frequency} onValueChange={(v) => set("frequency", v)} searchable={false} options={[{ value: "1", label: "Annual" }, { value: "2", label: "Semi-annual" }, { value: "4", label: "Quarterly" }, { value: "12", label: "Monthly" }]} /></Field>
         <Field label="Next Scheduled Coupon Date"><DatePicker aria-label="Next scheduled coupon date" value={fields.anchorDate} onChange={(v) => set("anchorDate", v)} /></Field>
-        <Field label="Interest Basis"><Picker aria-label="Bond interest basis" value={fields.dayCount} onValueChange={(v) => set("dayCount", v)} searchable={false} options={[{ value: "Manual", label: "Use Broker Accrued Interest" }, { value: "30/360 US", label: "30/360 US" }]} /></Field>
+        {text("purchaseAccruedPerBond", `Purchase Accrued Interest per Bond (${fields.currency})`, autoAccrual ? "Calculated Automatically" : "10.43", true)}
       </div>
     </div> : null}
     <div className="space-y-3 border-t border-border pt-4">
@@ -94,7 +94,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
         {text("quantity", "Quantity Purchased", "1.50", true)}
         <Field label="Purchase Settlement Date"><DatePicker aria-label="Purchase settlement date" value={fields.settlementDate} onChange={(v) => set("settlementDate", v)} /></Field>
         {text("totalPaid", `Total Paid, Including Fees (${fields.currency})`, "992.31", true)}
-        {text("accruedInterestPaid", `Purchase Accrued Interest (${fields.currency})`, autoAccrual ? "Calculated Automatically" : "10.43", true)}
+        {fields.structure !== "Fixed" ? text("purchaseAccruedPerBond", `Purchase Accrued Interest per Bond (${fields.currency})`, autoAccrual ? "Calculated Automatically" : "10.43", true) : null}
       </div>
     </div>
     <div className="space-y-3 border-t border-border pt-4">

@@ -85,3 +85,13 @@ test("regular coupon metadata survives JSON restoration and rejects unsupported 
   assert.equal(readInternationalBond({ ...fixed, maturityDate: null }), null);
   assert.notEqual(readInternationalBond(bond), null);
 });
+
+test("purchase accrued interest is entered per bond and stored for the fractional holding", async () => {
+  const { purchaseBondInterest } = await import("@/modules/portfolio/domain/international-bond");
+  assert.equal(purchaseBondInterest("10.43", "1.5"), "15.645");
+  assert.equal(purchaseBondInterest("10.43", "1"), "10.43");
+  assert.equal(purchaseBondInterest("0", "1.5"), "0");
+  assert.throws(() => purchaseBondInterest("", "1.5"));
+  assert.throws(() => purchaseBondInterest("-1", "1.5"));
+  assert.throws(() => purchaseBondInterest("10.43", "0"));
+});
