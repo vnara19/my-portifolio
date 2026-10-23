@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Dialog } from "@base-ui/react/dialog";
+import { useEffect, useState, useTransition } from "react";
 import { addPositionAction, type EditActionResult } from "@/app/actions/edit-month";
-import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Picker } from "@/components/ui/picker";
 import { BOND_FAMILIES, internationalBondSchema, bondName, type InternationalBond } from "@/modules/portfolio/domain/international-bond";
@@ -13,10 +11,11 @@ import type { PositionFormMonth } from "./position-form-dialog";
 import type { NewAccountInput } from "../application/month-editing";
 
 const structures = { Fixed: "Fixed Coupon", Zero: "Zero Coupon / Treasury Bills / STRIPS", Floating: "Floating Rate / FRNs", Inflation: "Inflation Linked / TIPS", Callable: "Callable / Putable / Convertible", Amortizing: "Amortizing / Securitized", Other: "Other / Structured" };
-export function InternationalBondForm({ month, account, onSaved, onBack }: { month: PositionFormMonth; account: { accountId?: string; newAccount?: NewAccountInput } | null; onSaved: (result: EditActionResult) => void; onBack: () => void }) {
+export function InternationalBondForm({ month, account, onSaved, formId, onPendingChange }: { month: PositionFormMonth; account: { accountId?: string; newAccount?: NewAccountInput } | null; onSaved: (result: EditActionResult) => void; formId: string; onPendingChange: (pending: boolean) => void }) {
   const [fields, setFields] = useState({ identifier: "", issuer: "", issuerCountry: "", family: "Sovereign", currency: "USD", structure: "Fixed", faceAmount: "", settlementDate: "", maturityDate: "", totalPaid: "", accruedInterestPaid: "0", marketValue: "", quoteDate: "", source: "IBKR" });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  useEffect(() => { onPendingChange(pending); }, [pending, onPendingChange]);
   const set = (key: keyof typeof fields, value: string) => setFields((previous) => ({ ...previous, [key]: value }));
   function lookup(value: string) {
     const identifier = value.trim().toUpperCase();
@@ -26,6 +25,7 @@ export function InternationalBondForm({ month, account, onSaved, onBack }: { mon
   }
   const number = (key: "faceAmount" | "totalPaid" | "marketValue" | "accruedInterestPaid") => normalizeLocaleNumberInput(fields[key]) ?? fields[key];
   function submit() {
+    if (pending) return;
     setError(null);
     const parsed = internationalBondSchema.safeParse({ type: "international-bond", ...fields, faceAmount: number("faceAmount"), totalPaid: number("totalPaid"), accruedInterestPaid: number("accruedInterestPaid"), maturityDate: fields.maturityDate || null, quotes: [{ date: fields.quoteDate, marketValue: number("marketValue"), source: fields.source }] });
     if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? "Review the bond details."); return; }
@@ -37,10 +37,8 @@ export function InternationalBondForm({ month, account, onSaved, onBack }: { mon
     });
   }
   const text = (key: keyof typeof fields, label: string, placeholder: string, numeric = false) => <Field label={label}><input aria-label={label} className={inputClass} value={fields[key]} inputMode={numeric ? "decimal" : "text"} placeholder={placeholder} onChange={(e) => { if (key === "identifier") setFields({ identifier: e.target.value, issuer: "", issuerCountry: "", family: "Sovereign", currency: "USD", structure: "Fixed", faceAmount: "", settlementDate: "", maturityDate: "", totalPaid: "", accruedInterestPaid: "0", marketValue: "", quoteDate: "", source: "IBKR" }); else set(key, e.target.value); }} onBlur={key === "identifier" ? (e) => lookup(e.target.value) : undefined} maxLength={key === "identifier" ? 12 : 80} /></Field>;
-  return <>
-    <header className="flex items-center justify-between border-b border-border p-5"><div><Dialog.Title className="font-semibold">International Bonds</Dialog.Title><Dialog.Description className="text-xs text-muted-foreground">{month.label} · Direct Holdings</Dialog.Description></div><Dialog.Close aria-label="Close" className="rounded-lg p-2">×</Dialog.Close></header>
-    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5">
-      <Button variant="outline" onClick={onBack}>Change Asset Type</Button>
+  return <form id={formId} className="space-y-4" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+      <h2 className="text-base font-semibold">Bond Details</h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {text("identifier", "ISIN / CUSIP", "US105756BK57")}
         <Field label="Bond Type"><Picker aria-label="Bond type" searchable={false} options={Object.entries(BOND_FAMILIES).map(([value, label]) => ({ value, label }))} value={fields.family} onValueChange={(v) => set("family", v)} /></Field>
@@ -51,14 +49,12 @@ export function InternationalBondForm({ month, account, onSaved, onBack }: { mon
         <Field label="Settlement Date"><DatePicker aria-label="Settlement date" value={fields.settlementDate} onChange={(v) => set("settlementDate", v)} /></Field>
         <Field label="Maturity Date (Optional)"><DatePicker aria-label="Bond maturity date" value={fields.maturityDate} onChange={(v) => set("maturityDate", v)} /></Field>
         {text("totalPaid", `Total Paid, Including Interest and Fees (${fields.currency})`, "9850.00", true)}
-        {text("accruedInterestPaid", `Accrued Interest Included Above (${fields.currency})`, "0.00", true)}
+        {text("accruedInterestPaid", `Accrued Interest Paid (${fields.currency})`, "0.00", true)}
         {text("marketValue", `Full Market Value, Including Accrued Interest (${fields.currency})`, "10150.00", true)}
         <Field label="Valuation Date"><DatePicker aria-label="Valuation date" value={fields.quoteDate} onChange={(v) => set("quoteDate", v)} /></Field>
         {text("source", "Price Source", "IBKR")}
       </div>
-      <p className="text-xs text-muted-foreground">Manual Valuation · Full Holding Value · No Automatic Price Feed</p>
+      <p className="text-xs text-muted-foreground">Manual Valuation</p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    </div>
-    <footer className="flex justify-end gap-2 border-t border-border p-4"><Dialog.Close render={<Button variant="outline" />}>Cancel</Dialog.Close><Button disabled={pending} onClick={submit}>{pending ? "Saving…" : "Add Position"}</Button></footer>
-  </>;
+  </form>;
 }

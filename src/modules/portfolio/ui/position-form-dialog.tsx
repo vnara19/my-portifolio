@@ -18,7 +18,7 @@ import {
   XCircleIcon,
   XIcon,
 } from "@phosphor-icons/react/dist/ssr";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
 import { Button } from "@/components/ui/button";
@@ -166,6 +166,9 @@ function PositionForm({
   const [showIssues, setShowIssues] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
+  const bondFormId = useId();
+  const [bondSaving, setBondSaving] = useState(false);
+
 
   // General settings.
   const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
@@ -173,6 +176,8 @@ function PositionForm({
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
   const [fiRate, setFiRate] = useState("");
   const [kind, setKind] = useState<AssetKind | null>(null);
+  const bondEntry = !editing && kind === "international-bond";
+  const busy = isSaving || (bondEntry && bondSaving);
   const [verificationEpoch, setVerificationEpoch] = useState(0);
   const [entryType, setEntryType] = useState<"asset" | "cash">("asset");
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
@@ -578,8 +583,6 @@ function PositionForm({
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
 
 
-  if (!editing && kind === "international-bond") return <InternationalBondForm month={month} account={account} onSaved={onSaved} onBack={() => { resetFields(); setKind(null); }} />;
-
   return (
     <>
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
@@ -714,6 +717,7 @@ function PositionForm({
 
           </PositionSection>
 
+          {bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} /> : <>
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
             {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
@@ -1040,12 +1044,13 @@ function PositionForm({
             ) : null}
           </PositionSection> : null}
 
+          </>}
         </div>
       </Tabs.Root>
 
 
       <footer
-        data-issue-count={issues.length}
+        data-issue-count={bondEntry ? 0 : issues.length}
         className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-4 sm:px-6"
       >
         <div className="min-w-0 flex-1 basis-56" aria-live="polite">
@@ -1062,10 +1067,10 @@ function PositionForm({
           ) : null}
         </div>
         <div className="ml-auto flex gap-2">
-          <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancel</Dialog.Close>
-          <button type="button" onClick={submit} disabled={isSaving || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
-            {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
-            {isSaving ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
+          <Dialog.Close className={secondaryButtonClass} disabled={busy}>Cancel</Dialog.Close>
+          <button type={bondEntry ? "submit" : "button"} form={bondEntry ? bondFormId : undefined} onClick={bondEntry ? undefined : submit} disabled={busy || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
+            {busy ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
+            {busy ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </button>
         </div>
       </footer>
