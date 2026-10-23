@@ -266,9 +266,30 @@ An authenticated same-origin `/api/bonds/reference` lookup accepts checksum-vali
 ISIN/CUSIP identifiers. OpenFIGI supplies instrument identification (not a presumed
 legal issuer or terms parsed from ticker text); U.S. Treasury Fiscal Data supplies
 confirmed sovereign terms by embedded/entered Treasury CUSIP. Queries run in
-parallel with bounded timeouts and an in-memory TTL cache. The Brazil 2037,
-Ireland 2037 and Citigroup US172967KU42 verified issuer references supplement
-available fields. No purchase amounts, dates or receipt interest are sent to providers.
+parallel with bounded timeouts and an in-memory TTL cache. Additional live issuer
+adapters read NTMA's current benchmark table, German Finance Agency factsheets
+and the public ESM/EFSF transactions catalog. Every adapter matches the exact ISIN
+inside its source before accepting terms. Country prefixes only select which source
+to query; they never determine issuer country or currency. Shared catalog requests
+are deduplicated and cached for one hour; failed requests are cached for 30 seconds.
+Reads are capped at 2 MB and 6.5 seconds. No login, disclaimer acceptance, blocked
+endpoint bypass or paid subscription is used.
+
+Reviewed issuer/regulator references supplement Brazil 2037, Ireland 2037,
+Citigroup 2028, the French 0% OAT 2032, Italian BTP 2051 and Spanish government
+2028. Their existing source links distinguish these stored references from live
+issuer adapters. Irish and Brazilian coupon schedules now supplement the prior
+partial references. Reference anchors are rolled along the confirmed contractual
+schedule rather than frozen in a past year. The French and Spanish live endpoints
+returned 403/500 during integration; the reviewed records do not pretend those
+services are connected. No universal corporate security-master coverage is claimed.
+
+NTMA parsing excludes amortising/retired/floating tables. German parsing isolates
+contractual table keys from unrelated price-history tables, verifies the government
+issuer/currency and recognizes explicitly stated zero coupons. Neither minimum
+trade size nor denominations dependent on a broker's unit convention are filled.
+ESM/EFSF country and coupon frequency remain manual when absent. Conflicting
+reopening rows are rejected. No personal purchase terms are fetched or inferred. No purchase amounts, dates or receipt interest are sent to providers.
 ESMA queries returned HTTP 502 during verification and are not presented as an
 operational provider. Paid services are not enabled. No universal free security
 master or complete coupon-calendar coverage is claimed.

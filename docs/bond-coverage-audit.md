@@ -33,3 +33,22 @@ Verified on 2026-10-23 using the deployed application lookup implementation (com
 ## Reproduce
 
 Run `node --import tsx scripts/test-bond-coverage.ts` from the repository. It performs read-only requests, prints each result and exits nonzero if a returned term contradicts the independent fixture or required known coverage is missing. Network failures are reported separately from incorrect values. Unit tests exercise the same country/prefix controls without network access.
+
+## Official-source expansion — 2026-10-24
+
+The same 12 instruments were queried again with the additional live issuer adapters.
+**9 returned partial contractual terms, 3 returned identification only, and no returned
+field contradicted the independent fixtures.** The three identification-only cases
+remain the GBP Gilt and the two Morgan Stanley examples. This does not add GBP
+entry or claim full corporate coverage.
+
+Additional live checks covered Irish 0.2% 2027 (`IE00BKFVC568`), Irish zero-coupon
+2031 (`IE00BMQ5JL65`), German zero-coupon 2050 (`DE0001102481`) and ESM 3% 2028
+(`EU000A1Z99R5`). NTMA and German factsheets populated regular coupon terms; the
+ESM catalog supplied issuer, currency, maturity and coupon, leaving absent country
+and frequency manual. The German zero coupon is stated in the issuer heading while
+its table has a dash; a regression test covers this distinction.
+
+The French, Italian and Spanish examples now use reviewed primary-source terms as
+fallbacks. These are not represented as live country-wide APIs. The application's
+frontend and persisted contract/backup shapes are unchanged.

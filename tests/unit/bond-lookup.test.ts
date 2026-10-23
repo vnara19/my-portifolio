@@ -80,7 +80,7 @@ test("multi-country control cases use valid identifiers and never infer terms fr
       else assert.equal(actual, sample.expected[key], `${sample.identifier}: ${key}`);
     }
     for (const key of personalBondFields) assert.equal(key in result.fields, false);
-    if (sample.minimumFields === 0) assert.deepEqual(result.fields, {}, sample.identifier);
+    if (["Germany", "United Kingdom"].includes(sample.country) || sample.label.startsWith("Morgan Stanley")) assert.deepEqual(result.fields, {}, sample.identifier);
     if (sample.country !== "United States") assert.equal(treasuryCusip(sample.identifier), null);
   }
   const brazil = await lookupBond("US105756BK57", [noLiveData]);
