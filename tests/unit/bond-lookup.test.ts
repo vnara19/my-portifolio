@@ -65,3 +65,24 @@ test("entry readiness checks required fields, coupon schedules, zero values and 
   assert.ok(validateBondEntry({ ...complete, frequency: "" }).errors.frequency);
   assert.equal(validateBondEntry({ ...complete, structure: "Zero", purchaseAccruedPerBond: "", annualRate: "", frequency: "", anchorDate: "" }).parsed.success, true);
 });
+
+test("multi-country control cases use valid identifiers and never infer terms from country prefixes", async () => {
+  const { bondCoverageCases, personalBondFields, unsupportedAutofillKeys } = await import("../fixtures/bond-coverage");
+  const { validBondIdentifier } = await import("@/modules/portfolio/domain/international-bond");
+  const noLiveData = async () => null;
+  assert.equal(new Set(bondCoverageCases.map((s) => s.country)).size, 8);
+  for (const sample of bondCoverageCases) {
+    assert.ok(validBondIdentifier(sample.identifier), sample.identifier);
+    const result = await lookupBond(sample.identifier, [noLiveData]);
+    assert.deepEqual(unsupportedAutofillKeys(result.fields, sample), [], sample.identifier);
+    for (const [key, actual] of Object.entries(result.fields)) {
+      if (key === "anchorDate") assert.ok(sample.scheduledDays?.includes(actual.slice(5)));
+      else assert.equal(actual, sample.expected[key], `${sample.identifier}: ${key}`);
+    }
+    for (const key of personalBondFields) assert.equal(key in result.fields, false);
+    if (sample.minimumFields === 0) assert.deepEqual(result.fields, {}, sample.identifier);
+    if (sample.country !== "United States") assert.equal(treasuryCusip(sample.identifier), null);
+  }
+  const brazil = await lookupBond("US105756BK57", [noLiveData]);
+  assert.equal(brazil.fields.issuerCountry, "Brazil"); assert.equal(brazil.fields.currency, "USD");
+});
