@@ -31,6 +31,8 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
     setModel((previous) => ({ fields: { ...previous.fields, [key]: value }, touched: new Set(previous.touched).add(key) }));
   };
   const identifier = fields.identifier.trim().toUpperCase();
+  const referenceSource = lookupResult?.sources.find((source) => source.name === "Issuer reference") ?? lookupResult?.sources.find((source) => source.name !== "OpenFIGI");
+  const displayName = fields.issuer || (lookupResult?.instrumentName?.replace(/\b[A-Z][A-Z]+\b/g, (word) => ["US", "USA", "UK", "NA", "PLC", "AG", "NV", "SA"].includes(word) ? word : word[0] + word.slice(1).toLowerCase()));
   useEffect(() => {
     if (!validBondIdentifier(identifier)) return;
     const controller = new AbortController();
@@ -78,7 +80,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       <div className="space-y-1.5">{text("identifier", "ISIN / CUSIP", "US172967KU42")}
       <div className="text-[10px] leading-snug text-muted-foreground" role="status" aria-live="polite">
         {lookupState === "loading" ? "Looking up bond details…" : lookupState === "error" ? <>Lookup unavailable · enter the details manually. <button type="button" className="text-primary underline" onClick={() => setAttempt((p) => p + 1)}>Try again</button></> : lookupState === "done" ? <>
-          {lookupResult?.sources.length ? <>{lookupResult.instrumentName ? `${lookupResult.instrumentName} · ` : "Details found · "} {lookupResult.sources.map((source, i) => <span key={source.name}>{i ? " · " : ""}<a className="text-primary underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">{source.name}</a></span>)}</> : "No confirmed details found · enter manually."}
+          {lookupResult?.sources.length ? <>{displayName || "Details found"}{referenceSource ? <> · <a className="text-primary underline underline-offset-2" href={referenceSource.url} target="_blank" rel="noreferrer">Issuer reference</a></> : null}</> : "No confirmed details found · enter manually."}
           {lookupResult?.conflicts.length ? " · Conflicting details left manual." : ""}
           {lookupResult?.unavailable.length ? " · Some sources unavailable." : ""}
         </> : null}

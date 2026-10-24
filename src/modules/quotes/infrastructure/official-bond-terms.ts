@@ -115,3 +115,32 @@ export function parseEsm(page: string, id: string): BondLookupSource | null {
   return source("ESM / EFSF", ESM, candidates[0]);
 }
 export async function esmBond(id: string) { if (!/^(EU|XS)/.test(id)) return null; const page = await html(ESM); return page ? parseEsm(page, id) : null; }
+
+const AFT = "https://www.aft.gouv.fr/en/titre/";
+/** Explicit nominal-value labels only. Inflation-adjusted principal and trade minima are not units. */
+export function parseFrenchBond(page: string, id: string): BondLookupSource | null {
+  const text = htmlText(page);
+  if (!text.includes(`ISIN Code ${id} Type of security Nominal, fixed rate Currency of issue Euro Nominal value `)) return null;
+  const matches = [...text.matchAll(/Nominal value (\d+(?:\.\d{1,8})?) Euro Maturity date (\d{2}\/\d{2}\/\d{4})/g)];
+  if (matches.length !== 1 || Number(matches[0][1]) <= 0) return null;
+  const maturityDate = officialDate(matches[0][2]); if (!maturityDate) return null;
+  return source("Agence France Trésor", `${AFT}${id.toLowerCase()}`, { currency: "EUR", maturityDate, faceValuePerBond: matches[0][1] });
+}
+export async function frenchBond(id: string) { if (!/^FR[A-Z0-9]{10}$/.test(id)) return null; const page = await html(`${AFT}${id.toLowerCase()}`); return page ? parseFrenchBond(page, id) : null; }
+
+const CNMV = "https://www.cnmv.es/portal/ancv/isin";
+/** The registry column also holds prices for non-debt assets: accept conventional fixed debt only. */
+export function parseSpanishBond(page: string, id: string): BondLookupSource | null {
+  const table = [...page.matchAll(/<table\b[^>]*>[\s\S]*?<\/table>/gi)].find((m) => /Nominal\s*\/\s*VMN\s*\/\s*Precio/.test(htmlText(m[0])))?.[0];
+  if (!table) return null;
+  const matches = rows(table).filter((r) => r.length === 9 && r[0] === id);
+  if (matches.length !== 1) return null;
+  const row = matches[0];
+  // DBFTFB: debt/bond/fixed-rate/standard redemption. Do not interpret equity prices,
+  // index-linked principal, structured or amortising securities as Face Value per Bond.
+  if (row[8] !== "DBFTFB" || !["EUR", "USD"].includes(row[6]) || !/^\d{1,3}(?:\.\d{3})*(?:,\d{1,8})?$|^\d+(?:,\d{1,8})?$/.test(row[5])) return null;
+  const value = row[5].replaceAll(".", "").replace(",", "."), maturityDate = officialDate(row[4]);
+  if (Number(value) <= 0 || !maturityDate) return null;
+  return source("CNMV", `${CNMV}?isin=${id}&lang=es`, { currency: row[6] as "EUR" | "USD", maturityDate, faceValuePerBond: String(Number(value)) });
+}
+export async function spanishBond(id: string) { if (!/^ES[A-Z0-9]{10}$/.test(id)) return null; const page = await html(`${CNMV}?isin=${id}&lang=es`); return page ? parseSpanishBond(page, id) : null; }

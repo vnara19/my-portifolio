@@ -52,3 +52,26 @@ its table has a dash; a regression test covers this distinction.
 The French, Italian and Spanish examples now use reviewed primary-source terms as
 fallbacks. These are not represented as live country-wide APIs. The application's
 frontend and persisted contract/backup shapes are unchanged.
+
+## Nominal-value expansion — 24 October 2026
+
+The same 12-instrument, eight-country live audit returned four nominal values
+(previously one), with no contradictory populated fields:
+
+| ISIN | Face Value per Bond | Verified source |
+| --- | --- | --- |
+| US172967KU42 | USD 1,000 | Citi SEC form of note (existing) |
+| US105756BK57 | USD 1,000 | [2007 SEC reopening prospectus](https://www.sec.gov/Archives/edgar/data/205317/000119312507012976/d424b5.htm) |
+| FR0014007L00 | EUR 1 | [AFT instrument page](https://www.aft.gouv.fr/en/titre/fr0014007l00) |
+| ES0000012B88 | EUR 1,000 | [CNMV registry](https://www.cnmv.es/portal/ancv/isin?isin=ES0000012B88&lang=es) |
+
+These are reviewed exact-identifier reference values. AFT and CNMV now have live
+exact-ISIN nominal-field adapters too, but returned HTTP 403 and 500 respectively
+in this server-side audit; do not claim broad successful live coverage. The eight
+remaining samples still leave denomination manual. No USD 1,000 default, minimum
+subscription, issue balance or incremental trading amount is substituted. In
+particular, Brazil's 2006 document has a USD 100,000 minimum; the 2007 reopening
+explicitly permits USD 1,000 denominations for the same consolidated series.
+
+Parser tests reject wrong identifiers, unsupported structures/currencies, malformed
+amounts and dates, and duplicate/conflicting nominal fields. Unit suite: 135 pass.

@@ -385,3 +385,18 @@ realized coupon profit separate from recovery of paid interest and avoids a fals
 unrealized gain. Historical as-of costs, subsequent months, Undo and JSON backups
 retain these events. The cost-only mode is optional in the contract so prior market
 records continue to parse and keep their original financial semantics.
+
+Nominal-value enrichment also queries AFT (French nominal fixed-rate debt) and
+CNMV (exact-ISIN conventional fixed bond rows with CFI DBFTFB). Values are accepted
+only from explicit nominal fields; minimum subscriptions, principal increments,
+issue balances and inflation-adjusted principal are not inferred as per-bond units.
+These public sites can reject server requests (AFT 403, CNMV 500 during the audit);
+reviewed exact-instrument references remain available independently. Brazil's 2037
+reference uses the 2007 reopening prospectus with USD 1,000 denominations, rather
+than the original 2006 USD 100,000 minimum. France FR0014007L00 uses EUR 1, and
+Spain ES0000012B88 EUR 1,000. Other unknown units remain manual.
+
+The bond identification line displays the confirmed issuer (otherwise a formatted
+identification name) and one issuer reference link. OpenFIGI attribution remains in
+the API result, without a generic homepage link in the form. New-position progress
+shows only the remaining required-field count for every asset category.

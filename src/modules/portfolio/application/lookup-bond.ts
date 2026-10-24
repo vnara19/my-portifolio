@@ -1,11 +1,11 @@
 import { bondReference } from "../domain/bond-reference";
 import { mergeBondSources, type BondLookupResult, type BondLookupSource } from "../domain/bond-lookup";
 import { validBondIdentifier, scheduledBondCoupons } from "../domain/international-bond";
-import { ntmaBond, germanBond, esmBond } from "@/modules/quotes/infrastructure/official-bond-terms";
+import { ntmaBond, germanBond, esmBond, frenchBond, spanishBond } from "@/modules/quotes/infrastructure/official-bond-terms";
 import { openFigiBond, treasuryBond } from "@/modules/quotes/infrastructure/bond-reference";
 
-const defaultProviders = [openFigiBond, treasuryBond, ntmaBond, germanBond, esmBond];
-const providerNames = ["OpenFIGI", "U.S. Treasury", "NTMA", "German Finance Agency", "ESM / EFSF"];
+const defaultProviders = [openFigiBond, treasuryBond, ntmaBond, germanBond, esmBond, frenchBond, spanishBond];
+const providerNames = ["OpenFIGI", "U.S. Treasury", "NTMA", "German Finance Agency", "ESM / EFSF", "Agence France Trésor", "CNMV"];
 const cache = new Map<string, { expires: number; result: BondLookupResult }>();
 export async function lookupBond(raw: string, providers = defaultProviders): Promise<BondLookupResult> {
   const identifier = raw.trim().toUpperCase();

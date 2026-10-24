@@ -1096,7 +1096,6 @@ function PositionForm({
                 {ready ? <CheckCircleIcon aria-hidden="true" size={13} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={13} />}
                 {ready ? "Ready to add" : activeIssues.length ? `${activeIssues.length} required ${activeIssues.length === 1 ? "field" : "fields"} remaining` : "Review the details"}
               </p>
-              {!ready ? <p className="text-[10px] leading-snug text-muted-foreground">{activeIssues.slice(0, 3).join(" · ") || visibleIssue?.message}{activeIssues.length > 3 ? " · …" : ""}</p> : null}
             </div>
           ) : visibleIssue ? (
             <p className="flex items-start gap-1.5 text-[11px] leading-snug text-warning-foreground" data-testid="position-form-issue">

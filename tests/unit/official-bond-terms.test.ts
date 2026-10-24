@@ -1,9 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { parseNtma, parseGermanBond, parseEsm, officialDate } from "@/modules/quotes/infrastructure/official-bond-terms";
+import { parseNtma, parseGermanBond, parseEsm, parseFrenchBond, parseSpanishBond, officialDate } from "@/modules/quotes/infrastructure/official-bond-terms";
 import { mergeBondSources } from "@/modules/portfolio/domain/bond-lookup";
 const fixture = (name: string) => fs.readFileSync(`tests/fixtures/official-bonds/${name}.html`, "utf8");
+
+test("French nominal values require the exact ISIN and unadjusted fixed-rate principal", () => {
+  // Contractual fields from AFT's FR0014007L00 page, not a trading minimum.
+  const page = "<dl><dt>ISIN Code</dt><dd>FR0014007L00</dd><dt>Type of security</dt><dd>Nominal, fixed rate</dd><dt>Currency of issue</dt><dd>Euro</dd><dt>Nominal value</dt><dd>1 Euro</dd><dt>Maturity date</dt><dd>25/05/2032</dd></dl>";
+  assert.equal(parseFrenchBond(page, "FR0014007L00")?.fields.faceValuePerBond, "1");
+  assert.equal(parseFrenchBond(page, "FR0014002WK3"), null);
+  assert.equal(parseFrenchBond(page.replace("Nominal, fixed rate", "Inflation linked"), "FR0014007L00"), null);
+  assert.equal(parseFrenchBond(page.replace("Nominal value", "Minimum purchase"), "FR0014007L00"), null);
+  assert.equal(parseFrenchBond(page.replace("1 Euro", "0 Euro"), "FR0014007L00"), null);
+  assert.equal(parseFrenchBond(page.replace("25/05/2032", "31/02/2032"), "FR0014007L00"), null);
+  assert.equal(parseFrenchBond(page + " Nominal value 1000 Euro Maturity date 25/05/2032", "FR0014007L00"), null);
+});
+test("Spanish registry distinguishes debt nominal value from prices and issued balance", () => {
+  // Registry row independently retrieved from CNMV; issued balance is not per-unit principal.
+  const row = "<tr><td>ES0000012B88</td><td>ESTADO/1.40 OBESEGR 20280730 CAC</td><td>26.690.238.000,00</td><td>03/07/2018</td><td>30/07/2028</td><td>1.000,00</td><td>EUR</td><td>1,4000</td><td>DBFTFB</td></tr>";
+  const page = `<table><tr><th>Nominal / VMN / Precio</th></tr>${row}</table>`;
+  assert.equal(parseSpanishBond(page, "ES0000012B88")?.fields.faceValuePerBond, "1000");
+  assert.equal(parseSpanishBond(page, "ES0000012B89"), null);
+  assert.equal(parseSpanishBond(page.replace("DBFTFB", "ESVUFR"), "ES0000012B88"), null);
+  assert.equal(parseSpanishBond(page.replace("1.000,00", "1,000.00"), "ES0000012B88"), null);
+  assert.equal(parseSpanishBond(page.replace("EUR", "GBP"), "ES0000012B88"), null);
+  assert.equal(parseSpanishBond(page.replace("</table>", row + "</table>"), "ES0000012B88"), null);
+});
 
 test("NTMA matches exact ISIN rows, complements issuer data and distinguishes zero coupons", () => {
   const page = fixture("ntma");
