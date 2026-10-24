@@ -1,12 +1,13 @@
 "use client";
 
-/** Investment table and responsive filters. Keep grouping keys stable while translating built-in category labels. */
+/** Investment table and responsive filters. Sort columns and filter using the classifications stored by the position form. */
 
 import { englishLabel } from "@/lib/english-labels";
 
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ArrowsDownUpIcon,
   CaretRightIcon,
   CopyIcon,
   CurrencyCircleDollarIcon,
@@ -26,8 +27,8 @@ import {
 } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { parseAsArrayOf, parseAsString, parseAsStringLiteral, useQueryStates } from "nuqs";
-import { Fragment, useCallback, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
+import { parseAsArrayOf, parseAsString, useQueryStates } from "nuqs";
+import { useCallback, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 
 import {
   cloneLatestMonthAction,
@@ -46,10 +47,8 @@ import {
   typeOf,
   filterOptions,
   filterPositions,
-  groupPositions,
   hasClassFilter,
   matchedValueBrl,
-  strategyOf,
   type PositionFilters,
 } from "@/modules/portfolio/presentation/position-filters";
 import {
@@ -69,12 +68,6 @@ import { PositionsFilterSheet, type FilterGroup } from "@/modules/portfolio/ui/p
 import { PositionFormDialog, type PositionFormTarget } from "@/modules/portfolio/ui/position-form-dialog";
 
 const QUICK_CLASSES = ["Caixa", "Cripto", "Renda Fixa", "Renda Variável", "Reserva"];
-const GROUP_OPTIONS = ["instituicao", "classe", "tipo"] as const;
-const GROUP_LABELS: Record<(typeof GROUP_OPTIONS)[number], string> = {
-  instituicao: "Institution",
-  classe: "Class",
-  tipo: "Type",
-};
 const list = parseAsArrayOf(parseAsString).withDefault([]);
 
 const features = tableFeatures({
@@ -88,10 +81,8 @@ type ColumnMeta = { align: "left" | "right"; calculated: boolean; hide: string }
 
 const COLUMN_META: Record<string, ColumnMeta> = {
   assetName: { align: "left", calculated: false, hide: "" },
-  institutionName: { align: "left", calculated: false, hide: "hidden sm:table-cell" },
 
   assetType: { align: "left", calculated: false, hide: "hidden 2xl:table-cell" },
-  strategy: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
   classes: { align: "left", calculated: false, hide: "hidden lg:table-cell" },
   maturityDate: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
   quantity: { align: "right", calculated: false, hide: "hidden md:table-cell" },
@@ -102,9 +93,7 @@ const COLUMN_META: Record<string, ColumnMeta> = {
 
 const columns = helper.columns([
   helper.accessor("assetName", { header: "Asset" }),
-  helper.accessor("institutionName", { header: "Institution" }),
   helper.accessor((row) => typeOf(row), { id: "assetType", header: "Type" }),
-  helper.accessor((row) => strategyOf(row), { id: "strategy", header: "Strategy" }),
   helper.accessor((row) => classesOf(row).join(", "), { id: "classes", header: "Classes" }),
 
   helper.accessor((row) => row.maturityDate ?? undefined, {
@@ -137,14 +126,11 @@ export function PositionsWorkspace({
       classe: list,
       subclasse: list,
       tipo: list,
-      inst: list,
-      estrategia: list,
       moeda: list,
       venc: list,
       liq: list,
       q: parseAsString.withDefault(""),
       ordem: parseAsString.withDefault("totalBrl.desc"),
-      agrupar: parseAsStringLiteral(GROUP_OPTIONS),
     },
     { clearOnDefault: true },
   );
@@ -191,8 +177,6 @@ export function PositionsWorkspace({
     classes: query.classe,
     subclasses: query.subclasse,
     types: query.tipo,
-    institutions: query.inst,
-    strategies: query.estrategia,
     currencies: query.moeda,
     maturities: query.venc,
     liquidities: query.liq,
@@ -209,6 +193,7 @@ export function PositionsWorkspace({
     features,
     columns,
     data: filtered,
+    enableSortingRemoval: false,
     state: { sorting },
     onSortingChange: (updater) => {
       const next = typeof updater === "function" ? updater(sorting) : updater;
@@ -229,7 +214,6 @@ export function PositionsWorkspace({
   const canEdit = !month.isLocked;
   const monthLabel = formatMonthCompact(month.referenceDate);
   const sortedPositions = table.getRowModel().rows.map((row) => row.original);
-  const groups = query.agrupar ? groupPositions(sortedPositions, query.agrupar, filters) : null;
   const filteredTotal = sortedPositions.reduce((total, position) => total + position.totalBrl, 0);
   const matchedTotal = hasClassFilter(filters)
     ? sortedPositions.reduce((total, position) => total + matchedValueBrl(position, filters), 0)
@@ -238,8 +222,6 @@ export function PositionsWorkspace({
     filters.classes.length +
     filters.subclasses.length +
     filters.types.length +
-    filters.institutions.length +
-    filters.strategies.length +
     filters.currencies.length +
     filters.maturities.length +
     filters.liquidities.length +
@@ -250,8 +232,6 @@ export function PositionsWorkspace({
     { key: "classe", label: "Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
     { key: "subclasse", label: "Subclass", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
     { key: "tipo", label: "Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
-    { key: "inst", label: "Institution", options: options.institutions, selected: filters.institutions, onChange: (next) => void setQuery({ inst: next }) },
-    { key: "estrategia", label: "Strategy", options: options.strategies, selected: filters.strategies, onChange: (next) => void setQuery({ estrategia: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
     { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
     { key: "liq", label: "Liquidity", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
@@ -292,7 +272,7 @@ export function PositionsWorkspace({
     });
 
   const clearFilters = () =>
-    void setQuery({ classe: null, subclasse: null, tipo: null, inst: null, estrategia: null, moeda: null, venc: null, liq: null, q: null });
+    void setQuery({ classe: null, subclasse: null, tipo: null, moeda: null, venc: null, liq: null, q: null });
 
 
   const openPosition = (position: MonthPosition, href: string) => {
@@ -324,7 +304,7 @@ export function PositionsWorkspace({
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Positions</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Monthly portfolio</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground" data-testid="positions-count">
             {activeCount} {activeCount === 1 ? "position" : "positions"}
             {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidated" : "liquidated"}` : ""}
@@ -414,11 +394,6 @@ export function PositionsWorkspace({
           <PositionsFilterSheet
             className="sm:hidden"
             groups={filterGroups}
-            grouping={{
-              value: query.agrupar,
-              options: [{ value: null, label: "None" }, ...GROUP_OPTIONS.map((option) => ({ value: option, label: GROUP_LABELS[option] }))],
-              onChange: (value) => void setQuery({ agrupar: value as (typeof GROUP_OPTIONS)[number] | null }),
-            }}
             resultCount={sortedPositions.length}
             onClear={clearFilters}
           />
@@ -427,8 +402,6 @@ export function PositionsWorkspace({
             <MultiSelectFilter label="Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
             <MultiSelectFilter label="Subclass" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
             <MultiSelectFilter label="Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
-            <MultiSelectFilter label="Institution" options={options.institutions} selected={filters.institutions} onChange={(next) => void setQuery({ inst: next })} />
-            <MultiSelectFilter label="Strategy" options={options.strategies} selected={filters.strategies} onChange={(next) => void setQuery({ estrategia: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
             <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
             <MultiSelectFilter label="Liquidity" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
@@ -443,27 +416,7 @@ export function PositionsWorkspace({
               </button>
             ) : null}
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
-                <span className="px-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Group by</span>
-                {([null, ...GROUP_OPTIONS] as const).map((option) => (
-                  <button
-                    key={option ?? "none"}
-                    type="button"
-                    aria-pressed={query.agrupar === option}
-                    onClick={() => void setQuery({ agrupar: option })}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-                      query.agrupar === option
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {option === null ? "None" : GROUP_LABELS[option]}
-                  </button>
-                ))}
-              </div>
-            </div>
+
           </div>
         </div>
       </section>
@@ -509,7 +462,7 @@ export function PositionsWorkspace({
                             <ArrowUpIcon aria-hidden="true" size={10} weight="bold" />
                           ) : sorted === "desc" ? (
                             <ArrowDownIcon aria-hidden="true" size={10} weight="bold" />
-                          ) : null}
+                          ) : <ArrowsDownUpIcon aria-hidden="true" size={10} className="opacity-50" />}
                         </button>
                       </th>
                     );
@@ -523,24 +476,6 @@ export function PositionsWorkspace({
                   <td colSpan={COLUMN_COUNT} className="px-6 py-10 text-center text-sm text-muted-foreground">No positions match the filters.
                   </td>
                 </tr>
-              ) : groups ? (
-                groups.map((group) => (
-                  <Fragment key={group.key}>
-                    <tr className="bg-white/[0.02]">
-                      <td colSpan={COLUMN_COUNT} className="px-5 py-2.5 sm:px-6">
-                        <div className="flex items-center gap-2.5">
-                          {query.agrupar === "classe" ? (
-                            <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(group.label) }} />
-                          ) : null}
-                          <span className="text-xs font-semibold text-foreground">{englishLabel(group.label)}</span>
-                          <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
-                          <span className="ml-auto font-mono text-xs text-foreground">{formatBrl(group.totalBrl)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                    {group.items.map((item) => renderRow(item.position, `${group.key}-${item.position.id}`, item.valueBrl))}
-                  </Fragment>
-                ))
               ) : (
                 sortedPositions.map((position) => renderRow(position, position.id, position.totalBrl))
               )}
@@ -702,16 +637,9 @@ function PositionRow({
           {position.maturityDate ? (
             <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
           ) : null}
-          <p className="mt-1 text-[10px] text-muted-foreground sm:hidden">{position.institutionName}</p>
-        </Cell>
-        <Cell id="institutionName">
-          <p className="text-xs text-foreground/80">{position.institutionName}</p>
         </Cell>
         <Cell id="assetType">
           <span className="text-xs whitespace-nowrap text-foreground/80" data-testid="position-type">{typeOf(position)}</span>
-        </Cell>
-        <Cell id="strategy">
-          <span className="text-xs whitespace-nowrap text-foreground/80">{strategyOf(position)}</span>
         </Cell>
         <Cell id="classes">
           {first ? (
@@ -794,8 +722,6 @@ function PositionDetails({
 }) {
   const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Institution", value: position.institutionName },
-    { label: "Strategy", value: strategyOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.baseCurrency}</span> },
     {
       label: "Quote",

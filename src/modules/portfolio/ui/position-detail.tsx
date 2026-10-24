@@ -40,7 +40,7 @@ import {
   formatBrl,
   formatPriceBrl,
 } from "@/modules/portfolio/presentation/portfolio-format";
-import { allocationLabel, NO_STRATEGY } from "@/modules/portfolio/presentation/position-filters";
+import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
 import {
   formatEstimatedPrice,
   formatPoints,
@@ -185,7 +185,6 @@ export function PositionDetail({
       : !editPosition
         ? `No position in ${selectedLabel}.`
         : null;
-  const strategy = snapshot ? (snapshot.strategy ?? NO_STRATEGY) : null;
 
   const canLiquidate = !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
   const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
@@ -212,11 +211,7 @@ export function PositionDetail({
             <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
               {history.ticker ?? "BALANCE"}
             </span>
-            <span>
-              {scope === "all"
-                ? `All accounts: ${allAccountLabels(history).join(", ")}`
-                : history.institutionName}
-            </span>
+
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-1.5" data-testid="position-chips">
             {exit ? (
@@ -255,12 +250,6 @@ export function PositionDetail({
                 {englishLabel(assetClass)}
               </span>
             ))}
-            {strategy ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
-                <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(strategy) }} />
-                {strategy}
-              </span>
-            ) : null}
             {history.maturityDate ? (
               <MaturityBadge
                 maturityDate={history.maturityDate}
@@ -372,7 +361,7 @@ export function PositionDetail({
                   href={positionHref(other.accountId, history.assetId, searchParams)}
                   className="rounded-sm text-foreground/85 underline decoration-border underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  {englishLabel(other.label)}
+                  Position {index + 1}
                 </Link>{" "}
                 ({monthRangeLabel(other.firstMonth, other.lastMonth)})
               </span>
@@ -570,7 +559,7 @@ export function PositionDetail({
               <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Remove {editPosition.assetName}?
               </Dialog.Title>
 
-              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">Deletes the record for {editPosition.institutionName} in {selectedLabel}.
+              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">Deletes this position in {selectedLabel}.
                 {editPosition.liquidated ? "" : " To close the position while preserving history, liquidate it."}
               </Dialog.Description>
               <div className="mt-6 flex flex-wrap justify-end gap-2">
@@ -844,9 +833,7 @@ function lastPresentUpTo(slots: HistorySlot[], month: string) {
   return candidates.at(-1) ?? null;
 }
 
-function allAccountLabels(history: PositionHistoryView) {
-  return [history.institutionName, ...history.otherAccounts.map((other) => other.label)];
-}
+
 
 
 function formatDayKey(day: string | null) {

@@ -46,8 +46,6 @@ export type PositionHistoryView = {
   maturityDate: string | null;
 
   liquidity: string | null;
-  institutionName: string;
-  accountName: string;
   selectedMonth: string;
   monthStatus: PortfolioMonthStatus;
 
@@ -151,7 +149,7 @@ export async function getPositionHistory({
       }),
       prisma.account.findUnique({
         where: { id: accountId },
-        select: { name: true, institution: { select: { name: true } } },
+        select: { id: true },
       }),
       prisma.position.findMany({
         where: { assetId },
@@ -168,7 +166,6 @@ export async function getPositionHistory({
           totalBrl: true,
           strategy: true,
           portfolioMonth: { select: { referenceDate: true } },
-          account: { select: { name: true, institution: { select: { name: true } } } },
           allocations: { select: { assetClass: true, subclass: true, duration: true, weight: true, ratePercent: true } },
         },
       }),
@@ -183,7 +180,9 @@ export async function getPositionHistory({
     }
 
 
-    const transactions = [...(await readTransactions(assetId)), ...automaticIncome(positions)].sort(
+    const accountIds = [...new Set(positions.map((position) => position.accountId))].sort();
+    const positionLabel = (id: string) => `Position ${accountIds.indexOf(id) + 1}`;
+    const transactions = [...(await readTransactions(assetId)), ...automaticIncome(positions)].map((entry) => ({ ...entry, accountLabel: positionLabel(entry.accountId) })).sort(
       (left, right) => right.occurredOn.localeCompare(left.occurredOn) || Number(Boolean(right.automatic)) - Number(Boolean(left.automatic)),
     );
     const recordedByAccount = new Map(
@@ -208,7 +207,7 @@ export async function getPositionHistory({
       month: monthKey(position.portfolioMonth.referenceDate),
       accountId: position.accountId,
 
-      accountLabel: position.account.institution.name,
+      accountLabel: positionLabel(position.accountId),
       quantity: position.quantity.toNumber(),
       openingQuantity: position.openingQuantity.toNumber(),
 
@@ -280,8 +279,6 @@ export async function getPositionHistory({
       baseCurrency: asset.baseCurrency,
       maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,
       liquidity: asset.liquidity,
-      institutionName: account.institution.name,
-      accountName: account.name,
       selectedMonth,
       monthStatus: selected.status,
       referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
@@ -424,7 +421,6 @@ function automaticIncome(
     calculatedIncomeBrl: Prisma.Decimal;
     incomeCalculatedThrough: Date | null;
     portfolioMonth: { referenceDate: Date };
-    account: { institution: { name: string } };
   }[],
 ): PositionTransactionView[] {
   return positions.flatMap((position) => {
@@ -439,7 +435,7 @@ function automaticIncome(
       {
         id: `auto-${position.id}`,
         accountId: position.accountId,
-        accountLabel: position.account.institution.name,
+        accountLabel: "",
         kind: "INCOME" as const,
         transferId: null,
         occurredOn: toDateKey(day),
@@ -477,7 +473,6 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
       position: {
         select: {
           accountId: true,
-          account: { select: { institution: { select: { name: true } } } },
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
         },
@@ -488,7 +483,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
   return rows.map((row) => ({
     id: row.id,
     accountId: row.position.accountId,
-    accountLabel: row.position.account.institution.name,
+    accountLabel: "",
     kind: row.kind,
     occurredOn: toDateKey(row.occurredOn),
     quantity: row.quantity.toNumber(),

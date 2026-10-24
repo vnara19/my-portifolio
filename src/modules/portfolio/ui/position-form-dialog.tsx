@@ -27,7 +27,7 @@ import { fixedIncomeName, fixedIncomeAllocation, brazilianFixedIncomeSchema, typ
 import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
 import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Picker, type PickerOption } from "@/components/ui/picker";
+import { Picker } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
 import type { EditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import type { MonthPosition, MonthQuote } from "@/modules/portfolio/application/get-month-positions";
@@ -96,8 +96,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "ativo", label: "Asset" },
   { key: "rateio", label: "Allocation" },
 ];
-const NEW_INSTITUTION = "nova:";
-const DEFAULT_ACCOUNT_NAME = "Main";
 const CHECK_DEBOUNCE_MS = 500;
 
 const popupClass =
@@ -193,7 +191,7 @@ function PositionForm({
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
   const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
-  const [strategy, setStrategy] = useState(editing?.strategy ?? "");
+  const strategy = editing?.strategy ?? "";
   // Asset details.
   const [tickerText, setTickerText] = useState("");
   const [coinChoice, setCoinChoice] = useState<{ symbol: string; id: string } | null>(null);
@@ -229,9 +227,7 @@ function PositionForm({
   const quoteOf = (symbol: string) => month.quotes.find((entry) => entry.symbol === symbol)?.valueBrl ?? null;
 
 
-  const institutionName = editing?.institutionName ?? "Portfolio";
-  const defaultInstitution = catalog.institutions.find((entry) => normalizeKey(entry.name) === normalizeKey("Portfolio"));
-  const account = resolveAccount(defaultInstitution?.id ?? `${NEW_INSTITUTION}portfolio`, { key: "portfolio", name: "Portfolio" }, catalog);
+  const account = catalog.portfolioAccountId ? { accountId: catalog.portfolioAccountId } : {};
 
   const resetFields = () => {
     setBondIssues(["Bond details"]);
@@ -240,7 +236,7 @@ function PositionForm({
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
-    setValueKind("quantity"); setMaturity(""); setLiquidity(""); setStrategy("");
+    setValueKind("quantity"); setMaturity(""); setLiquidity("");
     setAssetType(null); setRows(null); setNextRowKey(100); setAutoIncome(false);
     setAppliedOn(defaultAppliedOn(month.referenceDate)); setTab("geral");
     setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
@@ -297,8 +293,8 @@ function PositionForm({
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
   const maturityDate = treasuryMaturity ?? ((editing ? allowsMaturityOf(editing) : definition?.allowsMaturity) && maturity ? maturity : null);
   const assetKey =
-    !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? institutionName : symbol)
-      ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: institutionName ?? "", maturityDate })
+    !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? typedName : symbol)
+      ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: "Portfolio", maturityDate })
       : null;
   const catalogAsset = !fixedIncomeEntry && assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey || (definition?.ticker === "market" && symbol !== null && asset.quoteSymbol === symbol)) : undefined;
   const isNewAsset = !editing && assetKey !== null && !catalogAsset;
@@ -445,7 +441,7 @@ function PositionForm({
     });
   }
   if (duplicate && !purchaseEntry) {
-    issues.push({ tab: "ativo", message: "This asset already has a position at this institution." });
+    issues.push({ tab: "ativo", message: "This asset already has a position in your portfolio." });
   }
   if (!editing && kind) {
     if (tickerIssue && !catalogAsset) {
@@ -535,7 +531,7 @@ function PositionForm({
         result = await addPositionAction({
           monthId: month.id,
           addition: {
-            ...(account.accountId ? { accountId: account.accountId } : { newAccount: account.newAccount }),
+            ...account,
             ...(catalogAsset
               ? { assetId: catalogAsset.id }
               : {
@@ -577,10 +573,6 @@ function PositionForm({
     });
   };
 
-  const strategyOptions: PickerOption[] = [
-    { value: "", label: "No strategy" },
-    ...catalog.strategies.map((entry) => ({ value: entry, label: entry })),
-  ];
   const market = !editing && definition?.ticker === "market";
   const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? identity?.currency ?? (kind && !isMarketKind(kind) ? baseCurrencyOf(kind, symbol) : null);
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
@@ -623,7 +615,7 @@ function PositionForm({
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
-              ? `${editing.institutionName} · ${englishLabel(month.label)}`
+              ? englishLabel(month.label)
               : `${englishLabel(month.label)} · enter the position details and save.`}
           </Dialog.Description>
         </div>
@@ -692,7 +684,7 @@ function PositionForm({
               </Button>)}
             </div> : null}
             {editing ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3">
                 <Field label="Asset type">
                   <Picker
                     aria-label="Asset type"
@@ -701,7 +693,6 @@ function PositionForm({
                     onValueChange={(next) => setAssetType(next as AssetType)}
                   />
                 </Field>
-                <ReadOnly label="Institution" value={editing.institutionName} />
               </div>
             ) : (
               <div className="grid gap-3">
@@ -740,9 +731,7 @@ function PositionForm({
             </> : null}
             <div className="grid grid-cols-2 gap-3">
               {editing ? <ReadOnly label={valueLabel} value={value} mono /> : null}
-              {editing ? <Field label="Strategy">
-                <Picker aria-label="Strategy" options={strategyOptions} value={strategy} onValueChange={setStrategy} />
-              </Field> : null}
+
             </div>
             {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Use Transactions to change the quantity or balance.</p> : null}
 
@@ -1153,30 +1142,6 @@ function formatWeight(value: number) {
   return value.toLocaleString("en-GB", { maximumFractionDigits: 4, useGrouping: false });
 }
 
-
-function resolveAccount(
-  institutionValue: string | null,
-  createdInstitution: { key: string; name: string } | null,
-  catalog: EditingCatalog,
-): { accountId: string; newAccount?: undefined } | { accountId?: undefined; newAccount: { institutionId: string | null; institutionName: string | null; name: string } } | null {
-  if (!institutionValue) {
-    return null;
-  }
-
-  if (institutionValue.startsWith(NEW_INSTITUTION)) {
-    return createdInstitution
-      ? { newAccount: { institutionId: null, institutionName: createdInstitution.name, name: DEFAULT_ACCOUNT_NAME } }
-      : null;
-  }
-
-  const accounts = catalog.accounts.filter((account) => account.institutionId === institutionValue);
-  const principal =
-    accounts.find((account) => normalizeKey(account.name) === normalizeKey(DEFAULT_ACCOUNT_NAME)) ?? accounts[0];
-
-  return principal
-    ? { accountId: principal.id }
-    : { newAccount: { institutionId: institutionValue, institutionName: null, name: DEFAULT_ACCOUNT_NAME } };
-}
 
 type TickerCheckState = (
   | { state: "idle" }

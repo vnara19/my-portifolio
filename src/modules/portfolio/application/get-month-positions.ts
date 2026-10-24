@@ -21,8 +21,6 @@ export type MonthPosition = {
   assetName: string;
   ticker: string | null;
   quoteSymbol: string | null;
-  institutionName: string;
-  accountName: string;
   strategy: string | null;
   baseCurrency: string;
 
@@ -128,9 +126,6 @@ export async function getMonthPositions(
                   assetType: true,
                 },
               },
-              account: {
-                select: { name: true, institution: { select: { name: true } } },
-              },
               allocations: {
                 select: { assetClass: true, subclass: true, duration: true, weight: true, ratePercent: true },
               },
@@ -201,8 +196,6 @@ export async function getMonthPositions(
             assetName: position.asset.name,
             ticker: position.asset.ticker,
             quoteSymbol: position.asset.quoteSymbol,
-            institutionName: position.account.institution.name,
-            accountName: position.account.name,
             strategy: position.strategy,
             baseCurrency: position.asset.baseCurrency,
             maturityDate: position.asset.maturityDate ? toDateKey(position.asset.maturityDate) : null,

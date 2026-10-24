@@ -21,16 +21,8 @@ export type FilterGroup = {
   subtle?: boolean;
 };
 
-export type GroupingControl = {
-  value: string | null;
-  options: { value: string | null; label: string }[];
-  onChange: (value: string | null) => void;
-};
-
-
 export function PositionsFilterSheet({
   groups,
-  grouping,
   resultCount,
   resultLabel = (count) => `View ${count} ${count === 1 ? "position" : "positions"}`,
   onClear,
@@ -39,7 +31,6 @@ export function PositionsFilterSheet({
 }: {
   groups: FilterGroup[];
 
-  grouping?: GroupingControl;
   resultCount: number;
   resultLabel?: (count: number) => string;
   onClear: () => void;
@@ -54,7 +45,7 @@ export function PositionsFilterSheet({
       testId={testId}
       trigger={
         <BottomSheetTrigger
-          aria-label={active > 0 ? `Filters, ${active} ${active === 1 ? "ativo" : "ativos"}` : "Filters"}
+          aria-label={active > 0 ? `Filters, ${active} active` : "Filters"}
           className={cn(
             "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
             active > 0 ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-card/60 text-foreground",
@@ -75,14 +66,6 @@ export function PositionsFilterSheet({
         </>
       }
     >
-      {grouping ? (
-        <ChipGroup
-          label="Group by"
-          options={grouping.options.map((option) => ({ key: option.value ?? "", label: englishLabel(option.label) }))}
-          isOn={(key) => (grouping.value ?? "") === key}
-          onToggle={(key) => grouping.onChange(key === "" ? null : key)}
-        />
-      ) : null}
       {groups
         .filter((group) => group.options.length > 0)
         .map((group) => (

@@ -100,7 +100,7 @@ const addSchema = z.object({
       strategy,
       allocations: z.union([z.tuple([]), allocationsSchema]),
     })
-    .refine((addition) => (addition.accountId === undefined) !== (addition.newAccount === undefined))
+    .refine((addition) => !(addition.accountId && addition.newAccount))
     .refine((addition) => (addition.assetId === undefined) !== (addition.newAsset === undefined)),
 });
 

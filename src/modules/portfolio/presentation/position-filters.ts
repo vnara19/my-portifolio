@@ -2,7 +2,6 @@ import type { MonthPosition } from "@/modules/portfolio/application/get-month-po
 import { ASSET_TYPE_LABELS } from "@/modules/portfolio/domain/classification";
 
 export const NO_CLASS = "Unclassified";
-export const NO_STRATEGY = "No strategy";
 export const NO_MATURITY = "No maturity date";
 export const NO_LIQUIDITY = "Liquidity not specified";
 
@@ -11,8 +10,6 @@ export type PositionFilters = {
   subclasses: string[];
 
   types: string[];
-  institutions: string[];
-  strategies: string[];
   currencies: string[];
 
   maturities: string[];
@@ -25,8 +22,6 @@ export type FilterDimension =
   | "classes"
   | "subclasses"
   | "types"
-  | "institutions"
-  | "strategies"
   | "currencies"
   | "maturities"
   | "liquidities";
@@ -35,34 +30,13 @@ export const FILTER_DIMENSIONS: FilterDimension[] = [
   "classes",
   "subclasses",
   "types",
-  "institutions",
-  "strategies",
   "currencies",
   "maturities",
   "liquidities",
 ];
 
-export type GroupBy = "instituicao" | "classe" | "tipo";
-
-export type GroupedPosition<T extends MonthPosition = MonthPosition> = {
-  position: T;
-  valueBrl: number;
-};
-
-export type PositionGroup<T extends MonthPosition = MonthPosition> = {
-  key: string;
-  label: string;
-  items: GroupedPosition<T>[];
-  totalBrl: number;
-};
-
-
 export function typeOf(position: MonthPosition) {
   return ASSET_TYPE_LABELS[position.assetType];
-}
-
-export function strategyOf(position: MonthPosition) {
-  return position.strategy ?? NO_STRATEGY;
 }
 
 export function classesOf(position: MonthPosition) {
@@ -100,15 +74,7 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
   const search = normalize(filters.search);
 
   return positions.filter((position) => {
-    if (filters.institutions.length > 0 && !filters.institutions.includes(position.institutionName)) {
-      return false;
-    }
-
     if (filters.types.length > 0 && !filters.types.includes(typeOf(position))) {
-      return false;
-    }
-
-    if (filters.strategies.length > 0 && !filters.strategies.includes(strategyOf(position))) {
       return false;
     }
 
@@ -140,7 +106,7 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
 
     if (search) {
       const haystack = normalize(
-        [position.assetName, position.ticker ?? "", position.institutionName].join(" "),
+        [position.assetName, position.ticker ?? ""].join(" "),
       );
 
       if (!haystack.includes(search)) {
@@ -174,54 +140,6 @@ export function matchedValueBrl(position: MonthPosition, filters: PositionFilter
   return (position.totalBrl * weight) / 100;
 }
 
-export function groupPositions<T extends MonthPosition>(
-  positions: T[],
-  groupBy: GroupBy,
-  filters: PositionFilters,
-): PositionGroup<T>[] {
-  const groups = new Map<string, PositionGroup<T>>();
-
-  const add = (label: string, item: GroupedPosition<T>) => {
-    const group = groups.get(label) ?? { key: label, label, items: [], totalBrl: 0 };
-    group.items.push(item);
-    group.totalBrl += item.valueBrl;
-    groups.set(label, group);
-  };
-
-  for (const position of positions) {
-    if (groupBy === "instituicao" || groupBy === "tipo") {
-      add(groupBy === "tipo" ? typeOf(position) : position.institutionName, { position, valueBrl: position.totalBrl });
-      continue;
-    }
-
-    if (position.allocations.length === 0) {
-      add(NO_CLASS, { position, valueBrl: position.totalBrl });
-      continue;
-    }
-
-    for (const assetClass of classesOf(position)) {
-      if (filters.classes.length > 0 && !filters.classes.includes(assetClass)) {
-        continue;
-      }
-
-      const weight = position.allocations
-        .filter(
-          (allocation) =>
-            allocation.assetClass === assetClass &&
-            (filters.subclasses.length === 0 || filters.subclasses.includes(allocation.subclass)),
-        )
-        .reduce((total, allocation) => total + allocation.weight, 0);
-
-      if (weight > 0) {
-        add(assetClass, { position, valueBrl: (position.totalBrl * weight) / 100 });
-      }
-    }
-  }
-
-  return [...groups.values()].sort((left, right) => right.totalBrl - left.totalBrl);
-}
-
-
 export function filterOptions(
   positions: MonthPosition[],
   filters: PositionFilters = EMPTY_FILTERS,
@@ -249,8 +167,6 @@ const EMPTY_FILTERS: PositionFilters = {
   classes: [],
   subclasses: [],
   types: [],
-  institutions: [],
-  strategies: [],
   currencies: [],
   maturities: [],
   liquidities: [],
@@ -272,10 +188,6 @@ function facetValues(position: MonthPosition, dimension: FilterDimension, scoped
         .map((allocation) => allocation.subclass);
     case "types":
       return [typeOf(position)];
-    case "institutions":
-      return [position.institutionName];
-    case "strategies":
-      return [strategyOf(position)];
     case "currencies":
       return [position.baseCurrency];
     case "maturities":

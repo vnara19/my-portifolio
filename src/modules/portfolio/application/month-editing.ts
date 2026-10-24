@@ -332,7 +332,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     const matches = positions.filter((position) => position.assetId === asset.id);
     const held = matches.find((position) => position.accountId === account.id) ?? (purchase && matches.length === 1 ? matches[0] : undefined);
     if (purchase && !held && matches.length > 1) throw new MonthEditError("This asset is held in multiple accounts. Record the transaction from the position you want to change.");
-    if (held && !purchase) throw new MonthEditError("This asset already has a position at this institution in this reporting month.");
+    if (held && !purchase) throw new MonthEditError("This asset already has a position in this reporting month.");
     if (purchase?.input.side === "SELL" && !held) throw new MonthEditError("You must own this asset in the selected account before selling it.");
 
     if (purchase) {
@@ -708,7 +708,19 @@ async function resolveAdditionAccount(
   const input = addition.newAccount;
 
   if (!input) {
-    throw new MonthEditError("Choose the position account.");
+    // New entries use one internal portfolio container; legacy account IDs remain
+    // supported for edits, transactions and restored historical backups.
+    let institution = await transaction.institution.findFirst({ where: { normalizedName: normalizeKey("Portfolio") }, orderBy: { id: "asc" }, select: { id: true } });
+    if (!institution) {
+      institution = await transaction.institution.create({ data: { userId: SCOPED_USER, name: "Portfolio", normalizedName: normalizeKey("Portfolio") }, select: { id: true } });
+      batch.created.institutionIds.push(institution.id);
+    }
+    let account = await transaction.account.findFirst({ where: { institutionId: institution.id, name: "Main" }, orderBy: { id: "asc" }, select: { id: true } });
+    if (!account) {
+      account = await transaction.account.create({ data: { userId: SCOPED_USER, institutionId: institution.id, name: "Main" }, select: { id: true } });
+      batch.created.accountIds.push(account.id);
+    }
+    return { id: account.id, institutionName: "Portfolio" };
   }
 
   const institution = await resolveInstitution(transaction, input, batch);
