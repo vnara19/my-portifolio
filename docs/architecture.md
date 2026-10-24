@@ -471,12 +471,15 @@ rollback and backup export/restore.
 Positions separate Asset Class (saved exposure allocations), Asset Type (product),
 Market (listing region), and Currency. Subclass remains in historical allocations
 and backups but is no longer a top-level position filter. Product types use stored
-contract terms or verified listing metadata; missing product metadata is shown as
-Unclassified Product rather than guessing. Cash Account is one product, independent of BRL/USD/EUR. Listing regions do not describe an ETF's underlying exposure, and the user-selected reporting convention assigns accounts to their currency region,
+contract terms or verified listing metadata; missing product metadata prompts Review Product Type on the holding rather than inventing a product. Cash Account is one product, independent of BRL/USD/EUR. Listing regions do not describe an ETF's underlying exposure, and the user-selected reporting convention assigns accounts to their currency region,
 bonds to their issuer country, and cryptocurrencies to Global. Market therefore
 represents reporting geography for these holdings, not their trading venue.
 Market and Currency always include the supported regions and BRL/USD/EUR, even
-when the selected portfolio has no matching holding. Product options otherwise
-reflect actual holdings; legacy debt without product information is not guessed.
+when the selected portfolio has no matching holding. The complete supported product catalog is always available, including Stock, REIT, FII,
+CDB, LCI, LCA and all supported bond families, whether held or not.
+Legacy debt product can be confirmed in Edit position. Its displayProduct metadata
+is retained alongside existing JSON contract fields and included in backups and
+Undo; it does not create or alter contractual rates or valuation formulas. A
+contracted product cannot be relabeled as a different product.
 The Add position form shows the same derived product and listing market alongside
 its exposure class. Existing stored taxonomy keys remain unchanged.

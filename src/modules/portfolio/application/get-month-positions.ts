@@ -1,4 +1,4 @@
-import { productType, listingMarket } from "../presentation/asset-classification";
+import { productType, listingMarket, reviewedDebtProduct } from "../presentation/asset-classification";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 import { hasSecurityQuantity, nativePositionValue, valuationCurrency } from "../presentation/position-display";
 import { bondCostState, readInternationalBond } from "../domain/international-bond";
@@ -221,7 +221,7 @@ export async function getMonthPositions(
             liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
             assetType,
-            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null)),
+            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null)),
             market: listingMarket(assetType, position.asset.baseCurrency, bond?.issuerCountry),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",

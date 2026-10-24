@@ -592,7 +592,7 @@ function PositionRow({
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
             {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
-            <span>{typeOf(position)}</span>{marketOf(position) !== "Other Markets" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
+            <span>{typeOf(position) || "Review Product Type"}</span>{marketOf(position) !== "Other Markets" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
           </p>
           {position.maturityDate ? (
             <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
@@ -642,7 +642,7 @@ function PositionDetails({
 }) {
   const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Asset Type", value: typeOf(position) },
+    { label: "Asset Type", value: typeOf(position) || "Review Product Type" },
     { label: "Asset Class", value: classesOf(position).map(englishLabel).join(", ") },
     { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },

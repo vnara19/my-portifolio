@@ -4,7 +4,7 @@
 
 import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
 import { InternationalBondForm } from "./international-bond-form";
-import { productType, listingMarket } from "../presentation/asset-classification";
+import { productType, listingMarket, LEGACY_DEBT_PRODUCTS } from "../presentation/asset-classification";
 import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
@@ -172,6 +172,7 @@ function PositionForm({
 
 
   // General settings.
+  const [reviewProduct, setReviewProduct] = useState<string | null>(editing?.productType && (LEGACY_DEBT_PRODUCTS as readonly string[]).includes(editing.productType) ? editing.productType : null);
   const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
   const [fiIssuer, setFiIssuer] = useState("");
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
@@ -524,6 +525,7 @@ function PositionForm({
               liquidity: normalizeLiquidity(liquidity),
               maturityDate,
               ...(assetType ? { assetType } : {}),
+              ...(assetType === "fixed-income" && reviewProduct ? { displayProduct: reviewProduct as "CDB" | "LCI" | "LCA" } : {}),
               ...income,
             },
           },
@@ -691,9 +693,10 @@ function PositionForm({
                     aria-label="Asset type"
                     options={ASSET_TYPES.map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
                     value={assetType}
-                    onValueChange={(next) => setAssetType(next as AssetType)}
+                    onValueChange={(next) => { setAssetType(next as AssetType); setReviewProduct(null); }}
                   />
                 </Field>
+                {assetType === "fixed-income" ? <Field label="Product"><Picker aria-label="Debt product" value={reviewProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={setReviewProduct} placeholder="Select the product from your statement" /></Field> : null}
               </div>
             ) : (
               <div className="grid gap-3">
@@ -842,7 +845,7 @@ function PositionForm({
                 {!editing && !automaticName && !fixedIncomeEntry ? <Field label={entryType === "cash" ? "Cash name" : "Asset name"}><input aria-label={entryType === "cash" ? "Cash name" : "Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={entryType === "cash" ? "For example, Savings account" : "For example, Bank X CDB"} className={inputClass} /></Field> : null}
                 {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
                 {!editing && kind && entryType !== "cash" ? <ReadOnly label="Asset Class" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
-                {!editing && kind && entryType !== "cash" ? <><ReadOnly label="Asset Type" value={productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, fixedIncomeEntry ? fiProduct : null, null, allocationRows[0]?.subclass)} />{listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined) !== "Other Markets" ? <ReadOnly label="Market" value={listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined)} /> : null}</> : null}
+                {!editing && kind && entryType !== "cash" ? <><ReadOnly label="Asset Type" value={productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, fixedIncomeEntry ? fiProduct : null, null, allocationRows[0]?.subclass) || "Select the security to identify its product"} />{listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined) !== "Other Markets" ? <ReadOnly label="Market" value={listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined)} /> : null}</> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {fixedIncomeEntry ? <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

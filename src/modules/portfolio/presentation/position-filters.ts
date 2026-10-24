@@ -1,6 +1,6 @@
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 import { englishLabel } from "@/lib/english-labels";
-import { productType, listingMarket } from "./asset-classification";
+import { PRODUCT_TYPES, productType, listingMarket } from "./asset-classification";
 
 export const NO_CLASS = "Unclassified";
 export const NO_MATURITY = "No Maturity Date";
@@ -170,8 +170,8 @@ export function filterOptions(
     }
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
-    const supported = dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
-    options[dimension] = [...new Set([...supported, ...values, ...(filters[dimension] ?? [])])].sort((left, right) =>
+    const supported = dimension === "types" ? [...PRODUCT_TYPES] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
+    options[dimension] = [...new Set([...supported, ...values.filter(Boolean), ...(filters[dimension] ?? [])])].sort((left, right) =>
       left.localeCompare(right, "en-GB"),
     );
   }

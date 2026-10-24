@@ -1,3 +1,4 @@
+import { LEGACY_DEBT_PRODUCTS, reviewedDebtProduct } from "../presentation/asset-classification";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@/generated/prisma/client";
 import { cleanName, normalizeKey, USD_SYMBOL } from "@/modules/portfolio/domain/asset-kinds";
@@ -34,11 +35,12 @@ export type AssetAttributes = {
   autoIncome?: boolean;
 
   assetType?: string;
+  displayProduct?: string;
 };
 
 
 export type AssetState = {
-  fixedIncomeContract?: Prisma.InputJsonValue;
+  fixedIncomeContract?: Prisma.InputJsonValue | null;
   expectedFixedIncomeContract?: Prisma.InputJsonValue;
   id: string;
   name: string;
@@ -69,6 +71,7 @@ export async function applyAssetAttributes(
       autoIncome: true,
       assetType: true,
       baseCurrency: true,
+      fixedIncomeContract: true,
     },
   });
 
@@ -125,6 +128,14 @@ export async function applyAssetAttributes(
   }
 
   const assetType = next.assetType ?? asset.assetType;
+  let contract = asset.fixedIncomeContract;
+  if (next.displayProduct !== undefined) {
+    if (assetType !== "fixed-income" || !(LEGACY_DEBT_PRODUCTS as readonly string[]).includes(next.displayProduct)) throw new AssetAttributeError("Choose the exact debt product.");
+    const original = contract && typeof contract === "object" && !Array.isArray(contract) ? contract : {};
+    if ("product" in original && original.product !== next.displayProduct) throw new AssetAttributeError("The investment contract determines its product; create the correct investment instead.");
+    contract = { ...original, displayProduct: next.displayProduct };
+  }
+  const productChanged = reviewedDebtProduct(contract) !== reviewedDebtProduct(asset.fixedIncomeContract);
 
   if (
     asset.name === name &&
@@ -132,7 +143,7 @@ export async function applyAssetAttributes(
     currentMaturity === maturity &&
     asset.cashAccount === cashAccount &&
     asset.autoIncome === autoIncome &&
-    asset.assetType === assetType
+    asset.assetType === assetType && !productChanged
   ) {
     return null;
   }
@@ -167,6 +178,7 @@ export async function applyAssetAttributes(
       cashAccount,
       autoIncome,
       assetType,
+      ...(productChanged ? { fixedIncomeContract: contract as Prisma.InputJsonValue } : {}),
     },
   });
 
@@ -179,6 +191,7 @@ export async function applyAssetAttributes(
     cashAccount: asset.cashAccount,
     autoIncome: asset.autoIncome,
     assetType: asset.assetType,
+    ...(productChanged ? { fixedIncomeContract: asset.fixedIncomeContract as Prisma.InputJsonValue | null, expectedFixedIncomeContract: contract as Prisma.InputJsonValue } : {}),
   };
 }
 
@@ -204,7 +217,7 @@ export async function restoreAssetState(transaction: Prisma.TransactionClient, s
       cashAccount: state.cashAccount,
       autoIncome: state.autoIncome,
       assetType: state.assetType,
-      ...(state.fixedIncomeContract ? { fixedIncomeContract: state.fixedIncomeContract } : {}),
+      ...(state.fixedIncomeContract !== undefined ? { fixedIncomeContract: state.fixedIncomeContract ?? Prisma.DbNull } : {}),
     },
   });
 }

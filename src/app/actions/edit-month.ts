@@ -116,6 +116,7 @@ const editSchema = z.object({
       cashAccount: z.boolean().optional(),
       autoIncome: z.boolean().optional(),
       assetType: z.enum(ASSET_TYPES).optional(),
+      displayProduct: z.enum(["CDB", "LCI", "LCA"]).optional(),
     }),
   }),
 });
