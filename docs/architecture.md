@@ -465,3 +465,15 @@ scripts/test-dated-months.ts verifies routing, missing months, later ledgers/pri
 verification scopes, multi-month Undo and first-day rollover. Additional isolated
 checks cover backdated fixed-rate accrual, EUR bond propagation, negative-balance
 rollback and backup export/restore.
+
+### Position classification filters
+
+Positions separate Asset Class (saved exposure allocations), Asset Type (product),
+Market (listing region), and Currency. Subclass remains in historical allocations
+and backups but is no longer a top-level position filter. Product types use stored
+contract terms or verified listing metadata; missing product metadata is shown as
+Unclassified Product rather than guessing. Cash is one product, independent of
+BRL/USD/EUR. Listing regions do not describe an ETF's underlying exposure, and a
+bond's issuer country or currency is not substituted for an unknown listing venue.
+The Add position form shows the same derived product and listing market alongside
+its exposure class. Existing stored taxonomy keys remain unchanged.

@@ -1,6 +1,6 @@
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 import { englishLabel } from "@/lib/english-labels";
-import { ASSET_TYPE_LABELS } from "@/modules/portfolio/domain/classification";
+import { productType, listingMarket } from "./asset-classification";
 
 export const NO_CLASS = "Unclassified";
 export const NO_MATURITY = "No maturity date";
@@ -11,6 +11,7 @@ export type PositionFilters = {
   subclasses: string[];
 
   types: string[];
+  markets?: string[];
   currencies: string[];
 
   maturities: string[];
@@ -21,7 +22,7 @@ export type PositionFilters = {
 
 export type FilterDimension =
   | "classes"
-  | "subclasses"
+  | "markets"
   | "types"
   | "currencies"
   | "maturities"
@@ -29,8 +30,8 @@ export type FilterDimension =
 
 export const FILTER_DIMENSIONS: FilterDimension[] = [
   "classes",
-  "subclasses",
   "types",
+  "markets",
   "currencies",
   "maturities",
   "liquidities",
@@ -42,8 +43,12 @@ export function normalizeTypeFilter(label: string) {
   return label === "Crypto" ? "Cryptocurrency" : label;
 }
 
-export function typeOf(position: Pick<MonthPosition, "assetType">) {
-  return normalizeTypeFilter(ASSET_TYPE_LABELS[position.assetType]);
+export function typeOf(position: Pick<MonthPosition, "assetType" | "productType">) {
+  return position.productType ?? productType(position.assetType);
+}
+
+export function marketOf(position: Pick<MonthPosition, "assetType" | "market">) {
+  return position.market ?? listingMarket(position.assetType);
 }
 
 export function classesOf(position: MonthPosition) {
@@ -85,6 +90,8 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
     if (filters.types.length > 0 && !filters.types.includes(typeOf(position))) {
       return false;
     }
+
+    if (filters.markets?.length && !filters.markets.includes(marketOf(position))) return false;
 
     if (filters.currencies.length > 0 && !filters.currencies.includes(position.valueCurrency)) {
       return false;
@@ -155,15 +162,15 @@ export function filterOptions(
   const options = {} as Record<FilterDimension, string[]>;
 
   for (const [index, dimension] of FILTER_DIMENSIONS.entries()) {
-    const before = FILTER_DIMENSIONS.slice(0, index).filter((other) => filters[other].length > 0);
+    const before = FILTER_DIMENSIONS.slice(0, index).filter((other) => (filters[other]?.length ?? 0) > 0);
     const scoped: PositionFilters = { ...EMPTY_FILTERS, search: filters.search };
 
     for (const other of before) {
-      scoped[other] = filters[other];
+      scoped[other] = filters[other] ?? [];
     }
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
-    options[dimension] = [...new Set([...values, ...filters[dimension]])].sort((left, right) =>
+    options[dimension] = [...new Set([...values, ...(filters[dimension] ?? [])])].sort((left, right) =>
       left.localeCompare(right, "en-GB"),
     );
   }
@@ -175,6 +182,7 @@ const EMPTY_FILTERS: PositionFilters = {
   classes: [],
   subclasses: [],
   types: [],
+  markets: [],
   currencies: [],
   maturities: [],
   liquidities: [],
@@ -190,10 +198,8 @@ function facetValues(position: MonthPosition, dimension: FilterDimension, scoped
         : position.allocations
             .filter((allocation) => scoped.subclasses.length === 0 || scoped.subclasses.includes(allocation.subclass))
             .map((allocation) => allocation.assetClass);
-    case "subclasses":
-      return position.allocations
-        .filter((allocation) => scoped.classes.length === 0 || scoped.classes.includes(allocation.assetClass))
-        .map((allocation) => allocation.subclass);
+    case "markets":
+      return [marketOf(position)];
     case "types":
       return [typeOf(position)];
     case "currencies":

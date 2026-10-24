@@ -1,3 +1,5 @@
+import { productType, listingMarket } from "../presentation/asset-classification";
+import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 import { hasSecurityQuantity, nativePositionValue, valuationCurrency } from "../presentation/position-display";
 import { bondCostState, readInternationalBond } from "../domain/international-bond";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
@@ -34,6 +36,8 @@ export type MonthPosition = {
   assetType: AssetType;
 
   assetTypeInferred: boolean;
+  productType?: string;
+  market?: string;
 
   fixedIncomeEstimate?: boolean;
   bondAtCost?: boolean;
@@ -149,6 +153,11 @@ export async function getMonthPositions(
 
 
     const storedQuotes = await readMonthQuoteValues(prisma, month.referenceDate);
+    const listingQuotes = await prisma.marketQuote.findMany({
+      where: { symbol: { in: month.positions.flatMap((p) => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []) }, referenceDate: { lte: month.referenceDate }, instrumentType: { in: ["ETF", "EU_ETF", "EU_ETC", "EU_ETN", "EU_STOCK", "EU_FUND", "ACAO", "EQUITY", "MUTUALFUND"] } },
+      orderBy: { referenceDate: "desc" }, distinct: ["symbol"], select: { symbol: true, instrumentType: true },
+    });
+    const instruments = new Map(listingQuotes.map((q) => [q.symbol, q.instrumentType]));
     const quoteBySymbol = new Map([...storedQuotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
     const usdRate = quoteBySymbol.get("USD")?.toNumber() ?? null;
     const totalBrl = month.positions
@@ -212,6 +221,8 @@ export async function getMonthPositions(
             liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
             assetType,
+            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product, bond?.family),
+            market: listingMarket(assetType),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,

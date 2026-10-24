@@ -42,7 +42,7 @@ import {
   allocationLabel,
   classesOf,
   typeOf,
-  normalizeTypeFilter,
+  marketOf,
   filterOptions,
   filterPositions,
   hasClassFilter,
@@ -118,6 +118,7 @@ export function PositionsWorkspace({
     {
       classe: list,
       subclasse: list,
+      mercado: list,
       tipo: list,
       moeda: list,
       venc: list,
@@ -167,8 +168,9 @@ export function PositionsWorkspace({
 
   const filters: PositionFilters = {
     classes: query.classe,
-    subclasses: query.subclasse,
-    types: query.tipo.map(normalizeTypeFilter),
+    subclasses: [],
+    markets: query.mercado,
+    types: query.tipo,
     currencies: query.moeda.map((currency) => ["BTC", "Altcoins"].includes(currency) ? "USD" : currency),
     maturities: query.venc,
     liquidities: query.liq,
@@ -212,7 +214,7 @@ export function PositionsWorkspace({
     : null;
   const activeFilterCount =
     filters.classes.length +
-    filters.subclasses.length +
+    (filters.markets?.length ?? 0) +
     filters.types.length +
     filters.currencies.length +
     filters.maturities.length +
@@ -221,9 +223,9 @@ export function PositionsWorkspace({
   const occupied = new Set(month.positions.map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
-    { key: "classe", label: "Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
-    { key: "subclasse", label: "Subclass", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
+    { key: "classe", label: "Asset Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
     { key: "tipo", label: "Asset Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
+    { key: "mercado", label: "Market", options: options.markets, selected: filters.markets ?? [], onChange: (next) => void setQuery({ mercado: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
     { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
     { key: "liq", label: "Liquidity", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
@@ -254,7 +256,7 @@ export function PositionsWorkspace({
     });
 
   const clearFilters = () =>
-    void setQuery({ classe: null, subclasse: null, tipo: null, moeda: null, venc: null, liq: null, q: null });
+    void setQuery({ classe: null, subclasse: null, mercado: null, tipo: null, moeda: null, venc: null, liq: null, q: null });
 
 
   const openPosition = (position: MonthPosition, href: string) => {
@@ -367,9 +369,9 @@ export function PositionsWorkspace({
           />
 
           <div className="hidden sm:contents">
-            <MultiSelectFilter label="Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
-            <MultiSelectFilter label="Subclass" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
+            <MultiSelectFilter label="Asset Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
             <MultiSelectFilter label="Asset Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
+            <MultiSelectFilter label="Market" options={options.markets} selected={filters.markets ?? []} onChange={(next) => void setQuery({ mercado: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
             <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
             <MultiSelectFilter label="Liquidity" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
@@ -590,7 +592,7 @@ function PositionRow({
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
             {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
-            <span>Type: {typeOf(position)}</span><span>· {position.valueCurrency}</span>
+            <span>{typeOf(position)}</span>{marketOf(position) !== "Not Applicable / Not Specified" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
           </p>
           {position.maturityDate ? (
             <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
@@ -641,8 +643,8 @@ function PositionDetails({
   const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
     { label: "Asset Type", value: typeOf(position) },
-    { label: "Class", value: classesOf(position).map(englishLabel).join(", ") },
-    { label: "Subclass", value: [...new Set(position.allocations.map((allocation) => englishLabel(allocation.subclass)))].join(", ") || "—" },
+    { label: "Asset Class", value: classesOf(position).map(englishLabel).join(", ") },
+    { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
     {
       label: "Quote",

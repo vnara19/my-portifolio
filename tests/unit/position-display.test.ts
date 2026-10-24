@@ -26,10 +26,12 @@ test("cash units are native balances, crypto units are not a fiat currency", () 
   assert.equal(hasSecurityQuantity("us-etf", "VOO"), true);
   assert.equal(hasSecurityQuantity("crypto", "BTC"), true);
 });
-test("type facets match Add position categories while stored classifications remain distinct", () => {
-  for (const assetType of ["us-stock", "us-etf", "us-market"] as const) assert.equal(typeOf({ assetType }), "US Market");
-  for (const assetType of ["br-stock", "br-etf", "br-market"] as const) assert.equal(typeOf({ assetType }), "Brazilian Market");
-  assert.equal(typeOf({ assetType: "eu-market" }), "European Market");
+test("product type is independent of listing market and currency", () => {
+  assert.equal(typeOf({ assetType: "us-stock" }), "Stock");
+  assert.equal(typeOf({ assetType: "br-etf" }), "ETF");
+  assert.equal(typeOf({ assetType: "eu-market", productType: "ETF" }), "ETF");
+  assert.equal(typeOf({ assetType: "eu-market" }), "Unclassified Product");
+  assert.equal(typeOf({ assetType: "eur-balance" }), "Cash");
   assert.equal(typeOf({ assetType: "crypto" }), "Cryptocurrency");
   assert.equal(englishLabel("Cripto"), "Cryptocurrency");
 });
