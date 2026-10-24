@@ -525,7 +525,7 @@ function PositionForm({
               liquidity: normalizeLiquidity(liquidity),
               maturityDate,
               ...(assetType ? { assetType } : {}),
-              ...(assetType === "fixed-income" && reviewProduct ? { displayProduct: reviewProduct as "CDB" | "LCI" | "LCA" } : {}),
+              ...(assetType === "fixed-income" && reviewProduct ? { displayProduct: reviewProduct } : {}),
               ...income,
             },
           },

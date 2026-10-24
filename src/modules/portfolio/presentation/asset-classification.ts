@@ -1,7 +1,7 @@
 import type { AssetType } from "../domain/classification";
 
-export const PRODUCT_TYPES = ["Stock", "REIT", "FII", "ETF", "ETC", "ETN", "Fund", "CDB", "LCI", "LCA", "Tesouro Direto", "Government Bond", "Corporate Bond", "Agency Bond", "Municipal Bond", "Supranational Bond", "Negotiable CD", "Covered Bond", "Securitized Bond", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"] as const;
-export const LEGACY_DEBT_PRODUCTS = ["CDB", "LCI", "LCA"] as const;
+export const PRODUCT_TYPES = ["Stock", "REIT", "FII", "ETF", "ETC", "ETN", "Fund", "CDB", "LCI", "LCA", "RDB", "CRI", "CRA", "Debenture", "Tesouro Direto", "Government Bond", "Corporate Bond", "Agency Bond", "Municipal Bond", "Supranational Bond", "Negotiable CD", "Covered Bond", "Securitized Bond", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"] as const;
+export const LEGACY_DEBT_PRODUCTS = ["CDB", "LCI", "LCA", "RDB", "CRI", "CRA", "Debenture"] as const;
 export function reviewedDebtProduct(value: unknown): string | null {
   if (!value || typeof value !== "object" || !("displayProduct" in value)) return null;
   const product = value.displayProduct;

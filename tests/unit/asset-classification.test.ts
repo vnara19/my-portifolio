@@ -35,7 +35,7 @@ test("product and market facets cascade without mixing geographic exposure or ca
 test("the complete supported product catalog is available before buying a product", () => {
   const types = filterOptions([]).types;
   for (const product of PRODUCT_TYPES) assert.ok(types.includes(product), product);
-  for (const product of ["Stock", "REIT", "FII", "CDB", "LCI", "LCA", "Government Bond", "Corporate Bond", "Tesouro Direto"]) assert.ok(types.includes(product));
+  for (const product of ["Stock", "REIT", "FII", "CDB", "LCI", "LCA", "RDB", "CRI", "CRA", "Debenture", "Government Bond", "Corporate Bond", "Tesouro Direto"]) assert.ok(types.includes(product));
   assert.equal(types.includes("Unspecified Debt Security"), false);
   assert.equal(productType("fixed-income"), "");
 });

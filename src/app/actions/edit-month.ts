@@ -1,5 +1,7 @@
 "use server";
 
+import { LEGACY_DEBT_PRODUCTS } from "@/modules/portfolio/presentation/asset-classification";
+
 /** Investment server actions validate inputs and scope every write to the authenticated user and dated reporting month. */
 
 import { revalidatePath } from "next/cache";
@@ -116,7 +118,7 @@ const editSchema = z.object({
       cashAccount: z.boolean().optional(),
       autoIncome: z.boolean().optional(),
       assetType: z.enum(ASSET_TYPES).optional(),
-      displayProduct: z.enum(["CDB", "LCI", "LCA"]).optional(),
+      displayProduct: z.enum(LEGACY_DEBT_PRODUCTS).optional(),
     }),
   }),
 });
