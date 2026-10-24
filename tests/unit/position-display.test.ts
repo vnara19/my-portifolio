@@ -31,7 +31,7 @@ test("product type is independent of listing market and currency", () => {
   assert.equal(typeOf({ assetType: "br-etf" }), "ETF");
   assert.equal(typeOf({ assetType: "eu-market", productType: "ETF" }), "ETF");
   assert.equal(typeOf({ assetType: "eu-market" }), "Unclassified Product");
-  assert.equal(typeOf({ assetType: "eur-balance" }), "Cash");
-  assert.equal(typeOf({ assetType: "crypto" }), "Cryptocurrency");
+  assert.equal(typeOf({ assetType: "eur-balance" }), "Cash Account");
+  assert.equal(typeOf({ assetType: "crypto" }), "Digital Asset");
   assert.equal(englishLabel("Cripto"), "Cryptocurrency");
 });

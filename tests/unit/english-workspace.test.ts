@@ -10,7 +10,7 @@ import { formatMonth, parseLocaleNumber } from "@/modules/portfolio/presentation
 test("English display preserves legacy classification values and user names", () => {
   assert.ok(ASSET_CLASSES.includes("Renda Fixa"));
   assert.ok(subclassesOf("Renda Fixa").includes("Pós-fixado"));
-  assert.equal(englishLabel("Renda Fixa"), "Fixed income");
+  assert.equal(englishLabel("Renda Fixa"), "Fixed Income");
   assert.equal(englishLabel("Pós-fixado"), "Floating-rate");
   assert.equal(englishLabel("Renda Variável"), "Equities");
   assert.equal(englishLabel("Tesouro Direto"), "Tesouro Direto");

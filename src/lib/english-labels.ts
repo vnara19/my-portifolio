@@ -2,7 +2,7 @@
 const LABELS: Readonly<Record<string, string>> = {
   Caixa: "Cash",
   Cripto: "Cryptocurrency",
-  "Renda Fixa": "Fixed income",
+  "Renda Fixa": "Fixed Income",
   "Renda Variável": "Equities",
   Reserva: "Commodities",
   "Pós-fixado": "Floating-rate",
@@ -19,7 +19,7 @@ const LABELS: Readonly<Record<string, string>> = {
   "Sem classificação": "Unclassified",
   "Sem estratégia": "No strategy",
   "Sem subclasse": "No subclass",
-  "Renda fixa": "Fixed income",
+  "Renda fixa": "Fixed Income",
   Previdência: "Pension",
   "ETF dos EUA": "US ETF",
   "Ação dos EUA": "US stock",

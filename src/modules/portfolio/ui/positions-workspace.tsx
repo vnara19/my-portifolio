@@ -592,7 +592,7 @@ function PositionRow({
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
             {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
-            <span>{typeOf(position)}</span>{marketOf(position) !== "Not Applicable / Not Specified" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
+            <span>{typeOf(position)}</span>{marketOf(position) !== "Other Markets" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
           </p>
           {position.maturityDate ? (
             <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />

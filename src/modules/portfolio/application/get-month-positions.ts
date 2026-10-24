@@ -154,7 +154,7 @@ export async function getMonthPositions(
 
     const storedQuotes = await readMonthQuoteValues(prisma, month.referenceDate);
     const listingQuotes = await prisma.marketQuote.findMany({
-      where: { symbol: { in: month.positions.flatMap((p) => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []) }, referenceDate: { lte: month.referenceDate }, instrumentType: { in: ["ETF", "EU_ETF", "EU_ETC", "EU_ETN", "EU_STOCK", "EU_FUND", "ACAO", "EQUITY", "MUTUALFUND"] } },
+      where: { symbol: { in: month.positions.flatMap((p) => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []) }, referenceDate: { lte: month.referenceDate }, instrumentType: { in: ["REIT", "EU_REIT", "ETF", "EU_ETF", "EU_ETC", "EU_ETN", "EU_STOCK", "EU_FUND", "ACAO", "EQUITY", "MUTUALFUND"] } },
       orderBy: { referenceDate: "desc" }, distinct: ["symbol"], select: { symbol: true, instrumentType: true },
     });
     const instruments = new Map(listingQuotes.map((q) => [q.symbol, q.instrumentType]));
@@ -221,8 +221,8 @@ export async function getMonthPositions(
             liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
             assetType,
-            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product, bond?.family),
-            market: listingMarket(assetType),
+            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null)),
+            market: listingMarket(assetType, position.asset.baseCurrency, bond?.issuerCountry),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,

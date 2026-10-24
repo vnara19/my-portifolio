@@ -3,8 +3,8 @@ import { englishLabel } from "@/lib/english-labels";
 import { productType, listingMarket } from "./asset-classification";
 
 export const NO_CLASS = "Unclassified";
-export const NO_MATURITY = "No maturity date";
-export const NO_LIQUIDITY = "Liquidity not specified";
+export const NO_MATURITY = "No Maturity Date";
+export const NO_LIQUIDITY = "Liquidity Not Specified";
 
 export type PositionFilters = {
   classes: string[];
@@ -47,8 +47,8 @@ export function typeOf(position: Pick<MonthPosition, "assetType" | "productType"
   return position.productType ?? productType(position.assetType);
 }
 
-export function marketOf(position: Pick<MonthPosition, "assetType" | "market">) {
-  return position.market ?? listingMarket(position.assetType);
+export function marketOf(position: Pick<MonthPosition, "assetType" | "market" | "baseCurrency">) {
+  return position.market ?? listingMarket(position.assetType, position.baseCurrency);
 }
 
 export function classesOf(position: MonthPosition) {
@@ -170,7 +170,8 @@ export function filterOptions(
     }
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
-    options[dimension] = [...new Set([...values, ...(filters[dimension] ?? [])])].sort((left, right) =>
+    const supported = dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
+    options[dimension] = [...new Set([...supported, ...values, ...(filters[dimension] ?? [])])].sort((left, right) =>
       left.localeCompare(right, "en-GB"),
     );
   }
