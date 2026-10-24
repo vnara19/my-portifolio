@@ -1,4 +1,5 @@
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
+import { englishLabel } from "@/lib/english-labels";
 import { ASSET_TYPE_LABELS } from "@/modules/portfolio/domain/classification";
 
 export const NO_CLASS = "Unclassified";
@@ -35,8 +36,14 @@ export const FILTER_DIMENSIONS: FilterDimension[] = [
   "liquidities",
 ];
 
-export function typeOf(position: MonthPosition) {
-  return ASSET_TYPE_LABELS[position.assetType];
+export function normalizeTypeFilter(label: string) {
+  if (["US ETF", "US stock", "US Market"].includes(label)) return "US Market";
+  if (["Brazilian ETF", "Brazilian stock or REIT", "Brazilian Market"].includes(label)) return "Brazilian Market";
+  return label === "Crypto" ? "Cryptocurrency" : label;
+}
+
+export function typeOf(position: Pick<MonthPosition, "assetType">) {
+  return normalizeTypeFilter(ASSET_TYPE_LABELS[position.assetType]);
 }
 
 export function classesOf(position: MonthPosition) {
@@ -49,6 +56,7 @@ export function classesOf(position: MonthPosition) {
 export function allocationLabel(allocation: { assetClass: string; subclass: string; duration: string }) {
   return [allocation.assetClass, allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
     .filter(Boolean)
+    .map((part) => englishLabel(part))
     .join(" · ");
 }
 
@@ -78,7 +86,7 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
       return false;
     }
 
-    if (filters.currencies.length > 0 && !filters.currencies.includes(position.baseCurrency)) {
+    if (filters.currencies.length > 0 && !filters.currencies.includes(position.valueCurrency)) {
       return false;
     }
 
@@ -189,7 +197,7 @@ function facetValues(position: MonthPosition, dimension: FilterDimension, scoped
     case "types":
       return [typeOf(position)];
     case "currencies":
-      return [position.baseCurrency];
+      return [position.valueCurrency];
     case "maturities":
       return [maturityOf(position)];
     case "liquidities":

@@ -1,4 +1,5 @@
-import { readInternationalBond } from "../domain/international-bond";
+import { hasSecurityQuantity, nativePositionValue, valuationCurrency } from "../presentation/position-display";
+import { bondCostState, readInternationalBond } from "../domain/international-bond";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { assetTypeOf, type AssetType } from "@/modules/portfolio/domain/classification";
@@ -45,6 +46,9 @@ export type MonthPosition = {
   incomeCalculationError?: string | null;
   quantity: number;
   quantityText: string;
+  securityQuantity: string | null;
+  valueCurrency: "BRL" | "USD" | "EUR";
+  nativeValue: number | null;
 
 
   liquidated: boolean;
@@ -188,6 +192,12 @@ export async function getMonthPositions(
       positions: month.positions
         .map((position) => {
           const positionTotal = position.totalBrl.toNumber();
+          const assetType = assetTypeOf(position.asset);
+          const bond = readInternationalBond(position.asset.fixedIncomeContract);
+          const asOf = toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay);
+          const securityQuantity = bond
+            ? bond.faceValuePerBond ? position.quantity.div(bond.faceValuePerBond).toFixed() : null
+            : hasSecurityQuantity(assetType, position.asset.quoteSymbol) ? position.quantity.toString() : null;
 
           return {
             id: position.id,
@@ -201,10 +211,10 @@ export async function getMonthPositions(
             maturityDate: position.asset.maturityDate ? toDateKey(position.asset.maturityDate) : null,
             liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
-            assetType: assetTypeOf(position.asset),
+            assetType,
             assetTypeInferred: position.asset.assetType === null,
-            bondAtCost: readInternationalBond(position.asset.fixedIncomeContract)?.valuationMode === "Cost",
-            bondValuationDate: readInternationalBond(position.asset.fixedIncomeContract)?.quotes.filter((q) => q.date <= toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay)).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
+            bondAtCost: bond?.valuationMode === "Cost",
+            bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
             fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,
@@ -214,6 +224,12 @@ export async function getMonthPositions(
             incomeCalculationError: position.incomeCalculationError,
             quantity: position.quantity.toNumber(),
             quantityText: position.quantity.toString(),
+            securityQuantity,
+            valueCurrency: valuationCurrency(assetType, position.asset.baseCurrency),
+            nativeValue: nativePositionValue({ assetType, baseCurrency: position.asset.baseCurrency,
+              totalBrl: positionTotal, quantity: position.quantity.toNumber(), usdRate, eurRate: quoteBySymbol.get("EUR")?.toNumber() ?? null,
+              ...(bond?.valuationMode === "Cost" ? { bondCost: bondCostState(bond, asOf).cost.toNumber() } : {}),
+            }),
             liquidated: !position.quantity.greaterThan(0),
             unitPriceBrl: position.unitPriceBrl ? position.unitPriceBrl.toNumber() : null,
             totalBrl: positionTotal,

@@ -45,6 +45,7 @@ import {
   allocationLabel,
   classesOf,
   typeOf,
+  normalizeTypeFilter,
   filterOptions,
   filterPositions,
   hasClassFilter,
@@ -53,6 +54,7 @@ import {
 } from "@/modules/portfolio/presentation/position-filters";
 import {
   formatBrl,
+  formatCurrency,
   formatMonthCompact,
   formatPriceBrl,
   formatSharePercent,
@@ -82,29 +84,23 @@ type ColumnMeta = { align: "left" | "right"; calculated: boolean; hide: string }
 const COLUMN_META: Record<string, ColumnMeta> = {
   assetName: { align: "left", calculated: false, hide: "" },
 
-  assetType: { align: "left", calculated: false, hide: "hidden 2xl:table-cell" },
-  classes: { align: "left", calculated: false, hide: "hidden lg:table-cell" },
   maturityDate: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
   quantity: { align: "right", calculated: false, hide: "hidden md:table-cell" },
   totalBrl: { align: "right", calculated: true, hide: "" },
-  totalUsd: { align: "right", calculated: true, hide: "hidden xl:table-cell" },
   share: { align: "right", calculated: true, hide: "hidden md:table-cell" },
 };
 
 const columns = helper.columns([
   helper.accessor("assetName", { header: "Asset" }),
-  helper.accessor((row) => typeOf(row), { id: "assetType", header: "Type" }),
-  helper.accessor((row) => classesOf(row).join(", "), { id: "classes", header: "Classes" }),
 
   helper.accessor((row) => row.maturityDate ?? undefined, {
     id: "maturityDate",
     header: "Maturity",
     sortUndefined: "last",
   }),
-  helper.accessor("quantity", { header: "Quantity" }),
-  helper.accessor("totalBrl", { header: "Total BRL" }),
-  helper.accessor((row) => row.totalUsd ?? -1, { id: "totalUsd", header: "Total USD" }),
-  helper.accessor("share", { header: "%" }),
+  helper.accessor((row) => row.securityQuantity === null ? undefined : Number(row.securityQuantity), { id: "quantity", header: "Quantity", sortUndefined: "last" }),
+  helper.accessor("totalBrl", { header: "Value" }),
+  helper.accessor("share", { header: "Portfolio %" }),
 ]);
 
 
@@ -176,8 +172,8 @@ export function PositionsWorkspace({
   const filters: PositionFilters = {
     classes: query.classe,
     subclasses: query.subclasse,
-    types: query.tipo,
-    currencies: query.moeda,
+    types: query.tipo.map(normalizeTypeFilter),
+    currencies: query.moeda.map((currency) => ["BTC", "Altcoins"].includes(currency) ? "USD" : currency),
     maturities: query.venc,
     liquidities: query.liq,
     search: query.q,
@@ -231,7 +227,7 @@ export function PositionsWorkspace({
   const filterGroups: FilterGroup[] = [
     { key: "classe", label: "Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
     { key: "subclasse", label: "Subclass", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
-    { key: "tipo", label: "Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
+    { key: "tipo", label: "Asset Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
     { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
     { key: "liq", label: "Liquidity", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
@@ -280,13 +276,11 @@ export function PositionsWorkspace({
     startOpening(() => router.push(href));
   };
 
-  const renderRow = (position: MonthPosition, rowKey: string, valueBrl: number) => (
+  const renderRow = (position: MonthPosition, rowKey: string) => (
     <PositionRow
       key={rowKey}
       position={position}
       referenceDay={month.referenceDay}
-      valueBrl={valueBrl}
-      usdRate={month.usdRate}
       href={positionHref(position.accountId, position.assetId, searchParams)}
       expanded={expanded.has(position.id)}
       opening={isOpening && openingId === position.id}
@@ -401,7 +395,7 @@ export function PositionsWorkspace({
           <div className="hidden sm:contents">
             <MultiSelectFilter label="Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
             <MultiSelectFilter label="Subclass" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
-            <MultiSelectFilter label="Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
+            <MultiSelectFilter label="Asset Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
             <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
             <MultiSelectFilter label="Liquidity" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
@@ -446,17 +440,13 @@ export function PositionsWorkspace({
                         <button
                           type="button"
                           onClick={header.column.getToggleSortingHandler()}
+                          title={header.column.id === "totalBrl" ? "Compare values using their BRL equivalent" : undefined}
                           className={cn(
                             "inline-flex items-center gap-1 uppercase outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
                             meta.align === "right" && "w-full justify-end",
                             sorted && "text-foreground",
                           )}
                         >
-                          {meta.calculated ? (
-                            <span title="Calculated" className="font-mono normal-case text-muted-foreground/60">
-                              ƒ
-                            </span>
-                          ) : null}
                           <table.FlexRender header={header} />
                           {sorted === "asc" ? (
                             <ArrowUpIcon aria-hidden="true" size={10} weight="bold" />
@@ -477,7 +467,7 @@ export function PositionsWorkspace({
                   </td>
                 </tr>
               ) : (
-                sortedPositions.map((position) => renderRow(position, position.id, position.totalBrl))
+                sortedPositions.map((position) => renderRow(position, position.id))
               )}
             </tbody>
             <tfoot>
@@ -531,8 +521,6 @@ export function PositionsWorkspace({
 function PositionRow({
   position,
   referenceDay,
-  valueBrl,
-  usdRate,
   href,
   expanded,
   opening,
@@ -541,16 +529,12 @@ function PositionRow({
 }: {
   position: MonthPosition;
   referenceDay: string;
-  valueBrl: number;
-  usdRate: number | null;
   href: string;
   expanded: boolean;
   opening: boolean;
   onOpen: (position: MonthPosition, href: string) => void;
   onToggle: (position: MonthPosition) => void;
 }) {
-  const isPartial = Math.abs(valueBrl - position.totalBrl) > 0.005;
-  const [first, ...others] = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const detailsId = `detalhes-${position.id}`;
 
 
@@ -630,42 +614,13 @@ function PositionRow({
             >Liquidated
             </span>
           ) : null}
-          <p className="mt-1 font-mono text-[9px] text-muted-foreground">
-            {position.ticker ?? "BALANCE"}
-            <span className="font-sans 2xl:hidden"> · {typeOf(position)}</span>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
+            {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
+            <span>Type: {typeOf(position)}</span><span>· {position.valueCurrency}</span>
           </p>
           {position.maturityDate ? (
             <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
           ) : null}
-        </Cell>
-        <Cell id="assetType">
-          <span className="text-xs whitespace-nowrap text-foreground/80" data-testid="position-type">{typeOf(position)}</span>
-        </Cell>
-        <Cell id="classes">
-          {first ? (
-            <div className="flex max-w-[300px] items-center gap-1.5" data-testid="position-classes">
-              <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(first.assetClass) }} />
-              <span className="truncate text-xs text-foreground/80" title={allocationLabel(first)}>
-                {allocationLabel(first)}
-                {others.length > 0 ? (
-                  <span className="text-muted-foreground"> {formatWeightPercent(first.weight)}</span>
-                ) : null}
-              </span>
-              {others.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => onToggle(position)}
-                  aria-label={`View the ${others.length + 1} classifications for ${position.assetName}`}
-                  title={`More ${others.length} ${others.length === 1 ? "classification" : "classifications"}`}
-                  className="shrink-0 rounded-md bg-white/[0.05] px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  …+{others.length}
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">—</span>
-          )}
         </Cell>
         <Cell id="maturityDate">
           {position.maturityDate ? (
@@ -682,18 +637,9 @@ function PositionRow({
         </Cell>
         <Cell id="totalBrl">
           <span className="font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
-            {formatBrl(valueBrl)}
+            {position.nativeValue === null ? "—" : formatCurrency(position.nativeValue, position.valueCurrency)}
           </span>
-          {isPartial ? (
-            <p className="mt-0.5 font-mono text-[9px] whitespace-nowrap text-muted-foreground">
-              of {formatBrl(position.totalBrl)}
-            </p>
-          ) : null}
-        </Cell>
-        <Cell id="totalUsd">
-          <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
-            {position.totalUsd === null ? "—" : `US$ ${formatUsd(position.totalUsd)}`}
-          </span>
+
         </Cell>
         <Cell id="share">
           <span className="font-mono text-xs text-muted-foreground">{formatSharePercent(position.share)}</span>
@@ -702,7 +648,7 @@ function PositionRow({
       {expanded ? (
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
           <td colSpan={COLUMN_COUNT} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
-            <PositionDetails position={position} usdRate={usdRate} referenceDay={referenceDay} />
+            <PositionDetails position={position} referenceDay={referenceDay} />
           </td>
         </tr>
       ) : null}
@@ -713,16 +659,17 @@ function PositionRow({
 
 function PositionDetails({
   position,
-  usdRate,
   referenceDay,
 }: {
   position: MonthPosition;
-  usdRate: number | null;
   referenceDay: string;
 }) {
   const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Currency", value: <span className="font-mono">{position.baseCurrency}</span> },
+    { label: "Asset Type", value: typeOf(position) },
+    { label: "Class", value: classesOf(position).map(englishLabel).join(", ") },
+    { label: "Subclass", value: [...new Set(position.allocations.map((allocation) => englishLabel(allocation.subclass)))].join(", ") || "—" },
+    { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
     {
       label: "Quote",
       value: (
@@ -743,8 +690,8 @@ function PositionDetails({
       ),
     },
     {
-      label: "Total in USD",
-      value: <span className="font-mono">{usdRate ? `US$ ${formatUsd(position.totalBrl / usdRate)}` : "—"}</span>,
+      label: "Total in BRL",
+      value: <span className="font-mono">{formatBrl(position.totalBrl)}</span>,
     },
   ];
 
@@ -784,14 +731,9 @@ function PositionDetails({
 }
 
 function QuantityText({ position }: { position: MonthPosition }) {
-  if (position.assetType === "international-bond") return <span className="font-mono text-xs">{position.baseCurrency} {position.quantity.toLocaleString("en-US")} Nominal</span>;
-  return (
-    <span className="font-mono text-xs text-foreground/85">
-      {position.quoteSymbol
-        ? position.quantity.toLocaleString("en-GB", { maximumFractionDigits: 8 })
-        : formatBrl(position.quantity)}
-    </span>
-  );
+  if (position.securityQuantity === null) return <span className="text-xs text-muted-foreground">—</span>;
+  const unit = position.assetType === "crypto" ? position.ticker : position.assetType === "international-bond" || position.assetType === "treasury" ? "bonds" : "units";
+  return <span className="font-mono text-xs text-foreground/85">{Number(position.securityQuantity).toLocaleString("en-GB", { maximumFractionDigits: 8 })}{unit ? ` ${unit}` : ""}</span>;
 }
 
 function Cell({ id, children }: { id: string; children: ReactNode }) {

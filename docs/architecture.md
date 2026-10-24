@@ -421,3 +421,22 @@ and edit surfaces as well.
 Manual integration verification: scripts/test-portfolio-container.ts requires a
 disposable english099_<hex> schema and a fictitious account. It checks default
 container creation/reuse, legacy record preservation, read models and Undo.
+
+The positions table displays Asset, Quantity, Value, Portfolio % (and Maturity on
+wide screens), without calculated-field glyphs or separate taxonomy/USD columns.
+Value is the full holding in the contract/listing currency. Crypto is valued in
+USD while Quantity uses coin units; USD/EUR cash shows its recorded native balance
+without repeating money in Quantity. Other native values use that same reporting
+month's USD/BRL or EUR/BRL observation; missing FX leaves Value blank, never guesses
+a rate. Cost-mode bonds use dated native acquisition cost directly. Totals, shares
+and cross-currency Value sorting retain their common BRL basis. No quote or carrying
+value is changed by this presentation.
+
+Quantity shows security/coin units only. International-bond nominal balances are
+divided by confirmed faceValuePerBond; without that term the count is unknown.
+Legacy balance-only Tesouro, fixed-income and pension positions keep no invented
+unit count. Classification details remain available under the row's disclosure:
+Class and Subclass show saved allocations, Asset Type maps legacy ETF/stock types
+to the same market categories used in Add position. Stored taxonomy/backup keys
+are unchanged. Cryptocurrency is the English display label for Cripto and crypto.
+Currency facets now use the monetary Value currency, rather than BTC/Altcoins units.

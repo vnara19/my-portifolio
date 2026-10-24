@@ -1,7 +1,7 @@
 /** Display legacy taxonomy in English while preserving database and backup keys. */
 const LABELS: Readonly<Record<string, string>> = {
   Caixa: "Cash",
-  Cripto: "Crypto",
+  Cripto: "Cryptocurrency",
   "Renda Fixa": "Fixed income",
   "Renda Variável": "Equities",
   Reserva: "Commodities",

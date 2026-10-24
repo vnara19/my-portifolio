@@ -91,7 +91,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   "us-stock": "US stock",
   "br-etf": "Brazilian ETF",
   "br-stock": "Brazilian stock or REIT",
-  crypto: "Crypto",
+  crypto: "Cryptocurrency",
   treasury: "Tesouro Direto",
   "fixed-income": "Fixed income",
   "international-bond": "International Bonds",
