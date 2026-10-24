@@ -18,7 +18,7 @@ const structures = { Fixed: "Fixed Coupon", Zero: "Zero Coupon / Treasury Bills 
 export function InternationalBondForm({ month, account, onSaved, formId, onPendingChange, onValidationChange }: { month: PositionFormMonth; account: { accountId?: string; newAccount?: NewAccountInput } | null; onSaved: (result: EditActionResult) => void; formId: string; onPendingChange: (pending: boolean) => void; onValidationChange: (issues: string[]) => void }) {
   const [model, setModel] = useState(() => ({ fields: emptyBondFields(), touched: new Set<string>() }));
   const fields = model.fields;
-  const [latestPurchaseDay] = useState(() => { const reference = new Date(month.referenceDate); return new Date(Math.min(Date.now(), Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth() + 1, 0))).toISOString().slice(0, 10); });
+  const [latestPurchaseDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [automatic, setAutomatic] = useState<string[]>([]);
   const [lookupResult, setLookupResult] = useState<BondLookupResult | null>(null);
   const [lookupState, setLookupState] = useState<"idle" | "loading" | "done" | "error">("idle");

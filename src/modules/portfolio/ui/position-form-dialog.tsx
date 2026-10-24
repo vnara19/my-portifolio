@@ -184,7 +184,7 @@ function PositionForm({
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
 
   const initialKind = "OPENING" as const;
-  const [latestPurchaseDay] = useState(() => new Date(Math.min(Date.now(), Date.UTC(new Date(month.referenceDate).getUTCFullYear(), new Date(month.referenceDate).getUTCMonth() + 1, 0))).toISOString().slice(0, 10));
+  const [latestPurchaseDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);
   const [contractedRate, setContractedRate] = useState("");
@@ -222,7 +222,7 @@ function PositionForm({
 
 
   const [autoIncome, setAutoIncome] = useState(editing?.autoIncome ?? false);
-  const [appliedOn, setAppliedOn] = useState(() => defaultAppliedOn(month.referenceDate));
+  const [appliedOn, setAppliedOn] = useState(() => defaultAppliedOn());
 
   const quoteOf = (symbol: string) => month.quotes.find((entry) => entry.symbol === symbol)?.valueBrl ?? null;
 
@@ -238,7 +238,7 @@ function PositionForm({
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
     setValueKind("quantity"); setMaturity(""); setLiquidity("");
     setAssetType(null); setRows(null); setNextRowKey(100); setAutoIncome(false);
-    setAppliedOn(defaultAppliedOn(month.referenceDate)); setTab("geral");
+    setAppliedOn(defaultAppliedOn()); setTab("geral");
     setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
   };
   const chooseKind = (next: string) => {
@@ -301,7 +301,7 @@ function PositionForm({
   const needsManualPrice =
     isNewAsset &&
     definition?.ticker === "market" &&
-    (response?.status === "unavailable" || (response?.status === "found" && !month.isCurrent));
+    !purchaseEntry && (response?.status === "unavailable" || (response?.status === "found" && !month.isCurrent));
   const manualPriceValue = parseLocaleNumber(manualPrice);
   const treasury = !editing && kind === "treasury";
 
@@ -453,7 +453,7 @@ function PositionForm({
     if (officialTreasuryPrice !== null && manualPrice.trim() !== "" && !ownTreasuryPrice) {
       issues.push({ tab: "ativo", message: "Enter a valid security price or leave blank to use the official price." });
     }
-    if (missingQuoteSymbol) {
+    if (missingQuoteSymbol && !purchaseEntry) {
       issues.push({
         tab: "ativo",
         message: `No quote exists for ${missingQuoteSymbol} in this reporting month. Enter it on the Quotes page first.`,
@@ -1059,7 +1059,6 @@ function PositionForm({
                 onAutomaticChange={setAutoIncome}
                 appliedOn={editing ? null : appliedOn}
                 onAppliedOnChange={setAppliedOn}
-                month={month}
               />
             ) : null}
           </PositionSection> : null}
@@ -1354,12 +1353,8 @@ function formatNumberText(value: number, digits = 8) {
 }
 
 
-function defaultAppliedOn(referenceDate: Date) {
-  const first = referenceDate.toISOString().slice(0, 10);
-  const last = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return today < first ? first : today > last ? last : today;
+function defaultAppliedOn() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 
@@ -1400,13 +1395,11 @@ function AutoIncomeToggle({
   onAutomaticChange,
   appliedOn,
   onAppliedOnChange,
-  month,
 }: {
   automatic: boolean;
   onAutomaticChange: (value: boolean) => void;
   appliedOn: string | null;
   onAppliedOnChange: (value: string) => void;
-  month: PositionFormMonth;
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2" data-testid="auto-income">
@@ -1423,7 +1416,7 @@ function AutoIncomeToggle({
           <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Invested on</span>
           <div className="w-40">
 
-            <DatePicker aria-label="Investment date" value={appliedOn} min="2000-01-01" max={defaultAppliedOn(month.referenceDate)} onChange={onAppliedOnChange} />
+            <DatePicker aria-label="Investment date" value={appliedOn} min="2000-01-01" max={defaultAppliedOn()} onChange={onAppliedOnChange} />
           </div>
         </div>
       ) : null}

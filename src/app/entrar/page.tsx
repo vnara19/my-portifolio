@@ -31,7 +31,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           <span className="brand-mark grid size-11 place-items-center rounded-2xl text-primary-foreground">
             <ChartDonutIcon aria-hidden="true" size={22} weight="bold" />
           </span>
-          <h1 className="mt-5 text-xl font-semibold tracking-[-0.03em]">My portfolio</h1>
+          <h1 className="mt-5 text-xl font-semibold tracking-[-0.03em]">My Portfolio</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">Sign in to view your portfolio.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card/80 p-6 shadow-2xl backdrop-blur">

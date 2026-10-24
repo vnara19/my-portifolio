@@ -1,3 +1,4 @@
+import { ensureMonthsUpToDate } from "./month-rollover";
 import {
   getPortfolioMonths,
   type PortfolioMonthSummary,
@@ -12,6 +13,7 @@ export type MonthContext = {
 export async function getMonthContext(
   value: string | string[] | undefined,
 ): Promise<MonthContext> {
+  await ensureMonthsUpToDate();
   const months = await getPortfolioMonths();
 
   return { months, selected: resolveSelectedMonth(months, value) as PortfolioMonthSummary | null };

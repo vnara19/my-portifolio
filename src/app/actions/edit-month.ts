@@ -1,6 +1,6 @@
 "use server";
 
-/** Investment server actions validate inputs and scope every write to the authenticated user and open reporting month. */
+/** Investment server actions validate inputs and scope every write to the authenticated user and dated reporting month. */
 
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
@@ -8,11 +8,9 @@ import { z } from "zod";
 
 import {
   addPosition,
-  cloneLatestMonth,
   editPosition,
   MonthEditError,
   removePosition,
-  setMonthOpen,
   undoChange,
   updateMonthQuotes,
 } from "@/modules/portfolio/application/month-editing";
@@ -28,8 +26,8 @@ import { internationalBondSchema } from "@/modules/portfolio/domain/internationa
 import { brazilianFixedIncomeSchema } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { ASSET_KINDS } from "@/modules/portfolio/domain/asset-kinds";
 import { ASSET_TYPES } from "@/modules/portfolio/domain/classification";
-import type { MonthRolloverOutcome } from "@/modules/portfolio/domain/month-rollover";
 import { TRANSACTION_KINDS } from "@/modules/portfolio/domain/position-transactions";
+import { formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 
 export type EditActionResult =
@@ -138,7 +136,7 @@ export async function addPositionAction(input: unknown): Promise<EditActionResul
 
 
     const result = await addPosition(parsed.data);
-    return { ok: true, message: "Position added.", undoToken: result.undoToken };
+    return { ok: true, message: `Position added to ${formatMonthCompact(result.referenceDate)}.`, undoToken: result.undoToken, month: toMonthParam(result.referenceDate) };
   });
 }
 
@@ -178,31 +176,6 @@ export async function saveQuotesAction(input: unknown): Promise<EditActionResult
   return run(async () => {
     const result = await updateMonthQuotes(parsed.data);
     return { ok: true, message: "Quotes saved and positions recalculated.", undoToken: result.undoToken };
-  });
-}
-
-export async function setMonthOpenAction(input: unknown): Promise<EditActionResult> {
-  const parsed = z.object({ monthId: z.string().uuid(), open: z.boolean() }).safeParse(input);
-
-  if (!parsed.success) {
-    return { ok: false, message: "Invalid reporting month." };
-  }
-
-  return run(async () => {
-    await setMonthOpen(parsed.data);
-    return { ok: true, message: parsed.data.open ? "Month opened for editing." : "Month closed." };
-  });
-}
-
-export async function cloneLatestMonthAction(): Promise<EditActionResult> {
-  return run(async () => {
-    const result = await cloneLatestMonth();
-    return {
-      ok: true,
-      message: "Reporting month created from the previous month.",
-      undoToken: result.undoToken,
-      month: toMonthParam(result.referenceDate),
-    };
   });
 }
 
@@ -291,21 +264,6 @@ export async function liquidatePositionAction(input: unknown): Promise<EditActio
     const result = await liquidatePosition(parsed.data);
     return { ok: true, message: "Position liquidated.", undoToken: result.undoToken };
   });
-}
-
-
-export async function confirmMonthRolloverAction(): Promise<MonthRolloverOutcome> {
-  await requireSessionUser();
-
-  try {
-    const outcome = await ensureMonthsUpToDate();
-    revalidatePath("/");
-    revalidatePath("/posicoes");
-    return outcome;
-  } catch (error) {
-    unstable_rethrow(error);
-    return { state: "unavailable", message: "Could not create the reporting month." };
-  }
 }
 
 

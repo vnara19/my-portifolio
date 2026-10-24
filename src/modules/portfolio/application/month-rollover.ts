@@ -1,8 +1,8 @@
 
-/** Carry the previous month's positions and allocations forward after explicit confirmation. Prior months remain closed. */
+/** Carry the previous month's positions and allocations forward automatically. Stored month statuses are retained for backup compatibility. */
 import { PortfolioMonthStatus, Prisma } from "@/generated/prisma/client";
 import { MONTH_ROLLOVER_LOCK_KEY } from "@/lib/advisory-locks";
-import { getUserDb, SCOPED_USER } from "@/lib/user-db";
+import { currentUserId, getUserDb, SCOPED_USER } from "@/lib/user-db";
 import type { GeneratedMonthView, MonthRolloverOutcome } from "@/modules/portfolio/domain/month-rollover";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
@@ -13,35 +13,8 @@ type Transaction = Prisma.TransactionClient;
 
 
 export async function checkMonthsUpToDate(today: Date = new Date()): Promise<MonthRolloverOutcome> {
-  const prisma = await getUserDb();
-
-  if (!prisma) {
-    return { state: "unavailable", message: "The database is not configured." };
-  }
-
-  const target = monthOf(calendarDay(today));
-  const latest = await prisma.portfolioMonth.findFirst({
-    orderBy: { referenceDate: "desc" },
-    select: { referenceDate: true },
-  });
-
-  if (!latest) {
-    return ensureMonthsUpToDate(today);
-  }
-
-  if (latest.referenceDate.getTime() >= target.getTime()) {
-    return { state: "up-to-date", latestMonth: toMonthParam(latest.referenceDate) };
-  }
-
-  const months: string[] = [];
-
-  for (let month = addMonths(latest.referenceDate, 1); month.getTime() <= target.getTime(); month = addMonths(month, 1)) {
-    months.push(toMonthParam(month));
-  }
-
-  return { state: "pending", latestMonth: toMonthParam(latest.referenceDate), months };
+  return ensureMonthsUpToDate(today);
 }
-
 
 export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<MonthRolloverOutcome> {
   const prisma = await getUserDb();
@@ -62,12 +35,15 @@ export async function ensureMonthsUpToDate(today: Date = new Date()): Promise<Mo
   }
 
   if (latest.referenceDate.getTime() >= target.getTime()) {
+    await prisma.portfolioMonth.updateMany({ where: { referenceDate: target, status: { not: PortfolioMonthStatus.DRAFT } }, data: { status: PortfolioMonthStatus.DRAFT } });
+    await prisma.portfolioMonth.updateMany({ where: { referenceDate: { lt: target }, status: PortfolioMonthStatus.DRAFT }, data: { status: PortfolioMonthStatus.REVIEWED } });
     return { state: "up-to-date", latestMonth: toMonthParam(latest.referenceDate) };
   }
 
   return prisma.$transaction(
     async (transaction): Promise<MonthRolloverOutcome> => {
       await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${MONTH_ROLLOVER_LOCK_KEY})`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${await currentUserId()}), hashtext(${"portfolio-edits"}))`;
 
 
       let source = await transaction.portfolioMonth.findFirst({
@@ -109,6 +85,7 @@ async function startFirstMonth(target: Date): Promise<MonthRolloverOutcome> {
 
   return prisma.$transaction(async (transaction): Promise<MonthRolloverOutcome> => {
     await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${MONTH_ROLLOVER_LOCK_KEY})`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${await currentUserId()}), hashtext(${"portfolio-edits"}))`;
     const existing = await transaction.portfolioMonth.findFirst({
       orderBy: { referenceDate: "desc" },
       select: { referenceDate: true },
@@ -345,4 +322,26 @@ async function copyMonth(
       carriedQuotes: reported.filter((symbol) => quotes.has(symbol) && !quotes.get(symbol)?.fromHistory),
     },
   };
+}
+
+/** Select the purchase's calendar month; create intervening reporting snapshots automatically. */
+export async function ensureDatedMonth(dayKey: string, now = new Date()) {
+  const day = new Date(`${dayKey}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey) || !Number.isFinite(day.getTime()) || toDateKey(day) !== dayKey || day > calendarDay(now)) throw new Error("Choose a purchase date on or before today.");
+  await ensureMonthsUpToDate(now);
+  const prisma = (await getUserDb())!;
+  const target = monthOf(day), current = monthOf(calendarDay(now));
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${MONTH_ROLLOVER_LOCK_KEY})`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${await currentUserId()}), hashtext(${"portfolio-edits"}))`;
+    let source = await transaction.portfolioMonth.findFirst({ where: { referenceDate: { lt: target } }, orderBy: { referenceDate: "desc" }, select: { id: true, referenceDate: true } });
+    let selected: { id: string; referenceDate: Date } | null = null;
+    for (let date = target; date <= current; date = addMonths(date, 1)) {
+      let month = await transaction.portfolioMonth.findFirst({ where: { referenceDate: date }, select: { id: true, referenceDate: true } });
+      if (!month) month = source ? (await copyMonth(transaction, source, date, calendarDay(now))).month : await transaction.portfolioMonth.create({ data: { userId: SCOPED_USER, referenceDate: date, status: PortfolioMonthStatus.DRAFT }, select: { id: true, referenceDate: true } });
+      if (date.getTime() === target.getTime()) selected = month;
+      source = month;
+    }
+    return selected!;
+  }, { maxWait: 10_000, timeout: 60_000 });
 }

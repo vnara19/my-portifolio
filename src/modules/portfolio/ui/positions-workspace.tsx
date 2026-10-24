@@ -9,9 +9,7 @@ import {
   ArrowUpIcon,
   ArrowsDownUpIcon,
   CaretRightIcon,
-  CopyIcon,
   CurrencyCircleDollarIcon,
-  LockKeyIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   TableIcon,
@@ -31,7 +29,6 @@ import { parseAsArrayOf, parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 
 import {
-  cloneLatestMonthAction,
   startPortfolioAction,
   undoChangeAction,
   type EditActionResult,
@@ -60,7 +57,7 @@ import {
   formatSharePercent,
 } from "@/modules/portfolio/presentation/portfolio-format";
 import { positionHref } from "@/modules/portfolio/presentation/position-page";
-import { parseMonthParam, toMonthParam } from "@/modules/portfolio/presentation/reference-month";
+import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { headerPrimaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, takeHandedOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { EmptyPortfolio } from "@/modules/portfolio/ui/empty-portfolio";
@@ -134,7 +131,6 @@ export function PositionsWorkspace({
   const [form, setForm] = useState<FormState>({ open: false, target: null, key: 0 });
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [toast, setToast] = useState<EditToastState | null>(null);
-  const [isSaving, startSaving] = useTransition();
   const [isUndoing, startUndo] = useTransition();
   const [isOpening, startOpening] = useTransition();
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -237,16 +233,6 @@ export function PositionsWorkspace({
   const openForm = (target: PositionFormTarget) =>
     setForm((current) => ({ open: true, target, key: current.key + 1 }));
 
-  const cloneMonth = () =>
-    startSaving(async () => {
-      const result = await cloneLatestMonthAction();
-      notify(result);
-
-      if (result.ok && result.month) {
-        router.push(`/posicoes?mes=${result.month}`);
-      }
-    });
-
   const toggleExpanded = (position: MonthPosition) =>
     setExpanded((current) => {
       const next = new Set(current);
@@ -289,7 +275,6 @@ export function PositionsWorkspace({
     />
   );
 
-  const cloneTarget = parseMonthParam(catalog.clone.targetMonth ?? undefined);
 
   return (
     <div className="relative mx-auto w-full max-w-[1472px] px-5 py-8 pb-24 sm:px-7 sm:py-10 xl:px-12 xl:py-12">
@@ -324,23 +309,12 @@ export function PositionsWorkspace({
                 <PlusIcon aria-hidden="true" size={14} weight="bold" />Add position
               </button>
             ) : null}
-            {month.isLatest && catalog.clone.allowed && cloneTarget ? (
-              <button type="button" disabled={isSaving} onClick={cloneMonth} className={headerPrimaryButtonClass}>
-                <CopyIcon aria-hidden="true" size={14} weight="bold" />Create {formatMonthCompact(cloneTarget)}starting from {monthLabel}
-              </button>
-            ) : null}
+
           </div>
         </div>
       </header>
 
-      {month.isLocked ? (
-        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
-          <LockKeyIcon aria-hidden="true" className="text-muted-foreground" size={16} weight="duotone" />
-          <p data-testid="month-locked" className="text-xs text-muted-foreground">
-            {monthLabel}is closed. Open the month using the timeline lock button to edit.
-          </p>
-        </div>
-      ) : null}
+
 
 
       <section aria-label="Filters" className="mt-6 space-y-3">

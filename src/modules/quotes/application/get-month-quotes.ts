@@ -154,7 +154,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
       referenceDate: month.referenceDate,
       status: month.status,
       isLatest: latest?.id === month.id,
-      isLocked: month.status !== "DRAFT",
+      isLocked: false,
       isCurrent: month.referenceDate.getTime() === current.getTime(),
       currentMonth: toMonthParam(current),
       totalBrl: month.positions

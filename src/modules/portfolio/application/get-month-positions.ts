@@ -174,7 +174,7 @@ export async function getMonthPositions(
       referenceDate: month.referenceDate,
       status: month.status,
       isLatest: latest?.id === month.id,
-      isLocked: month.status !== "DRAFT",
+      isLocked: false,
       isCurrent: month.referenceDate.getTime() === currentReferenceMonth().getTime(),
       referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
       totalBrl,

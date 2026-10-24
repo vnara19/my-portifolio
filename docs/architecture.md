@@ -43,8 +43,7 @@ created just by visiting Settings.
 ## User data
 
 All portfolio reads and writes pass through user-scoped database access. Public
-provider quotes are shared by symbol; a manual quote is user-specific. Editing
-requires an open reporting month. Liquidating a position records a full withdrawal
+provider quotes are shared by symbol; a manual quote is user-specific. Editing uses dated reporting months without manual month locks. Liquidating a position records a full withdrawal
 and preserves history; deleting a record has a different meaning.
 
 Keep legacy classification keys and backup IDs stable. `englishLabel` translates
@@ -440,3 +439,29 @@ Class and Subclass show saved allocations, Asset Type maps legacy ETF/stock type
 to the same market categories used in Add position. Stored taxonomy/backup keys
 are unchanged. Cryptocurrency is the English display label for Cripto and crypto.
 Currency facets now use the monetary Value currency, rather than BTC/Altcoins units.
+
+Reporting months are now automatic calendar snapshots. Navigating the workspace
+ensures the current month exists; the first visit after a month boundary carries
+holdings forward without a confirmation dialog or close/open buttons. Legacy
+DRAFT/REVIEWED statuses stay in backups and are managed automatically (current
+month DRAFT, previous months REVIEWED), but no longer block dated edits.
+
+Add position routes market trades by occurredOn, Brazilian fixed income by appliedOn
+and international bonds by settlementDate, irrespective of the selected reporting
+month. Entries without a purchase date use today. Missing intervening months are
+created; earlier snapshots are not overwritten. Verification tokens remain scoped
+to the page where they were issued, independently of the purchase destination.
+When historical market observations are absent, the actual execution price is the
+known carried observation; a present-day quote is never used as a historical price.
+Existing later prices and transactions are preserved while quantity changes carry
+forward. Fixed-income contracts recalculate using their dated principal ledger;
+bonds retain native cost/valuation semantics and their own currency FX.
+
+Dated adds and background income/bond updates share a per-user portfolio edit lock.
+Undo includes the affected later snapshots and refuses to overwrite intervening
+changes. Automatically created calendar frames remain, while the financial changes
+and unused new entities are restored. The isolated integration script
+scripts/test-dated-months.ts verifies routing, missing months, later ledgers/prices,
+verification scopes, multi-month Undo and first-day rollover. Additional isolated
+checks cover backdated fixed-rate accrual, EUR bond propagation, negative-balance
+rollback and backup export/restore.

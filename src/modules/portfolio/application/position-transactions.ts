@@ -213,7 +213,7 @@ async function findMonthTransaction(transaction: Transaction, monthId: string, t
   });
 
   if (!entry) {
-    throw new MonthEditError("The transaction does not belong to the open reporting month or has already been deleted.");
+    throw new MonthEditError("The transaction does not belong to the selected reporting month or has already been deleted.");
   }
 
   if (entry.position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and cash receipt form for this holding.");
@@ -349,7 +349,7 @@ function parseOccurredOn(raw: string, referenceDate: Date) {
   }
 
   if (day < referenceDate || day > lastDayOf(referenceDate)) {
-    throw new MonthEditError("The transaction date must fall within the open reporting month.");
+    throw new MonthEditError("The transaction date must fall within the selected reporting month.");
   }
 
   if (day > today) {

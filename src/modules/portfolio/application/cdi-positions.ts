@@ -437,7 +437,7 @@ export async function refreshFixedIncomeForUser(now = new Date()) {
     if (contract && row.asset.appliedOn) await primeFixedIncomeRates(db, contract.indexer, toDateKey(row.asset.appliedOn), now);
   }
   await db.$transaction(async (transaction) => {
-    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${before[0].userId}), hashtext(${before[0].portfolioMonthId}))`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${before[0].userId}), hashtext(${"portfolio-edits"}))`;
     await valueCdiPositions(transaction, { where: { id: { in: before.map((row) => row.id) } }, now });
   }, { maxWait: 10_000, timeout: 30_000 });
   const after = await db.position.findMany({ where: { id: { in: before.map((row) => row.id) } }, select: { id: true, totalBrl: true, incomeCalculationError: true } });

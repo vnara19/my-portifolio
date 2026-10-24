@@ -1,6 +1,5 @@
 
 /** Opening the application reads persisted refresh state. Scheduled jobs own provider updates; navigation does not trigger a full sync. */
-import { confirmMonthRolloverAction } from "@/app/actions/edit-month";
 import { showAppToast } from "@/components/product/app-toaster";
 import { hasPendingChanges } from "@/components/product/unsaved-changes";
 import type { MonthRolloverOutcome, OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
@@ -21,7 +20,6 @@ export type QuoteRefreshClientState = {
 };
 
 const SERVER_STATE: QuoteRefreshClientState = { running: false, summary: null, pendingRollover: null, rollingOver: false };
-const DISMISSED_ROLLOVER_KEY = "rollover:dismissed";
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 
 const OPEN_CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -83,52 +81,6 @@ export function runOpenCheck(onDataChanged: () => void, serverSummary: QuoteRefr
 }
 
 
-export async function confirmRollover(onDataChanged: () => void) {
-  if (state.rollingOver) {
-    return;
-  }
-
-  setState({ rollingOver: true });
-
-  try {
-    const outcome = await confirmMonthRolloverAction();
-    setState({ pendingRollover: null });
-    announceRollover(outcome);
-
-    if (outcome.state === "created") {
-      onDataChanged();
-    }
-  } catch {
-    showAppToast({ tone: "error", title: "Could not create the reporting month", description: "Try again in a moment." });
-  } finally {
-    setState({ rollingOver: false });
-  }
-}
-
-
-export function dismissRollover() {
-  const target = state.pendingRollover?.months.at(-1);
-
-  if (target) {
-    try {
-      window.sessionStorage.setItem(DISMISSED_ROLLOVER_KEY, target);
-    } catch {
-
-    }
-  }
-
-  setState({ pendingRollover: null });
-}
-
-function wasDismissed(month: string) {
-  try {
-    return window.sessionStorage.getItem(DISMISSED_ROLLOVER_KEY) === month;
-  } catch {
-    return false;
-  }
-}
-
-
 export function refreshUnlessEditing(refresh: () => void) {
   if (hasPendingChanges() || refreshQueued) {
     return;
@@ -164,14 +116,7 @@ async function execute(onDataChanged: () => void) {
       setState({ summary: payload.summary });
     }
 
-    if (payload.rollover?.state === "pending") {
-
-
-      const target = payload.rollover.months.at(-1);
-      setState({
-        pendingRollover: target && wasDismissed(target) ? null : { latestMonth: payload.rollover.latestMonth, months: payload.rollover.months },
-      });
-    } else if (payload.rollover) {
+    if (payload.rollover) {
       setState({ pendingRollover: null });
       announceRollover(payload.rollover);
     }

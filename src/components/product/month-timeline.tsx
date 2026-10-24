@@ -6,7 +6,6 @@ import { useQueryState } from "nuqs";
 import { useMemo, useTransition } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
-import { MonthLock } from "@/components/product/month-lock";
 import { MonthStrip, type MonthStripItem } from "@/components/product/month-strip";
 import { confirmDiscardChanges } from "@/components/product/unsaved-changes";
 import type { PortfolioMonthSummary } from "@/modules/portfolio/application/get-portfolio-months";
@@ -30,7 +29,6 @@ export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTi
   const activeMonth =
     monthParam !== null && months.some((month) => month.month === monthParam) ? monthParam : selectedMonth;
   const activeIndex = months.findIndex((month) => month.month === activeMonth);
-  const active = months[activeIndex];
 
   const goTo = (month: string) => {
     if (month === activeMonth || !confirmDiscardChanges()) {
@@ -63,7 +61,6 @@ export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTi
       onSelect={goTo}
       pending={isPending}
       scoped={scoped}
-      trailing={active ? <MonthLock month={active} /> : null}
     />
   );
 }

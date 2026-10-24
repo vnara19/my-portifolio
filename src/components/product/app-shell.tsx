@@ -42,7 +42,7 @@ export async function AppShell({ active, months, selectedMonth, context, childre
                   <ChartDonutIcon aria-hidden="true" size={18} weight="bold" />
                 </span>
                 <span className="hidden leading-none sm:block">
-                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">My portfolio
+                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">My Portfolio
                   </span>
                   <span className="mt-1 block text-[9px] font-semibold tracking-[0.18em] text-primary/80 uppercase">
                     Private workspace

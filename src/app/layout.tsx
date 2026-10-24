@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "My portfolio",
-    template: "%s · My portfolio",
+    default: "My Portfolio",
+    template: "%s · My Portfolio",
   },
   description: "Personal investment tracking.",
 };

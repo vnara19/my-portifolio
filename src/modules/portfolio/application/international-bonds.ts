@@ -22,7 +22,7 @@ export async function updateBond(input: { monthId: string; positionId: string; d
   return withUndo(input.monthId, async (tx) => {
     const position = await tx.position.findFirst({ where: { id: input.positionId, portfolioMonthId: input.monthId }, include: { asset: true, portfolioMonth: true } });
     const bond = readInternationalBond(position?.asset.fixedIncomeContract);
-    if (!position || !bond || position.portfolioMonth.status !== "DRAFT" || position.quantity.lte(0)) throw new MonthEditError("Choose an active bond in an open reporting month.");
+    if (!position || !bond || position.quantity.lte(0)) throw new MonthEditError("Choose an active bond.");
     const end = toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(position.portfolioMonth.referenceDate).getTime())));
     if (input.date < bond.settlementDate || input.date > end) throw new MonthEditError("The valuation date must follow settlement and cannot exceed the reporting date.");
     if ((input.coupon || input.redeemedFace) && input.date < toDateKey(position.portfolioMonth.referenceDate)) throw new MonthEditError("Record coupon receipts in their actual reporting month.");
@@ -71,7 +71,7 @@ export async function refreshBondsForUser() {
   let changed = false;
   const userId = await currentUserId();
   for (const monthId of new Set(positions.map((p) => p.portfolioMonthId))) await db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${monthId}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${"portfolio-edits"}))`;
     const current = await tx.position.findMany({ where: { portfolioMonthId: monthId, portfolioMonth: { status: "DRAFT" }, asset: { assetType: "international-bond" }, quantity: { gt: 0 } }, include: { asset: true } });
     for (const row of current) {
       const bond = readInternationalBond(row.asset.fixedIncomeContract);

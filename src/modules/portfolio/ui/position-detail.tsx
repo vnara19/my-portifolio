@@ -180,9 +180,7 @@ export function PositionDetail({
   const editPosition = editing?.position ?? null;
   const editBlocked = !editing
     ? "Unavailable."
-    : editing.month.isLocked
-      ? `${selectedLabel} is closed. Open the month using the lock button to edit.`
-      : !editPosition
+    : !editPosition
         ? `No position in ${selectedLabel}.`
         : null;
 

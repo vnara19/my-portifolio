@@ -219,13 +219,6 @@ export function QuotesWorkspace({
           <p className="text-xs text-muted-foreground">Quotes for {monthLabel}come from providers or the imported spreadsheet. Manual editing is available only for missing quotes or quotes that failed in the last update.
           </p>
         </div>
-      ) : month.isLocked ? (
-        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
-          <LockKeyIcon aria-hidden="true" className="text-muted-foreground" size={16} weight="duotone" />
-          <p data-testid="month-locked" className="text-xs text-muted-foreground">
-            {monthLabel}is closed. To edit a failed quote, open the month using the timeline lock button.
-          </p>
-        </div>
       ) : null}
 
 

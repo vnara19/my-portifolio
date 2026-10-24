@@ -1,5 +1,7 @@
+import { ensureDatedMonth } from "./month-rollover";
+import { carryDatedPositions } from "./carry-dated-position";
 
-/** Transactional edits require user ownership and an open reporting month. Verify tickers and classifications server-side; preserve historical months. */
+/** Transactional edits require user ownership and a dated reporting month. Verify tickers and classifications server-side; preserve historical months. */
 import { createHash, randomUUID } from "node:crypto";
 
 import { PortfolioMonthStatus, PositionTransactionKind, Prisma, QuoteUpdateStatus } from "@/generated/prisma/client";
@@ -187,6 +189,8 @@ type UndoEntry = { userId: string } & (
       created?: CreatedEntities;
 
       assets?: AssetState[];
+      carried?: boolean;
+      following?: { monthId: string; referenceDate: Date; snapshot: MonthSnapshot; fingerprint: string }[];
     }
   | { kind: "delete-month"; monthId: string; fingerprint: string; expiresAt: number }
 );
@@ -230,6 +234,10 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   }
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
+  const purchaseDay = input.addition.purchase?.occurredOn ?? bond?.settlementDate ?? newAsset?.appliedOn ?? today;
+  const requestedMonth = await (await requirePrisma()).portfolioMonth.findUnique({ where: { id: input.monthId }, select: { id: true } });
+  if (!requestedMonth) throw new MonthEditError("The reporting month does not exist.");
+  const datedMonth = await ensureDatedMonth(purchaseDay);
   const cashKind = newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind);
   const treasury = newAsset?.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", newAsset.ticker ?? "") ?? "" }) : null;
   if (newAsset?.kind === "treasury" && (!treasury || treasury.maturityDate <= toDateKey(calendarDay(new Date())))) throw new MonthEditError("Choose an outstanding security from the official Tesouro Direto list.");
@@ -241,7 +249,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const existingAsset = input.addition.purchase && input.addition.assetId ? await db?.asset.findUnique({ where: { id: input.addition.assetId }, select: { baseCurrency: true, assetType: true, quoteSymbol: true } }) : null;
   const purchaseKind = newAsset?.kind ?? existingAsset?.assetType;
   const purchaseCurrency = identity?.currency ?? (purchaseKind === "crypto" ? "USD" : purchaseKind === "treasury" ? "BRL" : existingAsset?.baseCurrency);
-  const ownedMonth = input.addition.purchase ? await db?.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } }) : null;
+  const ownedMonth = input.addition.purchase ? await db?.portfolioMonth.findUnique({ where: { id: datedMonth.id }, select: { referenceDate: true } }) : null;
   if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || (!automaticLiquidity(purchaseKind) && purchaseKind !== "treasury"))) throw new MonthEditError("This asset cannot use the market purchase form.");
   let purchase: Awaited<ReturnType<typeof preparePurchase>> | null = null;
   if (input.addition.purchase) {
@@ -262,7 +270,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   let cashQuote: { symbol: "USD" | "EUR"; day: string; value: number } | null = null;
   if (newAsset?.kind === "usd-balance" || newAsset?.kind === "eur-balance") {
     const cashDb = await requirePrisma();
-    const cashMonth = await cashDb.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } });
+    const cashMonth = await cashDb.portfolioMonth.findUnique({ where: { id: datedMonth.id }, select: { referenceDate: true } });
     if (!cashMonth) throw new MonthEditError("The reporting month does not exist.");
     const symbol = newAsset.kind === "eur-balance" ? "EUR" : "USD";
     const quotes = await readMonthQuoteValues(cashDb, cashMonth.referenceDate, [symbol]);
@@ -279,7 +287,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   let bondFx: { acquisition: Awaited<ReturnType<typeof fetchReferenceFxLatest>>; current: Awaited<ReturnType<typeof fetchReferenceFxLatest>>; usd: Awaited<ReturnType<typeof fetchReferenceFxLatest>> } | null = null;
   if (bond) {
     const bondDb = await getUserDb();
-    const bondMonth = await bondDb?.portfolioMonth.findUnique({ where: { id: input.monthId }, select: { referenceDate: true } });
+    const bondMonth = await bondDb?.portfolioMonth.findUnique({ where: { id: datedMonth.id }, select: { referenceDate: true } });
     if (!bondMonth) throw new MonthEditError("The reporting month does not exist.");
     const asOf = toDateKey(new Date(Math.min(Date.parse(today), lastDayOf(bondMonth.referenceDate).getTime())));
     if (bond.settlementDate > asOf || bond.quotes.some((quote) => quote.date > asOf)) throw new MonthEditError("Bond dates must be within or before the reporting month.");
@@ -293,7 +301,8 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     fixedFx = await fetchReferenceFxLatest("USD", newAsset!.appliedOn!);
     await primeFixedIncomeRates(fixedDb, fixed.indexer, newAsset!.appliedOn!);
   }
-  return withUndo(input.monthId, async (transaction, month) => {
+  if (purchase && newAsset && datedMonth.referenceDate < currentReferenceMonth() && !newAsset.manualPriceBrl) newAsset.manualPriceBrl = purchase.cost.unitPriceBrl.toString();
+  return withUndo(datedMonth.id, async (transaction, month) => {
     if (bondFx) await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(bondFx.usd.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: bondFx.usd.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     if (fixedFx) await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(fixedFx.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fixedFx.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     const positions = await transaction.position.findMany({
@@ -315,7 +324,20 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       if (value) quoteBySymbol.set(bond.currency, value);
     }
 
+    const observedUsd = purchase?.usd ?? bondFx?.usd ?? fixedFx;
+    if (observedUsd && !quoteBySymbol.has("USD")) {
+      const fx = new Prisma.Decimal(observedUsd.value);
+      await transaction.manualQuote.createMany({ data: [{ userId: SCOPED_USER, referenceDate: month.referenceDate, symbol: "USD", instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fx }], skipDuplicates: true });
+      quoteBySymbol.set("USD", fx);
+    }
+    if (purchase?.input.currency === "EUR" && !quoteBySymbol.has("EUR")) {
+      const fx = new Prisma.Decimal(purchase.native.value);
+      await transaction.manualQuote.createMany({ data: [{ userId: SCOPED_USER, referenceDate: month.referenceDate, symbol: "EUR", instrumentType: "FIAT", baseCurrency: "EUR", valueBrl: fx }], skipDuplicates: true });
+      quoteBySymbol.set("EUR", fx);
+    }
     const batch: AdditionBatch = {
+      verificationMonthId: input.monthId,
+      executionPrice: purchase?.cost.unitPriceBrl,
       month,
       isCurrentMonth: month.referenceDate.getTime() === currentReferenceMonth().getTime(),
       quoteBySymbol,
@@ -344,6 +366,12 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side, purchase.input.amountInvested), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
       await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: usdDate, instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     }
+    if (purchase && asset.quoteSymbol && !quoteBySymbol.has(asset.quoteSymbol)) {
+      const recorded = await transaction.dailyQuote.findFirst({ where: { symbol: asset.quoteSymbol, quoteDate: { gte: month.referenceDate, lte: lastDayOf(month.referenceDate) } }, orderBy: { quoteDate: "desc" } });
+      const price = recorded?.valueBrl ?? purchase.cost.unitPriceBrl;
+      await transaction.manualQuote.createMany({ data: [{ userId: SCOPED_USER, referenceDate: month.referenceDate, symbol: asset.quoteSymbol, instrumentType: "TRADE", baseCurrency: purchase.input.currency, valueBrl: price }], skipDuplicates: true });
+      quoteBySymbol.set(asset.quoteSymbol, price);
+    }
     if (held && purchase) {
       const sale = purchase.input.side === "SELL";
       const ledger = await transaction.position.findUniqueOrThrow({
@@ -364,7 +392,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       } catch (error) {
         throw new MonthEditError(error instanceof Error ? error.message : "Could not validate the trade quantity.");
       }
-      if (purchase.date < month.referenceDate && purchaseKind !== "treasury") throw new MonthEditError("The transaction date must fall within the open reporting month.");
+      if (purchase.date < month.referenceDate || purchase.date > lastDayOf(month.referenceDate)) throw new MonthEditError("The transaction date must fall within its reporting month.");
       await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: held.id, kind: sale ? PositionTransactionKind.WITHDRAWAL : PositionTransactionKind.CONTRIBUTION, occurredOn: purchase.date, quantity: purchase.cost.quantity, unitPriceBrl: purchase.cost.unitPriceBrl, amountBrl: purchase.cost.amountBrl, note: purchase.note } });
       await transaction.position.update({ where: { id: held.id }, data: { quantity: balance, totalBrl: balance.mul(ledger.unitPriceBrl).toDecimalPlaces(2) } });
       return { created: batch.created };
@@ -473,7 +501,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     }
 
     return hasCreated(batch.created) ? { created: batch.created } : undefined;
-  });
+  }, { carryForward: true });
 }
 
 
@@ -676,6 +704,8 @@ export async function removePosition(input: { monthId: string; positionId: strin
 }
 
 type AdditionBatch = {
+  verificationMonthId: string;
+  executionPrice?: Prisma.Decimal;
   month: { id: string; referenceDate: Date };
   isCurrentMonth: boolean;
   quoteBySymbol: Map<string, Prisma.Decimal>;
@@ -819,7 +849,7 @@ async function resolveAdditionAsset(
   }
 
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
-  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.month.id) : null;
+  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.verificationMonthId) : null;
   const officialTreasury = input.kind === "treasury" ? treasurySeriesOf(await readCurrentTreasuryBook(), { symbol: normalizeTicker("treasury", input.ticker ?? "") ?? "" }) : null;
   const name = requireName(identity ? identity.name.slice(0, MAX_ASSET_NAME_LENGTH) : officialTreasury ? officialTreasury.name.slice(0, MAX_ASSET_NAME_LENGTH) : input.name, MAX_ASSET_NAME_LENGTH, "the asset name");
   const symbol = definition.ticker === null ? null : normalizeTicker(input.kind, input.ticker ?? "");
@@ -921,7 +951,7 @@ async function ensureMonthQuote(
   batch: AdditionBatch,
 ): Promise<string | null> {
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
-  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.month.id) : null;
+  const identity = isMarketKind(input.kind) ? await verifiedMarketIdentity(input, batch.verificationMonthId) : null;
   const instrumentType = identity?.instrumentType ?? definition.instrumentType ?? "FIAT";
   const baseCurrency = identity?.currency ?? baseCurrencyOf(input.kind, symbol);
   const provider = providerForQuote(instrumentType, baseCurrency);
@@ -950,7 +980,7 @@ async function ensureMonthQuote(
   }
 
   const verified = input.quoteCheckToken ? readVerifiedTicker(input.quoteCheckToken, {
-    userId: await currentUserId(), monthId: batch.month.id,
+    userId: await currentUserId(), monthId: batch.verificationMonthId,
   }) : null;
 
   if (!verified || verified.symbol !== symbol || verified.kind !== input.kind) {
@@ -959,7 +989,7 @@ async function ensureMonthQuote(
 
   const useFetched = verified.status === "found" && verified.priceBrl !== null && batch.isCurrentMonth;
   const official = useFetched ? new Prisma.Decimal(verified.priceBrl!).toDecimalPlaces(8) : null;
-  const typed = input.manualPriceBrl ? parsePositive(input.manualPriceBrl, 8) : null;
+  const typed = input.manualPriceBrl ? parsePositive(input.manualPriceBrl, 8) : !official ? batch.executionPrice ?? null : null;
 
   if (!official && !typed) {
     throw new MonthEditError(`Enter the quote for ${symbol} in BRL.`);
@@ -1344,6 +1374,7 @@ export async function undoChange(token: string) {
 
   return prisma.$transaction(
     async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${"portfolio-edits"}))`;
       const month = await transaction.portfolioMonth.findUnique({
         where: { id: entry.monthId },
         select: { id: true, referenceDate: true },
@@ -1369,6 +1400,16 @@ export async function undoChange(token: string) {
         return { referenceDate: month.referenceDate, deleted: true };
       }
 
+      if (entry.carried) {
+        const known = new Set((entry.following ?? []).map((later) => later.monthId));
+        const latest = await transaction.portfolioMonth.findMany({ where: { referenceDate: { gt: month.referenceDate } }, select: { id: true } });
+        if (latest.some((later) => !known.has(later.id))) throw new MonthEditError("A new reporting month was created after this purchase. This change can no longer be undone safely.");
+      }
+      for (const later of entry.following ?? []) {
+        const current = await readSnapshot(transaction, { id: later.monthId, referenceDate: later.referenceDate });
+        if (fingerprint(current) !== later.fingerprint) throw new MonthEditError("A later reporting month changed. Undoing would overwrite another change.");
+      }
+      for (const later of entry.following ?? []) await restoreSnapshot(transaction, { id: later.monthId, referenceDate: later.referenceDate }, later.snapshot);
       await restoreSnapshot(transaction, month, entry.snapshot);
 
       for (const asset of entry.assets ?? []) {
@@ -1407,27 +1448,6 @@ function assertAllocationRules(
       throw new MonthEditError(`${issue} Choose an option from the list.`);
     }
   }
-}
-
-
-export async function setMonthOpen({ monthId, open }: { monthId: string; open: boolean }) {
-  const prisma = await requirePrisma();
-  const month = await prisma.portfolioMonth.findUnique({ where: { id: monthId }, select: { id: true, status: true } });
-
-  if (!month) {
-    throw new MonthEditError("This reporting month does not exist.");
-  }
-
-  const isOpen = month.status === PortfolioMonthStatus.DRAFT;
-
-  if (isOpen === open) {
-    throw new MonthEditError(open ? "This month is already open." : "This month is already closed.");
-  }
-
-  await prisma.portfolioMonth.update({
-    where: { id: month.id },
-    data: { status: open ? PortfolioMonthStatus.DRAFT : PortfolioMonthStatus.REVIEWED },
-  });
 }
 
 
@@ -1471,6 +1491,7 @@ export async function withUndo(
     transaction: Transaction,
     month: { id: string; referenceDate: Date },
   ) => Promise<{ created?: CreatedEntities; assets?: AssetState[] } | void>,
+  options: { carryForward?: boolean } = {},
 ) {
   const prisma = await requirePrisma();
   const userId = await currentUserId();
@@ -1479,11 +1500,18 @@ export async function withUndo(
     return await prisma.$transaction(
       async (transaction) => {
         // Serialize edits so simultaneous trades cannot spend the same units twice.
-        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${monthId}))`;
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${"portfolio-edits"}))`;
         const month = await assertEditable(transaction, monthId);
         const before = await readSnapshot(transaction, month);
+        const later = options.carryForward ? await transaction.portfolioMonth.findMany({ where: { referenceDate: { gt: month.referenceDate } }, orderBy: { referenceDate: "asc" }, select: { id: true, referenceDate: true } }) : [];
+        const previous = await Promise.all(later.map((m) => readSnapshot(transaction, m)));
         const extras = await mutate(transaction, month);
         const after = await readSnapshot(transaction, month);
+        if (options.carryForward) {
+          try { await carryDatedPositions(transaction, month, before.positions, after.positions); }
+          catch (error) { throw new MonthEditError(error instanceof Error ? error.message : "Could not update later reporting months."); }
+        }
+        const following = await Promise.all(later.map(async (m, i) => ({ monthId: m.id, referenceDate: m.referenceDate, snapshot: previous[i], fingerprint: fingerprint(await readSnapshot(transaction, m)) })));
         const undoToken = storeUndo(userId, {
           kind: "restore",
           monthId: month.id,
@@ -1492,6 +1520,8 @@ export async function withUndo(
           expiresAt: Date.now() + UNDO_TTL_MS,
           created: extras?.created,
           assets: extras?.assets,
+          following,
+          carried: options.carryForward,
         });
 
         return { referenceDate: month.referenceDate, undoToken };
@@ -1518,9 +1548,6 @@ async function assertEditable(transaction: Transaction, monthId: string) {
   }
 
 
-  if (month.status !== PortfolioMonthStatus.DRAFT) {
-    throw new MonthEditError("This month is closed. Open it in the timeline to edit.");
-  }
 
   return { id: month.id, referenceDate: month.referenceDate };
 }
