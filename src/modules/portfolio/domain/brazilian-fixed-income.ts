@@ -1,7 +1,9 @@
 import { z } from "zod";
 
+export const BRAZILIAN_DEBT_PRODUCTS = ["CDB", "LCI", "LCA"] as const;
+
 export const brazilianFixedIncomeSchema = z.object({
-  product: z.enum(["CDB", "LCI", "LCA"]),
+  product: z.enum(BRAZILIAN_DEBT_PRODUCTS),
   issuer: z.string().trim().min(1).max(40),
   indexer: z.enum(["CDI", "PRE", "IPCA"]),
   rate: z.string().regex(/^\d+(?:\.\d{1,4})?$/).refine((value) => Number(value) > 0 && Number(value) <= 1000),

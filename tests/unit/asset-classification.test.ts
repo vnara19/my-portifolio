@@ -1,20 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PRODUCT_TYPES, productType, listingMarket } from "@/modules/portfolio/presentation/asset-classification";
+import { defaultAllocation } from "@/modules/portfolio/domain/asset-kinds";
 import { filterPositions, filterOptions } from "@/modules/portfolio/presentation/position-filters";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 
 test("product types and reporting geography follow the chosen convention", () => {
   assert.equal(productType("fixed-income", "", "LCI"), "LCI");
-  assert.equal(productType("international-bond", "", null, "Corporate"), "Corporate Bond");
+  assert.equal(productType("international-bond", "", null, "Corporate"), "Bonds");
   assert.equal(listingMarket("international-bond"), "Other Markets");
-  assert.equal(productType("eu-market", "EU_ETC"), "ETC");
+  assert.equal(productType("eu-market", "EU_ETC"), "");
   assert.equal(productType("eu-market", "EU_ETF"), "ETF");
   assert.equal(productType("crypto", "", null, null, "BTC"), "Bitcoin");
   assert.equal(productType("crypto", "", null, null, "Stablecoin"), "Stablecoin");
   assert.equal(productType("treasury"), "Tesouro Direto");
   assert.equal(productType("pension"), "Pension Plan");
-  assert.equal(productType("us-stock", "REIT"), "REIT");
+  assert.equal(productType("us-stock", "REIT"), "REIT/FII");
   assert.equal(listingMarket("international-bond", "USD", "Ireland"), "Ireland");
   assert.equal(listingMarket("eur-balance", "EUR"), "Europe");
   assert.equal(listingMarket("crypto", "USD"), "Global");
@@ -32,10 +33,21 @@ test("product and market facets cascade without mixing geographic exposure or ca
   assert.deepEqual(filterOptions(positions, filters).currencies, ["BRL", "EUR", "USD"]);
 });
 
-test("the complete supported product catalog is available before buying a product", () => {
-  const types = filterOptions([]).types;
-  for (const product of PRODUCT_TYPES) assert.ok(types.includes(product), product);
-  for (const product of ["Stock", "REIT", "FII", "CDB", "LCI", "LCA", "RDB", "CRI", "CRA", "Debenture", "Government Bond", "Corporate Bond", "Tesouro Direto"]) assert.ok(types.includes(product));
-  assert.equal(types.includes("Unspecified Debt Security"), false);
+test("the filter has exactly the user-approved registration products", () => {
+  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"]));
+  assert.equal(productType("fixed-income", "", "CRI"), "");
   assert.equal(productType("fixed-income"), "");
+  assert.equal(PRODUCT_TYPES.length, 13);
+});
+
+test("registration classifications map to the same filter keys", () => {
+  for (const [symbol, expected] of [["BTC", "Bitcoin"], ["ETH", "Altcoin"], ["SOL", "Altcoin"], ["USDC", "Stablecoin"], ["USDT", "Stablecoin"]]) {
+    const allocation = defaultAllocation("crypto", symbol);
+    assert.equal(productType("crypto", "", null, null, allocation.subclass), expected);
+  }
+  for (const product of ["CDB", "LCI", "LCA"]) assert.equal(productType("fixed-income", "", product), product);
+  for (const family of ["Sovereign", "Corporate", "Agency", "Municipal", "Supranational", "CD", "Covered", "Securitized", "Other"]) assert.equal(productType("international-bond", "", null, family), "Bonds");
+  assert.equal(productType("br-stock", "FII"), "REIT/FII");
+  assert.equal(productType("us-stock", "REIT"), "REIT/FII");
+  assert.equal(productType("usd-balance", "", null, null, "Stablecoin"), "Stablecoin");
 });

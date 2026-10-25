@@ -38,13 +38,13 @@ export const FILTER_DIMENSIONS: FilterDimension[] = [
 ];
 
 export function normalizeTypeFilter(label: string) {
-  if (["US ETF", "US stock", "US Market"].includes(label)) return "US Market";
-  if (["Brazilian ETF", "Brazilian stock or REIT", "Brazilian Market"].includes(label)) return "Brazilian Market";
-  return label === "Crypto" ? "Cryptocurrency" : label;
+  if (["REIT", "FII", "REIT / FII"].includes(label)) return "REIT/FII";
+  if (["Government Bond", "Corporate Bond", "Agency Bond", "Municipal Bond", "Supranational Bond", "Negotiable CD", "Covered Bond", "Securitized Bond", "Bond"].includes(label)) return "Bonds";
+  return (PRODUCT_TYPES as readonly string[]).includes(label) ? label : "";
 }
 
 export function typeOf(position: Pick<MonthPosition, "assetType" | "productType">) {
-  return position.productType ?? productType(position.assetType);
+  return normalizeTypeFilter(position.productType ?? productType(position.assetType));
 }
 
 export function marketOf(position: Pick<MonthPosition, "assetType" | "market" | "baseCurrency">) {
@@ -171,7 +171,7 @@ export function filterOptions(
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
     const supported = dimension === "types" ? [...PRODUCT_TYPES] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
-    options[dimension] = [...new Set([...supported, ...values.filter(Boolean), ...(filters[dimension] ?? [])])].sort((left, right) =>
+    options[dimension] = [...new Set(dimension === "types" ? [...PRODUCT_TYPES] : [...supported, ...values.filter(Boolean), ...(filters[dimension] ?? [])])].sort((left, right) =>
       left.localeCompare(right, "en-GB"),
     );
   }

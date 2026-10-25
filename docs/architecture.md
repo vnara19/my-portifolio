@@ -475,10 +475,18 @@ contract terms or verified listing metadata; missing product metadata prompts Re
 bonds to their issuer country, and cryptocurrencies to Global. Market therefore
 represents reporting geography for these holdings, not their trading venue.
 Market and Currency always include the supported regions and BRL/USD/EUR, even
-when the selected portfolio has no matching holding. The complete supported product catalog is always available, including Stock, REIT, FII,
-CDB, LCI, LCA and all supported bond families, whether held or not.
-Legacy debt product can be confirmed in Edit position. Its displayProduct metadata
-is retained alongside existing JSON contract fields and included in backups and
+when the selected portfolio has no matching holding. The Asset Type filter is deliberately limited to the agreed registration categories:
+Stock, REIT/FII, ETF, CDB, LCI, LCA, Bonds, Tesouro Direto, Cash Account,
+Pension Plan, Bitcoin, Altcoin, and Stablecoin. All bond families remain stored in
+the bond contract but share the Bonds filter. REIT/FII is one filter category;
+underlying instrument metadata remains unchanged. Unsupported products do not
+appear as options, including through stale URLs or legacy metadata. Brazilian
+private-debt registration and its filter share BRAZILIAN_DEBT_PRODUCTS (CDB/LCI/LCA).
+Crypto categories follow the saved registration allocation, including Stablecoin
+for USDC/USDT; legacy balance holdings explicitly allocated as Stablecoin retain
+that product label without rewriting historical quantities or allocations.
+Legacy CDB/LCI/LCA identity can be confirmed in Edit position. displayProduct is
+retained alongside existing JSON contract fields and included in backups and
 Undo; it does not create or alter contractual rates or valuation formulas. A
 contracted product cannot be relabeled as a different product.
 The Add position form shows the same derived product and listing market alongside

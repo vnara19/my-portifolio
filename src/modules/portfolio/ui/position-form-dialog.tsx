@@ -849,7 +849,7 @@ function PositionForm({
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {fixedIncomeEntry ? <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={["CDB", "LCI", "LCA"].map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
+                    <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
                     <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
                     <Field label="Amount invested (BRL)"><input aria-label="Amount invested" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
                     <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>

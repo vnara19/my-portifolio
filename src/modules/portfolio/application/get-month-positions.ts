@@ -203,6 +203,7 @@ export async function getMonthPositions(
           const positionTotal = position.totalBrl.toNumber();
           const assetType = assetTypeOf(position.asset);
           const bond = readInternationalBond(position.asset.fixedIncomeContract);
+          const displayProduct = productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null));
           const asOf = toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay);
           const securityQuantity = bond
             ? bond.faceValuePerBond ? position.quantity.div(bond.faceValuePerBond).toFixed() : null
@@ -221,8 +222,8 @@ export async function getMonthPositions(
             liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
             assetType,
-            productType: productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null)),
-            market: listingMarket(assetType, position.asset.baseCurrency, bond?.issuerCountry),
+            productType: displayProduct,
+            market: listingMarket(displayProduct === "Stablecoin" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
