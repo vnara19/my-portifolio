@@ -696,7 +696,7 @@ function PositionDetails({
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-xs md:grid-cols-3 xl:grid-cols-4">
         {details.map((detail) => (
-          <div key={detail.label} className="min-w-0">
+          <div key={detail.label} className={cn("min-w-0", detail.label === "Unit Price" && "col-span-2 md:col-span-1")}>
             <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(detail.label)}</dt>
             <dd className="mt-1 [overflow-wrap:anywhere] text-foreground/85">{detail.value}</dd>
           </div>
