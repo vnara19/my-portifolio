@@ -20,23 +20,23 @@ export function maturityStatus(maturityDate: string, referenceDay: string): Matu
   const full = formatDay(maturity);
 
   if (days < 0) {
-    return { tone: "expired", label: "vencido", title: `Matured on ${full}` };
+    return { tone: "expired", label: "Matured", title: `Matured on ${full}` };
   }
 
   if (days <= MATURITY_SOON_DAYS) {
     return {
       tone: "soon",
-      label: days === 0 ? "matures today" : days === 1 ? "matures tomorrow" : `matures in ${days} days`,
+      label: days === 0 ? "Matures Today" : days === 1 ? "Matures Tomorrow" : `Matures in ${days} Days`,
       title: `Matures on ${full}`,
     };
   }
 
-  return { tone: "neutral", label: `matures in ${formatMonthCompact(maturity)}`, title: `Matures on ${full}` };
+  return { tone: "neutral", label: `Matures ${formatMonthCompact(maturity)}`, title: `Matures on ${full}` };
 }
 
 
 export function maturityHint(maturityDate: string) {
-  return `vence ${formatMonthCompact(parseDay(maturityDate))}`;
+  return `Matures ${formatMonthCompact(parseDay(maturityDate))}`;
 }
 
 export function formatDay(date: Date) {

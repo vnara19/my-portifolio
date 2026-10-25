@@ -499,3 +499,13 @@ unspecified liquidity appears last. Existing database and backup terms remain
 unchanged, including custom liquidity strings. The edit picker deduplicates these
 aliases as well. Maturity facets remain dynamically derived from the held
 securities' maturity dates in the selected reporting month; there is no year catalog.
+
+Expanded position rows use the same nativeValue/valueCurrency as the main row,
+including weighted allocation amounts. Unit Price is the position's stored monthly
+valuation price converted with the reporting month's own FX, not a purchase price
+or a live quote. Missing FX never falls back to another currency. Balance-only
+holdings show Valuation: Balance; at-cost bonds show Purchase Cost rather than
+suggesting a market quote. Detail fields wrap within a full-width grid. Maturity
+uses No Maturity Date when absent, and compact English badges when present.
+Historical pension positions and saved allocation weights remain unchanged; the
+expanded row is a summary, not the complete purchase or contract editor.

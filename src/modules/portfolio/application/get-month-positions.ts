@@ -1,6 +1,6 @@
 import { productType, listingMarket, reviewedDebtProduct } from "../presentation/asset-classification";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
-import { hasSecurityQuantity, nativePositionValue, valuationCurrency } from "../presentation/position-display";
+import { hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "../presentation/position-display";
 import { bondCostState, readInternationalBond } from "../domain/international-bond";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
@@ -53,6 +53,7 @@ export type MonthPosition = {
   securityQuantity: string | null;
   valueCurrency: "BRL" | "USD" | "EUR";
   nativeValue: number | null;
+  unitPriceNative?: number | null;
 
 
   liquidated: boolean;
@@ -243,6 +244,7 @@ export async function getMonthPositions(
               ...(bond?.valuationMode === "Cost" ? { bondCost: bondCostState(bond, asOf).cost.toNumber() } : {}),
             }),
             liquidated: !position.quantity.greaterThan(0),
+            unitPriceNative: nativeUnitPrice(position.unitPriceBrl?.toNumber() ?? null, valuationCurrency(assetType, position.asset.baseCurrency), usdRate, quoteBySymbol.get("EUR")?.toNumber() ?? null),
             unitPriceBrl: position.unitPriceBrl ? position.unitPriceBrl.toNumber() : null,
             totalBrl: positionTotal,
             totalUsd: usdRate === null || usdRate === 0 ? null : positionTotal / usdRate,

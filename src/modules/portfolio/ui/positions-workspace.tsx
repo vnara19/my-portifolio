@@ -55,7 +55,7 @@ import {
   formatBrl,
   formatCurrency,
   formatMonthCompact,
-  formatPriceBrl,
+  formatUnitPrice,
   formatSharePercent,
 } from "@/modules/portfolio/presentation/portfolio-format";
 import { positionHref } from "@/modules/portfolio/presentation/position-page";
@@ -648,33 +648,31 @@ function PositionDetails({
     { label: "Asset Class", value: classesOf(position).map(englishLabel).join(", ") },
     { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
-    {
-      label: "Quote",
-      value: (
-        <span className="font-mono">{position.unitPriceBrl === null ? "Balance, without a quote" : formatPriceBrl(position.unitPriceBrl)}</span>
-      ),
-    },
+    ...(position.securityQuantity !== null && !position.bondAtCost ? [{
+      label: "Unit Price",
+      value: <span className="font-mono">{position.unitPriceNative == null ? "Not Specified" : formatUnitPrice(position.unitPriceNative, position.valueCurrency)}</span>,
+    }] : [{ label: "Valuation", value: position.bondAtCost ? "Purchase Cost" : position.assetType === "international-bond" ? "Market Value" : "Balance" }]),
     { label: "Quantity", value: <QuantityText position={position} /> },
     { label: "Liquidity", value: liquidityLabel(position.liquidity) },
     {
       label: "Maturity",
       value: position.maturityDate ? (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex flex-wrap items-center gap-2">
           <span className="font-mono">{formatDay(parseDay(position.maturityDate))}</span>
           <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} />
         </span>
       ) : (
-        "Not specified"
+        "No Maturity Date"
       ),
     },
     {
-      label: "Total in BRL",
-      value: <span className="font-mono">{formatBrl(position.totalBrl)}</span>,
+      label: "Value",
+      value: <span className="font-mono">{position.nativeValue === null ? "Not Specified" : formatCurrency(position.nativeValue, position.valueCurrency)}</span>,
     },
   ];
 
   return (
-    <div className="grid gap-5 rounded-2xl border border-border/60 bg-background/30 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+    <div className="space-y-5 rounded-2xl border border-border/60 bg-background/30 p-4">
       <div>
         <p className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Allocation</p>
         {allocations.length === 0 ? (
@@ -682,25 +680,25 @@ function PositionDetails({
         ) : (
           <ul className="mt-2.5 space-y-2" data-testid="position-details-allocations">
             {allocations.map((allocation) => (
-              <li key={allocationLabel(allocation)} className="flex items-center gap-2.5 text-xs">
+              <li key={allocationLabel(allocation)} className="flex flex-wrap items-start gap-x-2.5 gap-y-1 text-xs">
                 <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(allocation.assetClass) }} />
-                <span className="min-w-0 truncate text-foreground/85">{allocationLabel(allocation)}</span>
+                <span className="min-w-0 flex-1 break-words text-foreground/85">{allocationLabel(allocation)}</span>
                 <span className="ml-auto shrink-0 font-mono text-muted-foreground">
                   {formatWeightPercent(allocation.weight)}
                 </span>
-                <span className="w-24 shrink-0 text-right font-mono text-foreground/80">
-                  {formatBrl((position.totalBrl * allocation.weight) / 100)}
+                <span className="min-w-28 text-right font-mono text-foreground/80">
+                  {position.nativeValue === null ? "Not Specified" : formatCurrency((position.nativeValue * allocation.weight) / 100, position.valueCurrency)}
                 </span>
               </li>
             ))}
           </ul>
         )}
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-xs md:grid-cols-3 xl:grid-cols-4">
         {details.map((detail) => (
           <div key={detail.label} className="min-w-0">
             <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(detail.label)}</dt>
-            <dd className="mt-1 truncate text-foreground/85">{detail.value}</dd>
+            <dd className="mt-1 [overflow-wrap:anywhere] text-foreground/85">{detail.value}</dd>
           </div>
         ))}
       </dl>

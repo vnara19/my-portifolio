@@ -11,7 +11,7 @@ test("English display preserves legacy classification values and user names", ()
   assert.ok(ASSET_CLASSES.includes("Renda Fixa"));
   assert.ok(subclassesOf("Renda Fixa").includes("Pós-fixado"));
   assert.equal(englishLabel("Renda Fixa"), "Fixed Income");
-  assert.equal(englishLabel("Pós-fixado"), "Floating-rate");
+  assert.equal(englishLabel("Pós-fixado"), "Floating Rate");
   assert.equal(englishLabel("Renda Variável"), "Equities");
   assert.equal(englishLabel("Tesouro Direto"), "Tesouro Direto");
   assert.equal(englishLabel("My personal asset"), "My personal asset");

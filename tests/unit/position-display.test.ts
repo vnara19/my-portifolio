@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasSecurityQuantity, nativePositionValue, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
+import { hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
 import { typeOf } from "@/modules/portfolio/presentation/position-filters";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -34,4 +34,15 @@ test("product type is independent of listing market and currency", () => {
   assert.equal(typeOf({ assetType: "eur-balance" }), "Cash Account");
   assert.equal(typeOf({ assetType: "crypto" }), "");
   assert.equal(englishLabel("Cripto"), "Cryptocurrency");
+});
+
+test("expanded unit prices use the same reporting currency and require that month's FX", () => {
+  assert.ok(Math.abs(nativeUnitPrice(3572.8, "USD", 5, 6)! - 714.56) < 1e-9);
+  assert.equal(nativeUnitPrice(600, "EUR", 5, 6), 100);
+  assert.equal(nativeUnitPrice(600, "BRL", null, null), 600);
+  assert.equal(nativeUnitPrice(600, "EUR", 5, null), null);
+  assert.equal(nativeUnitPrice(600, "USD", 0, 6), null);
+  assert.equal(nativeUnitPrice(600, "USD", Infinity, 6), null);
+  assert.equal(nativeUnitPrice(null, "USD", 5, 6), null);
+  assert.equal(nativeUnitPrice(Infinity, "USD", 5, 6), null);
 });

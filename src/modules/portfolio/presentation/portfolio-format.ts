@@ -86,3 +86,8 @@ export function formatCurrency(value: number, currency: "USD" | "EUR" | "BRL", s
     signDisplay: signed ? "exceptZero" : "auto",
   }).format(value);
 }
+
+/** Unit valuation prices retain useful fractional precision in the position currency. */
+export function formatUnitPrice(value: number, currency: "BRL" | "USD" | "EUR") {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, currencyDisplay: "code", minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(value);
+}

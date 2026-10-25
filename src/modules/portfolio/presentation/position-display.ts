@@ -19,3 +19,11 @@ export function nativePositionValue(input: { assetType: AssetType; baseCurrency:
 export function hasSecurityQuantity(assetType: AssetType, quoteSymbol: string | null) {
   return !["brl-cash", "usd-balance", "eur-balance"].includes(assetType) && Boolean(quoteSymbol);
 }
+
+/** Convert the stored valuation unit price using the same reporting-month FX as the row. */
+export function nativeUnitPrice(priceBrl: number | null, currency: "BRL" | "USD" | "EUR", usdRate: number | null, eurRate: number | null) {
+  if (priceBrl === null || !Number.isFinite(priceBrl) || priceBrl < 0) return null;
+  if (currency === "BRL") return priceBrl;
+  const rate = currency === "EUR" ? eurRate : usdRate;
+  return rate !== null && Number.isFinite(rate) && rate > 0 ? priceBrl / rate : null;
+}
