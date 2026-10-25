@@ -509,3 +509,16 @@ suggesting a market quote. Detail fields wrap within a full-width grid. Maturity
 uses No Maturity Date when absent, and compact English badges when present.
 Historical pension positions and saved allocation weights remain unchanged; the
 expanded row is a summary, not the complete purchase or contract editor.
+
+Manual allocation splitting is retired from the position editor. Expanded table
+rows and the asset page no longer display allocation percentages or composition
+panels. Existing allocation rows remain stored for historical totals, income
+calculations and backup compatibility. Metadata edits compare the submitted
+classification with the saved rows and reject manual changes to classes, weights
+or rates; unchanged classifications are never deleted/reinserted. New positions
+still receive verified automatic classification. Legacy classification weights
+are serialized without the former four-decimal display rounding.
+Expanded rows show Unit Price only when a native unit price exists and Quantity
+only when a security quantity exists. They have no Valuation placeholder. Maturity
+is the date alone, without repeating a relative-date badge, in both table and
+asset-page summaries. Portfolio percentage columns and actual return rates remain.

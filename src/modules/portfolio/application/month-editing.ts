@@ -1,3 +1,4 @@
+import { sameSavedClassifications } from "../domain/saved-classification";
 import { ensureDatedMonth } from "./month-rollover";
 import { carryDatedPositions } from "./carry-dated-position";
 
@@ -516,7 +517,7 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
         assetId: true,
         openingQuantity: true,
         calculationStartDate: true,
-        allocations: { select: { assetClass: true, subclass: true, duration: true } },
+        allocations: { select: { assetClass: true, subclass: true, duration: true, weight: true, ratePercent: true } },
       },
     });
 
@@ -525,6 +526,10 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
     }
 
 
+    if (!sameSavedClassifications(allocations, position.allocations)) {
+      throw new MonthEditError("Classification is assigned automatically when adding an asset; manual allocation edits are not supported.");
+    }
+
     // (spec 057).
     await transaction.position.update({
       where: { id: position.id },
@@ -532,11 +537,6 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
     });
 
 
-    assertAllocationRules(allocations, position.allocations);
-    await transaction.positionAllocation.deleteMany({ where: { positionId: position.id } });
-    await transaction.positionAllocation.createMany({
-      data: allocations.map((allocation) => ({ ...allocation, userId: SCOPED_USER, positionId: position.id })),
-    });
 
     let previous: AssetState | null;
 
@@ -549,7 +549,7 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
       throw error;
     }
 
-    await applyAutoIncome(transaction, month, position, await assertIncomeRates(transaction, position.assetId, allocations));
+    await applyAutoIncome(transaction, month, position, await assertIncomeRates(transaction, position.assetId, allocations, true));
 
     return previous ? { assets: [previous] } : undefined;
   });
@@ -670,12 +670,15 @@ async function assertIncomeRates(
   transaction: Transaction,
   assetId: string,
   allocations: { subclass: string; weight: Prisma.Decimal; ratePercent: Prisma.Decimal | null }[],
+  preserveSavedRates = false,
 ) {
   const asset = await transaction.asset.findUniqueOrThrow({
     where: { id: assetId },
     select: { autoIncome: true, quoteSymbol: true, assetType: true, baseCurrency: true, name: true, cashAccount: true },
   });
   const supported = !asset.quoteSymbol && supportsAutoIncome(assetTypeOf(asset));
+
+  if (preserveSavedRates && !supported) return false;
 
   if (allocations.some((allocation) => allocation.ratePercent !== null) && !supported) {
     throw new MonthEditError("Only fixed income and BRL cash without a market quote support a rate of return.");

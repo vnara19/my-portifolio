@@ -40,7 +40,6 @@ import type { MonthPosition, MonthPositions } from "@/modules/portfolio/applicat
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { formatDay } from "@/modules/portfolio/presentation/maturity";
 import {
-  allocationLabel,
   classesOf,
   typeOf,
   marketOf,
@@ -63,7 +62,6 @@ import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { headerPrimaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, takeHandedOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { EmptyPortfolio } from "@/modules/portfolio/ui/empty-portfolio";
-import { MaturityBadge } from "@/modules/portfolio/ui/maturity-badge";
 import { MultiSelectFilter } from "@/modules/portfolio/ui/multi-select-filter";
 import { PositionsFilterSheet, type FilterGroup } from "@/modules/portfolio/ui/positions-filter-sheet";
 import { PositionFormDialog, type PositionFormTarget } from "@/modules/portfolio/ui/position-form-dialog";
@@ -270,7 +268,6 @@ export function PositionsWorkspace({
     <PositionRow
       key={rowKey}
       position={position}
-      referenceDay={month.referenceDay}
       href={positionHref(position.accountId, position.assetId, searchParams)}
       expanded={expanded.has(position.id)}
       opening={isOpening && openingId === position.id}
@@ -498,7 +495,6 @@ export function PositionsWorkspace({
 
 function PositionRow({
   position,
-  referenceDay,
   href,
   expanded,
   opening,
@@ -506,7 +502,6 @@ function PositionRow({
   onToggle,
 }: {
   position: MonthPosition;
-  referenceDay: string;
   href: string;
   expanded: boolean;
   opening: boolean;
@@ -596,15 +591,13 @@ function PositionRow({
             {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
             <span>{typeOf(position) || "Review Product Type"}</span>{marketOf(position) !== "Other Markets" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
           </p>
-          {position.maturityDate ? (
-            <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
-          ) : null}
+          {position.maturityDate ? <p className="mt-1.5 font-mono text-[10px] text-muted-foreground xl:hidden">{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
         <Cell id="maturityDate">
           {position.maturityDate ? (
             <>
               <p className="font-mono text-xs text-foreground/80">{formatDay(parseDay(position.maturityDate))}</p>
-              <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1" />
+
             </>
           ) : (
             <span className="text-[10px] text-muted-foreground">—</span>
@@ -626,7 +619,7 @@ function PositionRow({
       {expanded ? (
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
           <td colSpan={COLUMN_COUNT} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
-            <PositionDetails position={position} referenceDay={referenceDay} />
+            <PositionDetails position={position} />
           </td>
         </tr>
       ) : null}
@@ -637,29 +630,25 @@ function PositionRow({
 
 function PositionDetails({
   position,
-  referenceDay,
 }: {
   position: MonthPosition;
-  referenceDay: string;
 }) {
-  const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
     { label: "Asset Type", value: typeOf(position) || "Review Product Type" },
     { label: "Asset Class", value: classesOf(position).map(englishLabel).join(", ") },
     { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
-    ...(position.securityQuantity !== null && !position.bondAtCost ? [{
+    ...(position.securityQuantity !== null && position.unitPriceNative != null && !position.bondAtCost ? [{
       label: "Unit Price",
       value: <span className="font-mono">{position.unitPriceNative == null ? "Not Specified" : formatUnitPrice(position.unitPriceNative, position.valueCurrency)}</span>,
-    }] : [{ label: "Valuation", value: position.bondAtCost ? "Purchase Cost" : position.assetType === "international-bond" ? "Market Value" : "Balance" }]),
-    { label: "Quantity", value: <QuantityText position={position} /> },
+    }] : []),
+    ...(position.securityQuantity !== null ? [{ label: "Quantity", value: <QuantityText position={position} /> }] : []),
     { label: "Liquidity", value: liquidityLabel(position.liquidity) },
     {
       label: "Maturity",
       value: position.maturityDate ? (
         <span className="inline-flex flex-wrap items-center gap-2">
           <span className="font-mono">{formatDay(parseDay(position.maturityDate))}</span>
-          <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} />
         </span>
       ) : (
         "No Maturity Date"
@@ -673,27 +662,6 @@ function PositionDetails({
 
   return (
     <div className="space-y-5 rounded-2xl border border-border/60 bg-background/30 p-4">
-      <div>
-        <p className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Allocation</p>
-        {allocations.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">No allocation.</p>
-        ) : (
-          <ul className="mt-2.5 space-y-2" data-testid="position-details-allocations">
-            {allocations.map((allocation) => (
-              <li key={allocationLabel(allocation)} className="flex flex-wrap items-start gap-x-2.5 gap-y-1 text-xs">
-                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(allocation.assetClass) }} />
-                <span className="min-w-0 flex-1 break-words text-foreground/85">{allocationLabel(allocation)}</span>
-                <span className="ml-auto shrink-0 font-mono text-muted-foreground">
-                  {formatWeightPercent(allocation.weight)}
-                </span>
-                <span className="min-w-28 text-right font-mono text-foreground/80">
-                  {position.nativeValue === null ? "Not Specified" : formatCurrency((position.nativeValue * allocation.weight) / 100, position.valueCurrency)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-xs md:grid-cols-3 xl:grid-cols-4">
         {details.map((detail) => (
           <div key={detail.label} className={cn("min-w-0", detail.label === "Unit Price" && "col-span-2 md:col-span-1")}>
@@ -748,9 +716,7 @@ function formatUsd(value: number) {
   return value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function formatWeightPercent(weight: number) {
-  return `${weight.toLocaleString("en-GB", { maximumFractionDigits: 1 })}%`;
-}
+
 
 function parseDay(value: string) {
   const [year, month, day] = value.split("-").map(Number);

@@ -16,8 +16,6 @@ import {
   CheckCircleIcon,
   CircleNotchIcon,
   LockSimpleIcon,
-  PlusIcon,
-  TrashIcon,
   WarningCircleIcon,
   XCircleIcon,
   XIcon,
@@ -48,30 +46,23 @@ import {
   type AssetKind,
 } from "@/modules/portfolio/domain/asset-kinds";
 import {
-  ASSET_CLASSES,
   ASSET_TYPE_LABELS,
   ASSET_TYPES,
   classificationIssue,
-  fitClassification,
-  redemptionsOf,
-  subclassesOf,
   type AssetType,
 } from "@/modules/portfolio/domain/classification";
 import { automaticLiquidity, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
-import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { treasuryYieldLabel, treasuryIndexerLabel } from "@/modules/portfolio/domain/treasury-purchase";
 import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
 import { formatBrl, formatPriceBrl, formatCurrency, parseLocaleNumber, normalizeLocaleNumberInput } from "@/modules/portfolio/presentation/portfolio-format";
 import {
-  AllocationPicker,
   backdropClass,
   Field,
   inputClass,
   LiquidityPicker,
   primaryButtonClass,
-  RedemptionPicker,
   secondaryButtonClass,
 } from "@/modules/portfolio/ui/edit-dialogs";
 import { providerLabel } from "@/modules/quotes/domain/quote-refresh";
@@ -97,7 +88,6 @@ type Issue = { tab: TabKey; message: string };
 const TABS: { key: TabKey; label: string }[] = [
   { key: "geral", label: "Overall" },
   { key: "ativo", label: "Asset" },
-  { key: "rateio", label: "Allocation" },
 ];
 const CHECK_DEBOUNCE_MS = 500;
 
@@ -222,7 +212,6 @@ function PositionForm({
         }))
       : null,
   );
-  const [nextRowKey, setNextRowKey] = useState(100);
 
 
   const [autoIncome, setAutoIncome] = useState(editing?.autoIncome ?? false);
@@ -241,7 +230,7 @@ function PositionForm({
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
     setValueKind("quantity"); setMaturity(""); setLiquidity("");
-    setAssetType(null); setRows(null); setNextRowKey(100); setAutoIncome(false);
+    setAssetType(null); setRows(null); setAutoIncome(false);
     setAppliedOn(defaultAppliedOn()); setTab("geral");
     setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
   };
@@ -399,20 +388,6 @@ function PositionForm({
   );
   const balanced = (!editing && allocationRows.length === 0) || Math.abs(weightSum - 100) <= 0.01;
 
-  const changeRows = (change: (current: AllocationRow[]) => AllocationRow[]) => setRows(change(allocationRows));
-
-
-  const updateRow = (key: number, field: keyof Omit<AllocationRow, "key">, text: string) =>
-    changeRows((current) =>
-      current.map((row) => {
-        if (row.key !== key) return row;
-        const changed = { ...row, [field]: text };
-        const next = field === "assetClass" ? { ...changed, ...fitClassification(changed) } : changed;
-
-        return indexerOfSubclass(next.subclass) === indexerOfSubclass(row.subclass) ? next : { ...next, rate: "" };
-      }),
-    );
-
 
   const incomeType = editing ? (editing.quoteSymbol ? null : editing.assetType) : isNewAsset ? kind : null;
   const rowIndexer = (row: AllocationRow): AutoIncomeIndexer | null =>
@@ -465,9 +440,9 @@ function PositionForm({
     }
   }
   if (!rowsComplete) {
-    issues.push({ tab: "rateio", message: "Choose a class, subclass and redemption term from the list and enter each allocation weight." });
+    issues.push({ tab: "ativo", message: "Choose a class, subclass and redemption term from the list and enter each allocation weight." });
   } else if (!balanced) {
-    issues.push({ tab: "rateio", message: `The allocation adds up to ${formatWeight(weightSum)}%; it must total 100%.` });
+    issues.push({ tab: "ativo", message: `The allocation adds up to ${formatWeight(weightSum)}%; it must total 100%.` });
   }
 
   const badRate = allocationRows.findIndex((row) => {
@@ -476,17 +451,17 @@ function PositionForm({
   });
 
   if (badRate >= 0) {
-    issues.push({ tab: "rateio", message: `Review the rate of return for classification ${badRate + 1}.` });
+    issues.push({ tab: "ativo", message: `Review the rate of return for classification ${badRate + 1}.` });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowIndexer(row))) {
     issues.push({
-      tab: "rateio",
+      tab: "ativo",
       message: "With automatic accrual, every classification must be floating-rate or fixed-rate.",
     });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowRate(row))) {
-    issues.push({ tab: "rateio", message: "Enter the rate of return to calculate accrual automatically." });
+    issues.push({ tab: "ativo", message: "Enter the rate of return to calculate accrual automatically." });
   }
   if (wantsAutoIncome && !editing && !appliedOn) {
-    issues.push({ tab: "rateio", message: "Enter the investment date." });
+    issues.push({ tab: "ativo", message: "Enter the investment date." });
   }
 
   const tabsWithIssues = new Set(issues.map((issue) => issue.tab));
@@ -509,7 +484,7 @@ function PositionForm({
       subclass: row.subclass.trim(),
       duration: row.duration.trim(),
       weightPercent: row.weight.trim().replace(",", "."),
-      ratePercent: rowRate(row),
+      ratePercent: editing ? normalizeLocaleNumberInput(row.rate) : rowRate(row),
     }));
 
     startSaving(async () => {
@@ -654,16 +629,6 @@ function PositionForm({
                   <LockSimpleIcon aria-hidden="true" size={12} weight="bold" className="shrink-0" />
                 ) : null}
                 {englishLabel(entry.label)}
-                {entry.key === "rateio" && !locked ? (
-                  <span
-                    className={cn(
-                      "font-mono text-[10px]",
-                      balanced && rowsComplete ? "text-muted-foreground" : "text-warning-foreground",
-                    )}
-                  >
-                    {formatWeight(weightSum)}%
-                  </span>
-                ) : null}
                 {showIssues && !locked && tabsWithIssues.has(entry.key) ? (
                   <span aria-label="with pending items" className="size-1.5 rounded-full bg-warning-foreground" />
                 ) : null}
@@ -955,120 +920,7 @@ function PositionForm({
             )}
           </PositionSection>
 
-          {editing ? <PositionSection single={false} value="rateio" className="outline-none">
-            {!editing ? <SectionHeading title="Set the allocation" description="Classify this holding for your portfolio breakdown. Weights must add up to 100%." /> : null}
-            {editing ? (
-              <p className="text-[11px] leading-5 text-muted-foreground">Split the position across classifications. Weights must add up to 100%.
-              </p>
-            ) : null}
-            <div className="mt-3 space-y-2.5">
-              {allocationRows.map((row, index) => (
-                <div key={row.key} className="rounded-xl border border-border/70 bg-background/30 p-3" data-allocation-row>
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(row.assetClass) }} />
-                    <span className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Classification {index + 1}
-                    </span>
-                    {allocationRows.length > 1 ? (
-                      <button
-                        type="button"
-                        aria-label={`Remove classification ${index + 1}`}
-                        onClick={() => changeRows((current) => current.filter((entry) => entry.key !== row.key))}
-                        className="ml-auto grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50"
-                      >
-                        <TrashIcon aria-hidden="true" size={13} />
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_88px]">
-                    <Field label="Class">
-                      <AllocationPicker
-                        label={`Allocation class ${index + 1}`}
-                        values={ASSET_CLASSES}
-                        value={row.assetClass}
-                        onChange={(next) => updateRow(row.key, "assetClass", next)}
-                      />
-                    </Field>
-                    <Field label="Subclass">
-                      <AllocationPicker
-                        label={`Allocation subclass ${index + 1}`}
-                        values={subclassesOf(row.assetClass)}
-                        value={row.subclass}
-                        onChange={(next) => updateRow(row.key, "subclass", next)}
-                        placeholder={row.assetClass ? "Choose" : "Choose the class"}
-                        disabled={!row.assetClass}
-                      />
-                    </Field>
-                    <Field label="Redemption term">
-                      <RedemptionPicker
-                        label={`Allocation redemption term ${index + 1}`}
-                        values={redemptionsOf(row.assetClass)}
-                        value={row.duration}
-                        onChange={(next) => updateRow(row.key, "duration", next)}
-                        disabled={!row.assetClass}
-                      />
-                    </Field>
-                    <Field label="Weight (%)">
-                      <input
-                        aria-label={`Allocation weight ${index + 1}`}
-                        inputMode="decimal"
-                        value={row.weight}
-                        onChange={(event) => updateRow(row.key, "weight", event.target.value)}
-                        className={cn(inputClass, "text-right font-mono")}
-                      />
-                    </Field>
-                  </div>
-                  {rowIndexer(row) ? (
-                    <RateField
-                      index={index}
-                      indexer={rowIndexer(row)!}
-                      value={row.rate}
-                      onChange={(next) => updateRow(row.key, "rate", next)}
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                changeRows((current) => [
-                  ...current,
-                  {
-                    key: nextRowKey,
-                    assetClass: "",
-                    subclass: "",
-                    duration: "",
-                    weight: formatWeight(Math.max(100 - weightSum, 0)),
-                    rate: "",
-                  },
-                ]);
-                setNextRowKey((key) => key + 1);
-              }}
-              className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <PlusIcon aria-hidden="true" size={13} weight="bold" />Add classification
-            </button>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
-              <div
-                className={cn("h-full rounded-full transition-[width] duration-200", balanced ? "bg-primary" : "bg-warning-foreground")}
-                style={{ width: `${Math.min(weightSum, 100)}%` }}
-              />
-            </div>
-            <p
-              aria-live="polite"
-              className={cn("mt-2 text-xs font-medium", balanced ? "text-primary" : "text-warning-foreground")}
-            >Sum: {formatWeight(weightSum)}%
-              {balanced ? "" : weightSum < 100 ? ` · faltam ${formatWeight(100 - weightSum)}%` : ` · sobram ${formatWeight(weightSum - 100)}%`}
-            </p>
-            {incomeAvailable ? (
-              <AutoIncomeToggle
-                automatic={autoIncome}
-                onAutomaticChange={setAutoIncome}
-                appliedOn={editing ? null : appliedOn}
-                onAppliedOnChange={setAppliedOn}
-              />
-            ) : null}
-          </PositionSection> : null}
+
 
           </>}
         </div>
@@ -1145,7 +997,7 @@ function editableValue(position: MonthPosition) {
 }
 
 function formatWeight(value: number) {
-  return value.toLocaleString("en-GB", { maximumFractionDigits: 4, useGrouping: false });
+  return value.toLocaleString("en-GB", { maximumFractionDigits: 8, useGrouping: false });
 }
 
 
@@ -1362,71 +1214,4 @@ function formatNumberText(value: number, digits = 8) {
 
 function defaultAppliedOn() {
   return new Date().toISOString().slice(0, 10);
-}
-
-
-function RateField({
-  index,
-  indexer,
-  value,
-  onChange,
-}: {
-  index: number;
-  indexer: AutoIncomeIndexer;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3" data-testid="allocation-rate">
-      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Rate of return</span>
-      <label className="relative block w-36 shrink-0">
-        <input
-          aria-label={`Allocation rate of return ${index + 1}`}
-          inputMode="decimal"
-          value={value}
-          placeholder={indexer === "CDI" ? "100" : "12,5"}
-          onChange={(event) => onChange(event.target.value)}
-          className={cn(inputClass, "h-8 pr-14 text-right font-mono")}
-        />
-        <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[10px] text-muted-foreground">
-          {indexer === "CDI" ? "% CDI" : "% p.a."}
-        </span>
-      </label>
-    </div>
-  );
-}
-
-
-function AutoIncomeToggle({
-  automatic,
-  onAutomaticChange,
-  appliedOn,
-  onAppliedOnChange,
-}: {
-  automatic: boolean;
-  onAutomaticChange: (value: boolean) => void;
-  appliedOn: string | null;
-  onAppliedOnChange: (value: string) => void;
-}) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2" data-testid="auto-income">
-      <label className="flex cursor-pointer items-center gap-2.5 text-xs text-foreground">
-        <input
-          type="checkbox"
-          checked={automatic}
-          onChange={(event) => onAutomaticChange(event.target.checked)}
-          className="size-4 shrink-0 accent-primary"
-        />Calculate accrual automatically
-      </label>
-      {automatic && appliedOn !== null ? (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Invested on</span>
-          <div className="w-40">
-
-            <DatePicker aria-label="Investment date" value={appliedOn} min="2000-01-01" max={defaultAppliedOn()} onChange={onAppliedOnChange} />
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
 }

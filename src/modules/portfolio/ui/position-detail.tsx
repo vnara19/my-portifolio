@@ -59,9 +59,7 @@ import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart"
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, handOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { ChangeKpiCard } from "@/modules/portfolio/ui/kpi-card";
-import { MaturityBadge } from "@/modules/portfolio/ui/maturity-badge";
 import { PositionAttribution } from "@/modules/portfolio/ui/position-attribution";
-import { PositionAllocation } from "@/modules/portfolio/ui/position-allocation";
 import { PositionEvolutionChart } from "@/modules/portfolio/ui/position-evolution-chart";
 import { MonthHighlights } from "@/modules/portfolio/ui/position-highlights";
 import { PositionFormDialog, type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
@@ -232,13 +230,12 @@ export function PositionDetail({
             ) : null}
             {singleAllocation ? (
               <span
-                title="Allocation: 100% in this classification"
+                title="Asset classification"
                 data-testid="position-single-allocation"
                 className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-muted-foreground"
               >
                 <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(singleAllocation.assetClass) }} />
                 {allocationLabel(singleAllocation)}
-                <span className="font-mono text-[10px] text-muted-foreground/70">100%</span>
               </span>
             ) : null}
             {classes.map((assetClass) => (
@@ -251,12 +248,7 @@ export function PositionDetail({
               </span>
             ))}
             {history.maturityDate ? (
-              <MaturityBadge
-                maturityDate={history.maturityDate}
-                referenceDay={history.referenceDay}
-                className="px-2.5 py-1 text-[11px]"
-                testId="position-maturity"
-              />
+              <span className="font-mono text-xs text-muted-foreground">{formatDayKey(history.maturityDate)}</span>
             ) : null}
 
 
@@ -454,9 +446,7 @@ export function PositionDetail({
         {!atCost ? <PositionAttribution summary={summary} quoted={quoted || Boolean(history.bond)} /> : null}
       </div>
 
-      {singleAllocation ? null : (
-        <PositionAllocation slot={snapshot} selectedMonth={history.selectedMonth} classTotals={history.classTotals} />
-      )}
+
 
       {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} monthId={editing && !editing.month.isLocked ? editing.month.id : null} positionId={editing?.position?.id ?? null} /> : null}
       {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
