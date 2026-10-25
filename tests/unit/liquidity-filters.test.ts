@@ -12,7 +12,7 @@ const empty = { classes: [], subclasses: [], types: [], markets: [], currencies:
 
 test("liquidity aliases form one English option and match all legacy records", () => {
   const positions = [holding("Imediata"), holding("D+0"), holding("D+2"), holding("No vencimento"), holding(null), holding("D+30"), holding("D+1")];
-  assert.deepEqual(filterOptions(positions).liquidities, ["Same Day", "D+1", "D+2", "D+30", "At Maturity", "Liquidity Not Specified"]);
+  assert.deepEqual(filterOptions(positions).liquidities, ["Same Day", "D+1", "D+2", "D+30", "At Maturity", "Not Specified"]);
   assert.equal(filterPositions(positions, { ...empty, liquidities: ["Same Day"] }).length, 2);
   assert.equal(filterPositions(positions, { ...empty, liquidities: ["Imediata"] }).length, 2);
   assert.deepEqual(filterPositions(positions, { ...empty, liquidities: ["At Maturity"] }), [positions[3]]);

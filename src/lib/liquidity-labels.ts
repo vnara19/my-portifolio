@@ -1,5 +1,5 @@
 /** Display aliases only; stored contractual terms and backup values stay unchanged. */
-export const LIQUIDITY_NOT_SPECIFIED = "Liquidity Not Specified";
+export const LIQUIDITY_NOT_SPECIFIED = "Not Specified";
 
 export function liquidityLabel(value: string | null | undefined): string {
   const text = (value ?? "").trim().replace(/\s+/g, " ");
