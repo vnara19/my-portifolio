@@ -1,5 +1,7 @@
 "use client";
 
+import { liquidityLabel } from "@/lib/liquidity-labels";
+
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
 import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
@@ -947,7 +949,7 @@ function PositionForm({
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
                 ) : catalogAsset && !autoLiquidity && entryType !== "cash" && kind !== "treasury" && !fixedIncomeEntry ? (
-                  <ReadOnly label="Asset liquidity" value={catalogAsset.liquidity ?? "Not specified"} />
+                  <ReadOnly label="Asset liquidity" value={liquidityLabel(catalogAsset.liquidity)} />
                 ) : null}
               </>
             )}

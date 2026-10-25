@@ -1,10 +1,11 @@
+import { liquidityLabel, compareLiquidityLabels, LIQUIDITY_NOT_SPECIFIED } from "@/lib/liquidity-labels";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 import { englishLabel } from "@/lib/english-labels";
 import { PRODUCT_TYPES, productType, listingMarket } from "./asset-classification";
 
 export const NO_CLASS = "Unclassified";
 export const NO_MATURITY = "No Maturity Date";
-export const NO_LIQUIDITY = "Liquidity Not Specified";
+export const NO_LIQUIDITY = LIQUIDITY_NOT_SPECIFIED;
 
 export type PositionFilters = {
   classes: string[];
@@ -71,7 +72,7 @@ export function subclassesOf(position: MonthPosition) {
 
 
 export function liquidityOf(position: MonthPosition) {
-  return position.liquidity ?? NO_LIQUIDITY;
+  return liquidityLabel(position.liquidity);
 }
 
 
@@ -101,7 +102,7 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
       return false;
     }
 
-    if (filters.liquidities.length > 0 && !filters.liquidities.includes(liquidityOf(position))) {
+    if (filters.liquidities.length > 0 && !filters.liquidities.map(liquidityLabel).includes(liquidityOf(position))) {
       return false;
     }
 
@@ -171,8 +172,8 @@ export function filterOptions(
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
     const supported = dimension === "types" ? [...PRODUCT_TYPES] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
-    options[dimension] = [...new Set(dimension === "types" ? [...PRODUCT_TYPES] : [...supported, ...values.filter(Boolean), ...(filters[dimension] ?? [])])].sort((left, right) =>
-      left.localeCompare(right, "en-GB"),
+    options[dimension] = [...new Set(dimension === "types" ? [...PRODUCT_TYPES] : [...supported, ...values.filter(Boolean), ...(dimension === "liquidities" ? (filters.liquidities ?? []).map(liquidityLabel) : filters[dimension] ?? [])])].sort((left, right) =>
+      dimension === "liquidities" ? compareLiquidityLabels(left, right) : left.localeCompare(right, "en-GB"),
     );
   }
 

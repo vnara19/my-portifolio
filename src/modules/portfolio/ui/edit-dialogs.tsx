@@ -1,5 +1,7 @@
 "use client";
 
+import { liquidityLabel } from "@/lib/liquidity-labels";
+
 import { englishLabel } from "@/lib/english-labels";
 
 import { cloneElement, isValidElement, type ReactNode, type ReactElement } from "react";
@@ -104,17 +106,19 @@ export function LiquidityPicker({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const options = [
-    { value: NO_LIQUIDITY_VALUE, label: "Leave unspecified" },
-    ...(value && !LIQUIDITY_SUGGESTIONS.includes(value) ? [value] : []).map((entry) => ({ value: entry, label: englishLabel(entry) })),
-    ...LIQUIDITY_SUGGESTIONS.map((entry) => ({ value: entry, label: englishLabel(entry) })),
+  const candidates = [
+    { value: NO_LIQUIDITY_VALUE, label: liquidityLabel(null) },
+    ...(value ? [{ value, label: liquidityLabel(value) }] : []),
+    ...LIQUIDITY_SUGGESTIONS.map((entry) => ({ value: entry, label: liquidityLabel(entry) })),
   ];
+  const options = candidates.filter((entry, index) => candidates.findIndex((other) => other.label === entry.label) === index);
+
 
   return (
     <Picker
       aria-label={englishLabel(label)}
       options={options}
-      value={value || null}
+      value={value ? options.find((entry) => entry.label === liquidityLabel(value))?.value ?? value : null}
       placeholder="Optional"
       onValueChange={(next) => onChange(next === NO_LIQUIDITY_VALUE ? "" : next)}
       onCreate={(text) => onChange(text)}

@@ -491,3 +491,11 @@ Undo; it does not create or alter contractual rates or valuation formulas. A
 contracted product cannot be relabeled as a different product.
 The Add position form shows the same derived product and listing market alongside
 its exposure class. Existing stored taxonomy keys remain unchanged.
+
+Liquidity display and filtering share liquidityLabel. Legacy Imediata/Immediate
+and D+0 group under Same Day (not a promise of instantaneous availability), while
+No vencimento becomes At Maturity. D+n terms remain distinct and sort numerically;
+unspecified liquidity appears last. Existing database and backup terms remain
+unchanged, including custom liquidity strings. The edit picker deduplicates these
+aliases as well. Maturity facets remain dynamically derived from the held
+securities' maturity dates in the selected reporting month; there is no year catalog.

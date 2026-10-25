@@ -2,6 +2,7 @@
 
 /** Investment table and responsive filters. Sort columns and filter using the classifications stored by the position form. */
 
+import { liquidityLabel } from "@/lib/liquidity-labels";
 import { englishLabel } from "@/lib/english-labels";
 
 import {
@@ -174,7 +175,7 @@ export function PositionsWorkspace({
     types: query.tipo.map(normalizeTypeFilter).filter(Boolean),
     currencies: query.moeda.map((currency) => ["BTC", "Altcoins"].includes(currency) ? "USD" : currency),
     maturities: query.venc,
-    liquidities: query.liq,
+    liquidities: [...new Set(query.liq.map(liquidityLabel))],
     search: query.q,
   };
   const positions = month?.positions ?? [];
@@ -654,7 +655,7 @@ function PositionDetails({
       ),
     },
     { label: "Quantity", value: <QuantityText position={position} /> },
-    { label: "Liquidity", value: position.liquidity ?? "Not specified" },
+    { label: "Liquidity", value: liquidityLabel(position.liquidity) },
     {
       label: "Maturity",
       value: position.maturityDate ? (

@@ -1,4 +1,6 @@
 "use client";
+
+import { liquidityLabel } from "@/lib/liquidity-labels";
 import { bondCostReturn } from "../domain/international-bond";
 
 import { englishLabel } from "@/lib/english-labels";
@@ -271,7 +273,7 @@ export function PositionDetail({
               <span
                 data-testid="position-liquidity"
                 className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
-              >Liquidity <span className="font-mono text-foreground/85">{history.liquidity}</span>
+              >Liquidity <span className="font-mono text-foreground/85">{liquidityLabel(history.liquidity)}</span>
               </span>
             ) : null}
           </div>
