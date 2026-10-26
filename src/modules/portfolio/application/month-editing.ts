@@ -696,6 +696,18 @@ async function assertIncomeRates(
 
 export async function removePosition(input: { monthId: string; positionId: string }) {
   return withUndo(input.monthId, async (transaction, month) => {
+    const linkedMovement = await transaction.positionTransaction.findFirst({
+      where: {
+        positionId: input.positionId,
+        position: { portfolioMonthId: month.id },
+        transferId: { not: null },
+      },
+      select: { id: true },
+    });
+    if (linkedMovement) {
+      throw new MonthEditError("This position has linked cash movements. Remove those transactions before deleting the position.");
+    }
+
     const removed = await transaction.position.deleteMany({
       where: { id: input.positionId, portfolioMonthId: month.id },
     });

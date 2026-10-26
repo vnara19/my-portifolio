@@ -446,8 +446,8 @@ export function PositionsWorkspace({
                     <span className="text-muted-foreground">
                       {sortedPositions.length} of {month.positions.length} Positions
                     </span>
-                    <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Total USD" value={portfolioEquivalent(filteredTotal, "USD", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Total EUR" value={portfolioEquivalent(filteredTotal, "EUR", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Portfolio Share" value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)} />
                   </div>
