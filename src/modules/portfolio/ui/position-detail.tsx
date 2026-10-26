@@ -294,7 +294,7 @@ export function PositionDetail({
               title={editBlocked ?? `Contribution, withdrawal or return in ${selectedLabel}`}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />Add / Withdraw
+              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />{editPosition?.netBalance ? "Withdraw" : "Add / Withdraw"}
             </button>
             <button
               type="button"
@@ -521,6 +521,7 @@ export function PositionDetail({
             unitPriceBrl: editPosition.unitPriceBrl,
             totalBrl: editPosition.totalBrl,
             autoIncome: Boolean(editPosition.autoIncome && editPosition.calculationStartDate),
+            netBalance: editPosition.netBalance,
           }}
           edit={movement.edit}
           formKey={movement.key}

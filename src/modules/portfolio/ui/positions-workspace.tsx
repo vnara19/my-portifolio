@@ -577,7 +577,7 @@ function PositionRow({
             </span>
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
-            {[showPositionTicker(position.assetName, position.ticker) ? position.ticker : null,
+            {[showPositionTicker(position.assetName, position.ticker) && position.ticker !== position.valueCurrency ? position.ticker : null,
               typeOf(position)?.toLowerCase() !== positionTitle(position.assetName, position.ticker).toLowerCase() ? typeOf(position) || "Review Product Type" : null,
               marketOf(position) !== "Other Markets" ? marketOf(position) : null,
               position.valueCurrency].filter(Boolean).join(" · ")}

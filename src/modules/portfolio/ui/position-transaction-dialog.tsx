@@ -49,6 +49,7 @@ export type TransactionTarget = {
   totalBrl: number;
 
   autoIncome?: boolean;
+  netBalance?: boolean;
 };
 
 
@@ -143,9 +144,9 @@ function TransactionForm({
   const editDelta = edit ? (edit.kind === "WITHDRAWAL" ? -edit.quantity : edit.quantity) : 0;
   const before = { quantity: (quoted ? target.quantity : target.totalBrl) - editDelta, marketPrice: target.unitPriceBrl };
   const [step, setStep] = useState(0);
-  const [kindSelected, setKindSelected] = useState(Boolean(edit));
+  const [kindSelected, setKindSelected] = useState(Boolean(edit) || Boolean(target.netBalance));
   const [modeSelected, setModeSelected] = useState(Boolean(edit));
-  const [kind, setKind] = useState<StoredTransactionKind>(edit?.kind ?? "CONTRIBUTION");
+  const [kind, setKind] = useState<StoredTransactionKind>(edit?.kind ?? (target.netBalance ? "WITHDRAWAL" : "CONTRIBUTION"));
   const [mode, setMode] = useState<MovementMode>("operation");
   const [totalTarget, setTotalTarget] = useState<TotalTarget>("quantity");
   const [day, setDay] = useState(edit?.occurredOn ?? month.lastDay);
@@ -258,7 +259,7 @@ function TransactionForm({
           {opening ? <p className="text-sm text-foreground">Opening balance correction</p> : <Field label="Transaction">
             <Picker
               aria-label="Transaction type"
-              options={TRANSACTION_KINDS.filter((option) => !(target.autoIncome && option === "INCOME" && edit?.kind !== "INCOME")).map((option) => ({ value: option, label: TRANSACTION_LABELS[option], hint: KIND_HINTS[option] }))}
+              options={TRANSACTION_KINDS.filter((option) => !(target.netBalance && option === "CONTRIBUTION") && !(target.autoIncome && option === "INCOME" && edit?.kind !== "INCOME")).map((option) => ({ value: option, label: TRANSACTION_LABELS[option], hint: KIND_HINTS[option] }))}
               value={kindSelected ? kind : null}
               onValueChange={(next) => { setKind(next as TransactionKind); setKindSelected(true); }}
               placeholder="Choose the transaction"
