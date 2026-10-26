@@ -27,3 +27,11 @@ export function nativeUnitPrice(priceBrl: number | null, currency: "BRL" | "USD"
   const rate = currency === "EUR" ? eurRate : usdRate;
   return rate !== null && Number.isFinite(rate) && rate > 0 ? priceBrl / rate : null;
 }
+
+/** Normalize generated ETF labels without renaming saved assets or repeating their ticker. */
+export function positionTitle(name: string, ticker: string | null) {
+  return ticker && /^ETF\s*[-–—]\s*/i.test(name) ? name.replace(/^ETF\s*[-–—]\s*/i, "").trim() : name;
+}
+export function showPositionTicker(name: string, ticker: string | null) {
+  return Boolean(ticker) && positionTitle(name, ticker).toUpperCase() !== ticker!.replace(/\.(SAO|SA)$/i, "").toUpperCase();
+}

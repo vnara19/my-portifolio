@@ -97,9 +97,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     const selectedIndex = requestedIndex === -1 ? months.length - 1 : requestedIndex;
     const selected = months[selectedIndex];
 
-    if (!selected || selected.positions.length === 0) {
-      return null;
-    }
+    if (!selected) return null;
+    if (!months.some((month) => month.positions.length > 0) && !(await prisma.positionTransaction.findFirst({ select: { id: true } }))) return null;
 
     const history: OverviewHistoryPoint[] = months.map((month) => {
       const byClass: Record<string, number> = {};

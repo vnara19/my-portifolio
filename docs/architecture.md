@@ -100,7 +100,7 @@ The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in 
 
 ## Position creation
 
-Add position uses one scrollable form, with Asset/Cash selection and direct saving.
+Add position uses one scrollable investment-only form and direct saving. Cash-only registration is retired; existing cash records remain compatible.
 Relevant ticker, name, quantity/balance, currency, maturity, liquidity and allocation
 fields retain their validation and quote verification. There is no separate review
 step. New positions do not ask for institution or strategy: they use a user-scoped
@@ -534,3 +534,5 @@ visible-position totals in BRL/USD/EUR plus portfolio share and the Positions co
 All conversions use the selected reporting month's FX; missing rates show a dash
 rather than substituting another currency or today's rate. EUR is carried with USD
 as a reference currency when reporting months are generated.
+
+Current investment lifecycle, optional Brazilian maturity, net-deposit tracking and external withdrawal semantics are documented in [investment lifecycle](investment-lifecycle.md). This supersedes the earlier cash-wallet proposal.

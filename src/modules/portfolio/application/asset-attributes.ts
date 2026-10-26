@@ -80,6 +80,10 @@ export async function applyAssetAttributes(
   }
 
   if (asset.assetType === "international-bond") throw new AssetAttributeError("Manage this bond from its valuation panel.");
+  if (next.assetType && ["brl-cash", "usd-balance", "eur-balance"].includes(next.assetType) && next.assetType !== asset.assetType) throw new AssetAttributeError("Cash-only positions are no longer supported.");
+  const terms = asset.fixedIncomeContract as { taxMode?: string; balanceOnly?: boolean } | null;
+  if (terms?.balanceOnly && next.autoIncome === true) throw new AssetAttributeError("An existing net balance needs its original deposits before automatic accrual can be enabled.");
+  if (terms?.taxMode === "NET_BR" && (next.autoIncome === false || (next.assetType && next.assetType !== "fixed-income"))) throw new AssetAttributeError("Keep this known net deposit as automatic fixed income, or register a separate manual balance.");
   const name = cleanName(next.name);
   const normalizedName = normalizeKey(name);
 

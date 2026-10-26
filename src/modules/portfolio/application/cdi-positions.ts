@@ -1,3 +1,4 @@
+import { brazilianNetValue } from "../domain/brazilian-net-value";
 
 /** Recalculate eligible positions from covered rates and dated transactions. Missing data must not silently replace the known balance. */
 import { PortfolioMonthStatus, Prisma, type PrismaClient } from "@/generated/prisma/client";
@@ -190,18 +191,25 @@ export async function valueCdiPositions(
 
     const evaluation = minDay(prefixed ? until : verifiedUntil, nextMonthStart(position.portfolioMonth.referenceDate));
     let calculation = position;
+    let netPrincipal = position.openingQuantity;
     if (readFixedIncomeContract(position.asset.fixedIncomeContract) && position.asset.appliedOn) {
-      const movements = await client.positionTransaction.findMany({ where: { userId: position.userId, position: { accountId: position.accountId, assetId: position.assetId, portfolioMonth: { referenceDate: { lte: position.portfolioMonth.referenceDate } } } }, orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }], select: { kind: true, occurredOn: true, amountBrl: true } });
+      const movements = await client.positionTransaction.findMany({ where: { userId: position.userId, occurredOn: { lte: new Date(until) }, position: { accountId: position.accountId, assetId: position.assetId, portfolioMonth: { referenceDate: { lte: position.portfolioMonth.referenceDate } } } }, orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }], select: { kind: true, occurredOn: true, amountBrl: true, quantity: true } });
+      netPrincipal = movements.reduce((sum, item) => sum.plus(item.kind === "WITHDRAWAL" ? item.quantity.neg() : item.kind === "CONTRIBUTION" || item.kind === "OPENING" ? item.quantity : 0), new Prisma.Decimal(0));
       calculation = { ...position, openingQuantity: new Prisma.Decimal(0), calculationStartDate: position.asset.appliedOn, transactions: movements };
     }
-    const result = valueOne(calculation, { rates: rateList, windows, asOf: evaluation, ipcaRates: ipcaList });
+    const result = valueOne({ ...calculation, transactions: calculation.transactions.filter((entry) => toDateKey(entry.occurredOn) <= until) }, { rates: rateList, windows, asOf: evaluation, ipcaRates: ipcaList });
 
     if (result.state === "calculated") {
+      const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
+      const principal = netPrincipal;
+      const netValue = contract?.taxMode === "NET_BR" && position.asset.appliedOn
+        ? brazilianNetValue(new Prisma.Decimal(result.balance), Prisma.Decimal.max(0, principal), position.asset.appliedOn, new Date(position.asset.maturityDate && toDateKey(position.asset.maturityDate) < until ? toDateKey(position.asset.maturityDate) : until), contract.product !== "CDB").net
+        : new Prisma.Decimal(result.balance);
       await client.position.update({
         where: { id: position.id },
         data: {
           quantity: new Prisma.Decimal(result.balance),
-          totalBrl: new Prisma.Decimal(result.balance),
+          totalBrl: netValue,
           calculatedIncomeBrl: readFixedIncomeContract(position.asset.fixedIncomeContract)
             ? new Prisma.Decimal(result.balance).minus(position.openingQuantity).minus(position.transactions.reduce((sum, movement) => sum.plus(movement.kind === "WITHDRAWAL" ? movement.amountBrl.negated() : movement.amountBrl), new Prisma.Decimal(0)))
             : new Prisma.Decimal(result.income),

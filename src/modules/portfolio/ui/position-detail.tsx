@@ -184,7 +184,7 @@ export function PositionDetail({
         ? `No position in ${selectedLabel}.`
         : null;
 
-  const canLiquidate = !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
+  const canLiquidate = history.cdi?.contract?.taxMode !== "NET_BR" && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
   const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
 
 
@@ -294,7 +294,7 @@ export function PositionDetail({
               title={editBlocked ?? `Contribution, withdrawal or return in ${selectedLabel}`}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />Transactions
+              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />Add / Withdraw
             </button>
             <button
               type="button"

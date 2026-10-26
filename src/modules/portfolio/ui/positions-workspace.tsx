@@ -1,4 +1,5 @@
 "use client";
+import { positionTitle, showPositionTicker } from "../presentation/position-display";
 
 import { nativeUnitPrice } from "../presentation/position-display";
 
@@ -87,7 +88,7 @@ const COLUMN_META: Record<string, ColumnMeta> = {
 };
 
 const columns = helper.columns([
-  helper.accessor("assetName", { header: "Asset" }),
+  helper.accessor((row) => positionTitle(row.assetName, row.ticker), { id: "assetName", header: "Asset" }),
 
   helper.accessor((row) => row.maturityDate ?? undefined, {
     id: "maturityDate",
@@ -175,7 +176,7 @@ export function PositionsWorkspace({
     liquidities: [...new Set(query.liq.map(liquidityLabel))],
     search: query.q,
   };
-  const positions = month?.positions ?? [];
+  const positions = (month?.positions ?? []).filter((position) => !position.liquidated);
   const filtered = filterPositions(positions, filters);
 
 
@@ -444,7 +445,7 @@ export function PositionsWorkspace({
                 <td colSpan={COLUMN_COUNT} className="px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                     <span className="text-muted-foreground">
-                      {sortedPositions.length} of {month.positions.length} Positions
+                      {sortedPositions.length} of {positions.length} Positions
                     </span>
                     <FooterValue label="Total USD" value={portfolioEquivalent(filteredTotal, "USD", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
@@ -562,8 +563,9 @@ function PositionRow({
             }}
             className="rounded-sm text-sm font-medium text-foreground/90 underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <AssetClassDot position={position} className="mr-2 align-middle" />{position.assetName}
+            <AssetClassDot position={position} className="mr-2 align-middle" />{positionTitle(position.assetName, position.ticker)}
           </Link>
+          {position.netBalance ? <span className="ml-2 text-[10px] text-muted-foreground">Calculated Net</span> : position.manualNetBalance ? <span className="ml-2 text-[10px] text-muted-foreground">Manual Net Balance</span> : null}
           {position.bondAtCost ? <span className="ml-2 text-[10px] text-muted-foreground">At Cost</span> : null}
           {position.bondValuationDate ? <span className="ml-2 text-[10px] text-muted-foreground">Manual · {position.bondValuationDate}</span> : null}
           {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}
@@ -575,8 +577,10 @@ function PositionRow({
             </span>
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
-            {position.ticker ? <><span className="font-mono">{position.ticker}</span><span>·</span></> : null}
-            <span>{typeOf(position) || "Review Product Type"}</span>{marketOf(position) !== "Other Markets" ? <span>· {marketOf(position)}</span> : null}<span>· {position.valueCurrency}</span>
+            {[showPositionTicker(position.assetName, position.ticker) ? position.ticker : null,
+              typeOf(position)?.toLowerCase() !== positionTitle(position.assetName, position.ticker).toLowerCase() ? typeOf(position) || "Review Product Type" : null,
+              marketOf(position) !== "Other Markets" ? marketOf(position) : null,
+              position.valueCurrency].filter(Boolean).join(" · ")}
           </p>
           {position.maturityDate ? <p className="mt-1.5 font-mono text-[10px] text-muted-foreground xl:hidden">{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>

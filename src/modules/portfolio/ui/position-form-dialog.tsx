@@ -166,6 +166,7 @@ function PositionForm({
   // General settings.
   const [reviewProduct, setReviewProduct] = useState<string | null>(editing?.productType && (LEGACY_DEBT_PRODUCTS as readonly string[]).includes(editing.productType) ? editing.productType : null);
   const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
+  const [fiTracking, setFiTracking] = useState<"GROSS" | "NET_BR" | "BALANCE">("GROSS");
   const [fiIssuer, setFiIssuer] = useState("");
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
   const [fiRate, setFiRate] = useState("");
@@ -173,7 +174,6 @@ function PositionForm({
   const bondEntry = !editing && kind === "international-bond";
   const busy = isSaving || (bondEntry && bondSaving);
   const [verificationEpoch, setVerificationEpoch] = useState(0);
-  const [entryType, setEntryType] = useState<"asset" | "cash">("asset");
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
 
@@ -224,7 +224,7 @@ function PositionForm({
 
   const resetFields = () => {
     setBondIssues(["Bond details"]);
-    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
+    setFiTracking("GROSS"); setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
@@ -278,7 +278,7 @@ function PositionForm({
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const fixedIncomeEntry = !editing && kind === "fixed-income";
-  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252" } : null;
+  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252", taxMode: fiTracking === "NET_BR" ? "NET_BR" : "GROSS", balanceOnly: fiTracking === "BALANCE" } : null;
   const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
@@ -397,7 +397,7 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
-  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || (maturity && maturity <= appliedOn) || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
     issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the price per title, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
@@ -560,14 +560,14 @@ function PositionForm({
 
   const fieldFeedback: Record<string, FieldFeedback> = {};
   const requireField = (label: string, valid: boolean) => { fieldFeedback[label] = { valid }; };
-  requireField(entryType === "cash" ? "Currency" : "Asset type", Boolean(editing ? assetType : kind));
+  requireField("Asset type", Boolean(editing ? assetType : kind));
   if (editing) requireField("Asset name", Boolean(typedName));
   if (!editing && kind && !bondEntry) {
     if (fixedIncomeEntry) {
       requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
-      requireField("Amount invested", parsedValue !== null && parsedValue > 0);
-      requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
-      requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
+      requireField(fiTracking === "BALANCE" ? "Current net balance" : "Amount invested", parsedValue !== null && parsedValue > 0);
+      requireField(fiTracking === "BALANCE" ? "Balance date" : "Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
+      if (maturity) requireField("Maturity date (optional)", maturity > appliedOn);
       requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success);
     } else if (purchaseEntry) {
       requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
@@ -578,7 +578,7 @@ function PositionForm({
       else requireField("Commission", purchaseFee !== null && purchaseFee >= 0);
       if (needsManualPrice) requireField("Quote in BRL", manualPriceValue !== null && manualPriceValue > 0);
     } else {
-      requireField(entryType === "cash" ? "Cash name" : "Asset name", Boolean(typedName));
+      requireField("Asset name", Boolean(typedName));
       requireField(valueLabel, parsedValue !== null && parsedValue >= 0);
     }
   }
@@ -648,17 +648,12 @@ function PositionForm({
 
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
           <PositionSection single={!editing} value="geral" className="space-y-4 outline-none">
-            {!editing ? <div role="group" aria-label="Entry type" className="flex gap-2">
-              {(["asset", "cash"] as const).map((type) => <Button key={type} type="button" variant={entryType === type ? "default" : "outline"} aria-pressed={entryType === type} onClick={() => { if (entryType === type) return; resetFields(); setEntryType(type); setKind(null); }}>
-                {type === "asset" ? "Asset" : "Cash"}
-              </Button>)}
-            </div> : null}
             {editing ? (
               <div className="grid gap-3">
                 <Field label="Asset type">
                   <Picker
                     aria-label="Asset type"
-                    options={ASSET_TYPES.map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
+                    options={ASSET_TYPES.filter((entry) => !["brl-cash", "usd-balance", "eur-balance"].includes(entry) || entry === editing.assetType).map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
                     value={assetType}
                     onValueChange={(next) => { setAssetType(next as AssetType); setReviewProduct(null); }}
                   />
@@ -667,10 +662,10 @@ function PositionForm({
               </div>
             ) : (
               <div className="grid gap-3">
-                <Field label={entryType === "cash" ? "Currency" : "Asset type"}>
+                <Field label={"Asset type"}>
                   <Picker
-                    aria-label={entryType === "cash" ? "Cash currency" : "Asset type"}
-                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && (entry === "brl-cash" || entry === "usd-balance" || entry === "eur-balance") === (entryType === "cash")).map((entry) => ({
+                    aria-label={"Asset type"}
+                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && !["brl-cash", "usd-balance", "eur-balance"].includes(entry)).map((entry) => ({
                       value: entry,
                       label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
                       hint: ASSET_KIND_DEFINITIONS[entry].hint,
@@ -710,7 +705,7 @@ function PositionForm({
 
           {bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
-            {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : entryType === "cash" ? "Cash balance" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : entryType === "cash" ? "Name your cash holding and enter its current balance." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
+            {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
               <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
               </p>
@@ -809,23 +804,24 @@ function PositionForm({
                   </>
                 ) : null}
 
-                {!editing && !automaticName && !fixedIncomeEntry ? <Field label={entryType === "cash" ? "Cash name" : "Asset name"}><input aria-label={entryType === "cash" ? "Cash name" : "Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={entryType === "cash" ? "For example, Savings account" : "For example, Bank X CDB"} className={inputClass} /></Field> : null}
+                {!editing && !automaticName && !fixedIncomeEntry ? <Field label={"Asset name"}><input aria-label={"Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={"For example, Bank X CDB"} className={inputClass} /></Field> : null}
                 {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
-                {!editing && kind && entryType !== "cash" ? <ReadOnly label="Asset Class" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
-                {!editing && kind && entryType !== "cash" ? <><ReadOnly label="Asset Type" value={productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, fixedIncomeEntry ? fiProduct : null, null, allocationRows[0]?.subclass) || "Select the security to identify its product"} />{listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined) !== "Other Markets" ? <ReadOnly label="Market" value={listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined)} /> : null}</> : null}
+                {!editing && kind ? <ReadOnly label="Asset Class" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
+                {!editing && kind ? <><ReadOnly label="Asset Type" value={productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, fixedIncomeEntry ? fiProduct : null, null, allocationRows[0]?.subclass) || "Select the security to identify its product"} />{listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined) !== "Other Markets" ? <ReadOnly label="Market" value={listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined)} /> : null}</> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {fixedIncomeEntry ? <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
+                    <Field label="Tracking"><Picker aria-label="Fixed-income tracking" searchable={false} value={fiTracking} options={[{value:"GROSS",label:"Automatic Gross Balance"},{value:"NET_BR",label:"New Deposit · Net of Brazilian Taxes"},{value:"BALANCE",label:"Existing Net Balance · Manual Updates"}]} onValueChange={(next) => setFiTracking(next as typeof fiTracking)} /><p className="mt-1 text-xs text-muted-foreground">Gross excludes taxes. Net calculation uses Brazilian individual CDB tax rules and requires the original deposit amount and date. Record each new deposit separately. An existing net balance with unknown deposits requires manual updates. Exclude deposits already tracked separately.</p></Field>
                     <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
-                    <Field label="Amount invested (BRL)"><input aria-label="Amount invested" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
-                    <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
-                    <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>
+                    <Field label={fiTracking === "BALANCE" ? "Current net balance (BRL)" : "Amount invested (BRL)"}><input aria-label={fiTracking === "BALANCE" ? "Current net balance" : "Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
+                    <Field label={fiTracking === "BALANCE" ? "Balance date" : "Purchase date"}><DatePicker aria-label={fiTracking === "BALANCE" ? "Balance date" : "Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
+                    <Field label="Maturity date (optional)"><DatePicker aria-label="Maturity date (optional)" value={maturity} onChange={setMaturity} min={appliedOn} /><p className="mt-1 text-xs text-muted-foreground">Leave blank to keep this investment active until you record a withdrawal. A dated investment closes automatically at maturity.</p></Field>
                     <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
                     <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
                     <Field label="Redemption"><Picker aria-label="Redemption" searchable={false} value={liquidity || "No vencimento"} options={[{ value: "No vencimento", label: "At maturity" }, { value: "D+0", label: "Daily liquidity" }]} onValueChange={setLiquidity} /></Field>
                   </div>
-                  <p className="text-xs text-muted-foreground">{fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
+                  <p className="text-xs text-muted-foreground">{fiTracking === "BALANCE" ? "Manual net balance · automatic accrual unavailable without original deposits" : fiTracking === "NET_BR" ? "Calculated net balance · one known deposit · Brazilian individual tax rules" : fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
                 </> : null}
                 {purchaseEntry ? <>
                   {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
@@ -892,10 +888,10 @@ function PositionForm({
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && entryType !== "cash" && !purchaseEntry && !fixedIncomeEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
+                {!editing && !purchaseEntry && !fixedIncomeEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
 
 
-                {canEditMaturity && !fixedIncomeEntry && (editing || entryType !== "cash") ? (
+                {canEditMaturity && !fixedIncomeEntry && true ? (
                   <Field label="Maturity (optional)">
                     <DatePicker
                       aria-label="Maturity"
@@ -909,11 +905,11 @@ function PositionForm({
                 ) : null}
                 {treasuryMaturity && !purchaseEntry ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || (isNewAsset && !autoLiquidity && entryType !== "cash" && kind !== "treasury" && !fixedIncomeEntry) ? (
+                {editing || (isNewAsset && !autoLiquidity && kind !== "treasury" && !fixedIncomeEntry) ? (
                   <Field label="Liquidity (optional)">
                     <LiquidityPicker value={liquidity} onChange={setLiquidity} />
                   </Field>
-                ) : catalogAsset && !autoLiquidity && entryType !== "cash" && kind !== "treasury" && !fixedIncomeEntry ? (
+                ) : catalogAsset && !autoLiquidity && kind !== "treasury" && !fixedIncomeEntry ? (
                   <ReadOnly label="Asset liquidity" value={liquidityLabel(catalogAsset.liquidity)} />
                 ) : null}
               </>

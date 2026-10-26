@@ -72,13 +72,13 @@ export type TransactionMonth = {
 
 const KIND_HINTS: Record<TransactionKind, string> = {
   CONTRIBUTION: "new capital added",
-  WITHDRAWAL: "saiu dinheiro",
+  WITHDRAWAL: "money removed from this investment",
   INCOME: "investment return",
 };
 
 const MODE_OPTIONS = [
   { value: "operation", label: "By transaction amount" },
-  { value: "total", label: "By new position total" },
+  { value: "total", label: "By New Position Total" },
 ];
 
 const popupClass =
@@ -141,7 +141,7 @@ function TransactionForm({
   const opening = edit?.kind === "OPENING";
 
   const editDelta = edit ? (edit.kind === "WITHDRAWAL" ? -edit.quantity : edit.quantity) : 0;
-  const before = { quantity: target.quantity - editDelta, marketPrice: target.unitPriceBrl };
+  const before = { quantity: (quoted ? target.quantity : target.totalBrl) - editDelta, marketPrice: target.unitPriceBrl };
   const [step, setStep] = useState(0);
   const [kindSelected, setKindSelected] = useState(Boolean(edit));
   const [modeSelected, setModeSelected] = useState(Boolean(edit));
@@ -199,7 +199,7 @@ function TransactionForm({
     order.includes(field)
       ? null
       : plan.computed.includes(field)
-        ? "calculado"
+        ? "Calculated"
         : field === "unitPrice" && plan.suggestedPrice
           ? "monthly quote"
           : null;
@@ -326,7 +326,7 @@ function TransactionForm({
               <ReadOnlyValue
                 label={dollars ? "Transaction amount in USD" : "Transaction quantity"}
                 value={plan.quantity ? formatNumber(plan.quantity, 12) : "—"}
-                badge="calculado"
+                badge="Calculated"
               />
             )}
             {opening ? null : (
@@ -355,7 +355,7 @@ function TransactionForm({
                 onChange={(text) => type("amount", text)}
               />
             ) : (
-              <ReadOnlyValue label="Transaction amount" value={plan.amount ? formatBrl(plan.amount) : "—"} badge="calculado" />
+              <ReadOnlyValue label="Transaction amount" value={plan.amount ? formatBrl(plan.amount) : "—"} badge="Calculated" />
             )}
           </div>
         ) : mode === "operation" ? (

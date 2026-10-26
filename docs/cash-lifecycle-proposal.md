@@ -1,6 +1,6 @@
 # Cash and maturity lifecycle proposal
 
-Status: agreed requirements, not an implemented wallet or settlement engine.
+Status: superseded by the user on 2026-10-26. See [investment-only tracking](investment-lifecycle.md). The wallet, funding choice and receivable proposal below is no longer the requested behavior.
 
 ## Confirmed preferences
 

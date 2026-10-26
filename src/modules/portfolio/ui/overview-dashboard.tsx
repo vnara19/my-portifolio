@@ -46,6 +46,7 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
           </h2>
         </div>
 
+        <p className="mt-2 text-xs text-muted-foreground">Investment balance, not investment return. Deposits increase this balance; withdrawals and matured investments reduce it. Gain metrics account for recorded money in and out.</p>
         <div className="mt-5">
           <PortfolioEvolutionChart
             history={overview.history}

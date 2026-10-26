@@ -31,7 +31,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   const movements = transactions.map((row) => {
     const key = holding(row.position);
     const usdRate = historicalRate(row.occurredOn);
-    const movement = { holding: key, kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: row.amountBrl.toNumber(), usdRate, transferId: row.transferId, costRecoveryUsd: 0 };
+    const movement = { holding: key, kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(), usdRate, transferId: row.transferId, costRecoveryUsd: 0 };
     const bond = bonds.get(row.position.assetId);
     if (!bond || !usdRate) return movement;
     let state = interest.get(key);

@@ -1,3 +1,4 @@
+import { applyMaturityExits } from "./maturity-exits";
 import { ensureMonthsUpToDate } from "./month-rollover";
 import {
   getPortfolioMonths,
@@ -14,6 +15,7 @@ export async function getMonthContext(
   value: string | string[] | undefined,
 ): Promise<MonthContext> {
   await ensureMonthsUpToDate();
+  await applyMaturityExits();
   const months = await getPortfolioMonths();
 
   return { months, selected: resolveSelectedMonth(months, value) as PortfolioMonthSummary | null };

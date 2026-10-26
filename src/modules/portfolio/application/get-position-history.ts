@@ -376,7 +376,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
     : null;
   let projection: CdiView["projection"] = null;
 
-  if (until && !parts.some((part) => part.indexer === "IPCA") && (latest || parts.every((part) => part.indexer === "PRE"))) {
+  if (readFixedIncomeContract(position.asset.fixedIncomeContract)?.taxMode !== "NET_BR" && until && !parts.some((part) => part.indexer === "IPCA") && (latest || parts.every((part) => part.indexer === "PRE"))) {
 
 
     const total = parts.reduce((sum, part) => sum.plus(part.weight), new Prisma.Decimal(0));
@@ -488,7 +488,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
     occurredOn: toDateKey(row.occurredOn),
     quantity: row.quantity.toNumber(),
     unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
-    amountBrl: row.amountBrl.toNumber(),
+    amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
     note: row.note,
     transferId: row.transferId,
     monthId: row.position.portfolioMonthId,
