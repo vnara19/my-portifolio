@@ -827,7 +827,7 @@ async function resolveAdditionAsset(
   if (addition.assetId) {
     const asset = await transaction.asset.findUnique({
       where: { id: addition.assetId },
-      select: { id: true, quoteSymbol: true, assetType: true, maturityDate: true, fixedIncomeContract: true },
+      select: { id: true, quoteSymbol: true, assetType: true, maturityDate: true, fixedIncomeContract: true, name: true, baseCurrency: true, cashAccount: true },
     });
 
     if (!asset) {
@@ -835,7 +835,7 @@ async function resolveAdditionAsset(
     }
 
     if (asset.assetType === "fixed-income" && (asset.fixedIncomeContract as { taxMode?: string } | null)?.taxMode === "NET_BR") throw new MonthEditError("Record each new deposit as a separate position to preserve its tax date.");
-    if (["brl-cash", "usd-balance", "eur-balance"].includes(asset.assetType ?? "")) throw new MonthEditError("Cash-only positions are no longer supported.");
+    if (["brl-cash", "usd-balance", "eur-balance"].includes(assetTypeOf(asset))) throw new MonthEditError("Cash-only positions are no longer supported.");
     if (asset.maturityDate && toDateKey(asset.maturityDate) <= (addition.purchase?.occurredOn ?? toDateKey(calendarDay(new Date())))) throw new MonthEditError("This investment has matured. Register a new investment instead.");
     return asset;
   }
