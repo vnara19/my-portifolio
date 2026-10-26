@@ -52,6 +52,11 @@ export function marketOf(position: Pick<MonthPosition, "assetType" | "market" | 
   return position.market ?? listingMarket(position.assetType, position.baseCurrency);
 }
 
+/** Legacy multi-class holdings use their largest saved exposure as the visual marker. */
+export function primaryClassOf(position: Pick<MonthPosition, "allocations">) {
+  return [...position.allocations].sort((left, right) => right.weight - left.weight || left.assetClass.localeCompare(right.assetClass))[0]?.assetClass ?? NO_CLASS;
+}
+
 export function classesOf(position: MonthPosition) {
   return position.allocations.length === 0
     ? [NO_CLASS]

@@ -85,6 +85,7 @@ export type MonthPositions = {
   referenceDay: string;
   totalBrl: number;
   usdRate: number | null;
+  eurRate?: number | null;
   quotes: MonthQuote[];
   positions: MonthPosition[];
 };
@@ -189,6 +190,7 @@ export async function getMonthPositions(
       referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
       totalBrl,
       usdRate,
+      eurRate: quoteBySymbol.get("EUR")?.toNumber() ?? null,
       quotes: symbols.map((symbol) => {
         const stored = quoteBySymbol.get(symbol);
 

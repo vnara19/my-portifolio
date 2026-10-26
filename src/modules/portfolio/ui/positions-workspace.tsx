@@ -1,5 +1,7 @@
 "use client";
 
+import { nativeUnitPrice } from "../presentation/position-display";
+
 /** Investment table and responsive filters. Sort columns and filter using the classifications stored by the position form. */
 
 import { liquidityLabel } from "@/lib/liquidity-labels";
@@ -40,18 +42,15 @@ import type { MonthPosition, MonthPositions } from "@/modules/portfolio/applicat
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { formatDay } from "@/modules/portfolio/presentation/maturity";
 import {
-  classesOf,
+  primaryClassOf,
   typeOf,
   marketOf,
   normalizeTypeFilter,
   filterOptions,
   filterPositions,
-  hasClassFilter,
-  matchedValueBrl,
   type PositionFilters,
 } from "@/modules/portfolio/presentation/position-filters";
 import {
-  formatBrl,
   formatCurrency,
   formatMonthCompact,
   formatUnitPrice,
@@ -209,9 +208,6 @@ export function PositionsWorkspace({
   const monthLabel = formatMonthCompact(month.referenceDate);
   const sortedPositions = table.getRowModel().rows.map((row) => row.original);
   const filteredTotal = sortedPositions.reduce((total, position) => total + position.totalBrl, 0);
-  const matchedTotal = hasClassFilter(filters)
-    ? sortedPositions.reduce((total, position) => total + matchedValueBrl(position, filters), 0)
-    : null;
   const activeFilterCount =
     filters.classes.length +
     (filters.markets?.length ?? 0) +
@@ -223,7 +219,6 @@ export function PositionsWorkspace({
   const occupied = new Set(month.positions.map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
-    { key: "classe", label: "Asset Class", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
     { key: "tipo", label: "Asset Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
     { key: "mercado", label: "Market", options: options.markets, selected: filters.markets ?? [], onChange: (next) => void setQuery({ mercado: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
@@ -286,14 +281,13 @@ export function PositionsWorkspace({
           <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Positions</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground" data-testid="positions-count">
-            {activeCount} {activeCount === 1 ? "position" : "positions"}
+            {activeCount} {activeCount === 1 ? "Position" : "Positions"}
             {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidated" : "liquidated"}` : ""}
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
           <p className="font-mono text-xs text-muted-foreground">
-            {formatBrl(month.totalBrl)}
-            {month.usdRate ? ` · US$ ${formatUsd(month.totalBrl / month.usdRate)}` : ""}
+            {portfolioEquivalent(month.totalBrl, "USD", month.usdRate, month.eurRate ?? null)}
           </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
 
@@ -364,11 +358,11 @@ export function PositionsWorkspace({
             className="sm:hidden"
             groups={filterGroups}
             resultCount={sortedPositions.length}
+            additionalActiveCount={filters.classes.length}
             onClear={clearFilters}
           />
 
           <div className="hidden sm:contents">
-            <MultiSelectFilter label="Asset Class" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
             <MultiSelectFilter label="Asset Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
             <MultiSelectFilter label="Market" options={options.markets} selected={filters.markets ?? []} onChange={(next) => void setQuery({ mercado: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
@@ -450,19 +444,12 @@ export function PositionsWorkspace({
                 <td colSpan={COLUMN_COUNT} className="px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                     <span className="text-muted-foreground">
-                      {sortedPositions.length} of {month.positions.length} positions
+                      {sortedPositions.length} of {month.positions.length} Positions
                     </span>
-                    <FooterValue label="Filtered total" value={formatBrl(filteredTotal)} />
-                    {month.usdRate ? (
-                      <FooterValue label="In USD" value={`US$ ${formatUsd(filteredTotal / month.usdRate)}`} />
-                    ) : null}
-                    <FooterValue
-                      label="Portfolio share"
-                      value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)}
-                    />
-                    {matchedTotal !== null ? (
-                      <FooterValue label="Share in selected classes" value={formatBrl(matchedTotal)} emphasis />
-                    ) : null}
+                    <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Total USD" value={portfolioEquivalent(filteredTotal, "USD", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Total EUR" value={portfolioEquivalent(filteredTotal, "EUR", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Portfolio Share" value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)} />
                   </div>
                 </td>
               </tr>
@@ -575,7 +562,7 @@ function PositionRow({
             }}
             className="rounded-sm text-sm font-medium text-foreground/90 underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            {position.assetName}
+            <AssetClassDot position={position} className="mr-2 align-middle" />{position.assetName}
           </Link>
           {position.bondAtCost ? <span className="ml-2 text-[10px] text-muted-foreground">At Cost</span> : null}
           {position.bondValuationDate ? <span className="ml-2 text-[10px] text-muted-foreground">Manual · {position.bondValuationDate}</span> : null}
@@ -635,7 +622,7 @@ function PositionDetails({
 }) {
   const details: { label: string; value: ReactNode }[] = [
     { label: "Asset Type", value: typeOf(position) || "Review Product Type" },
-    { label: "Asset Class", value: classesOf(position).map(englishLabel).join(", ") },
+    { label: "Asset Class", value: <span className="inline-flex items-center gap-2"><AssetClassDot position={position} />{englishLabel(primaryClassOf(position))}</span> },
     { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
     ...(position.securityQuantity !== null && position.unitPriceNative != null && !position.bondAtCost ? [{
@@ -712,8 +699,14 @@ function parseSorting(value: string): SortingState {
   return id && COLUMN_META[id] ? [{ id, desc: direction !== "asc" }] : [{ id: "totalBrl", desc: true }];
 }
 
-function formatUsd(value: number) {
-  return value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function portfolioEquivalent(totalBrl: number, currency: "BRL" | "USD" | "EUR", usdRate: number | null, eurRate: number | null) {
+  const value = nativeUnitPrice(totalBrl, currency, usdRate, eurRate);
+  return value === null ? `${currency} —` : formatCurrency(value, currency);
+}
+
+function AssetClassDot({ position, className }: { position: MonthPosition; className?: string }) {
+  const assetClass = primaryClassOf(position);
+  return <span aria-hidden="true" title={englishLabel(assetClass)} className={cn("inline-block size-2 shrink-0 rounded-full", className)} style={{ backgroundColor: categoryColor(assetClass) }} />;
 }
 
 

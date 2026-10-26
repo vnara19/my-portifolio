@@ -522,3 +522,15 @@ Expanded rows show Unit Price only when a native unit price exists and Quantity
 only when a security quantity exists. They have no Valuation placeholder. Maturity
 is the date alone, without repeating a relative-date badge, in both table and
 asset-page summaries. Portfolio percentage columns and actual return rates remain.
+
+Asset Class is selected only through the colored quick-filter buttons; the duplicate
+selector is absent from desktop filters and the mobile sheet. Class-filter state
+remains in the URL and participates in clearing/active-count behavior. Each asset
+name and its expanded Asset Class field have the same category dot. Legacy mixed
+holdings use the largest saved allocation as their visual class, with a stable
+alphabetical tie-break; saved allocations and class-filter matching are unchanged.
+The Positions header shows the full portfolio total only in USD. The footer shows
+visible-position totals in BRL/USD/EUR plus portfolio share and the Positions count.
+All conversions use the selected reporting month's FX; missing rates show a dash
+rather than substituting another currency or today's rate. EUR is carried with USD
+as a reference currency when reporting months are generated.

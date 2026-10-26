@@ -161,7 +161,7 @@ async function copyMonth(
   );
 
 
-  const relevant = new Set([...positionSymbols, ...manualQuotes.map((quote) => quote.symbol), "USD"]);
+  const relevant = new Set([...positionSymbols, ...manualQuotes.map((quote) => quote.symbol), "USD", "EUR"]);
   const sharedSymbols = new Set(sharedQuotes.map((quote) => quote.symbol));
   const sourceQuotes = [
     ...sharedQuotes.filter((quote) => relevant.has(quote.symbol)).map((quote) => ({ ...quote, manual: false })),

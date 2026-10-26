@@ -23,6 +23,7 @@ export type FilterGroup = {
 
 export function PositionsFilterSheet({
   groups,
+  additionalActiveCount = 0,
   resultCount,
   resultLabel = (count) => `View ${count} ${count === 1 ? "position" : "positions"}`,
   onClear,
@@ -30,6 +31,7 @@ export function PositionsFilterSheet({
   testId = "positions-filter-sheet",
 }: {
   groups: FilterGroup[];
+  additionalActiveCount?: number;
 
   resultCount: number;
   resultLabel?: (count: number) => string;
@@ -37,7 +39,7 @@ export function PositionsFilterSheet({
   className?: string;
   testId?: string;
 }) {
-  const active = groups.reduce((total, group) => total + group.selected.length, 0);
+  const active = groups.reduce((total, group) => total + group.selected.length, additionalActiveCount);
 
   return (
     <BottomSheet

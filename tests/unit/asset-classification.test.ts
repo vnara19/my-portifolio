@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PRODUCT_TYPES, productType, listingMarket } from "@/modules/portfolio/presentation/asset-classification";
 import { defaultAllocation } from "@/modules/portfolio/domain/asset-kinds";
-import { filterPositions, filterOptions } from "@/modules/portfolio/presentation/position-filters";
+import { filterPositions, filterOptions, primaryClassOf } from "@/modules/portfolio/presentation/position-filters";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 
 test("product types and reporting geography follow the chosen convention", () => {
@@ -50,4 +50,15 @@ test("registration classifications map to the same filter keys", () => {
   assert.equal(productType("br-stock", "FII"), "REIT/FII");
   assert.equal(productType("us-stock", "REIT"), "REIT/FII");
   assert.equal(productType("usd-balance", "", null, null, "Stablecoin"), "Stablecoin");
+});
+
+test("class markers use the largest historical allocation without changing saved weights", () => {
+  const allocations = [
+    { assetClass: "Renda Variável", subclass: "Ações BR", duration: "-", weight: 30 },
+    { assetClass: "Renda Fixa", subclass: "Pós-fixado", duration: "Longo", weight: 70 },
+  ];
+  assert.equal(primaryClassOf({ allocations }), "Renda Fixa");
+  assert.equal(allocations[0].weight, 30);
+  assert.equal(primaryClassOf({ allocations: [] }), "Unclassified");
+  assert.equal(primaryClassOf({ allocations: [allocations[1], allocations[0]] }), "Renda Fixa");
 });
