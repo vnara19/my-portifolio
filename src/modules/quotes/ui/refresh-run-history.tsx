@@ -73,16 +73,16 @@ export function RefreshRunHistory({
     <section className="premium-panel mt-6 overflow-hidden rounded-[24px]" aria-labelledby="run-history-title">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-5 py-4 sm:px-6">
         <ListChecksIcon aria-hidden="true" className="text-primary" size={17} weight="duotone" />
-        <h2 id="run-history-title" className="text-sm font-semibold text-foreground">Execution history
+        <h2 id="run-history-title" className="text-sm font-semibold text-foreground">Update History
         </h2>
         <span data-testid="run-history-count" className="text-[11px] text-muted-foreground">
-          {total} {total === 1 ? "execution" : "executions"} in {monthLabel}
+          {total} {total === 1 ? "update" : "updates"} in {monthLabel}
         </span>
       </div>
 
       {runs.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-muted-foreground sm:px-6">
-          {initial ? `No quote updates in ${monthLabel}.` : "Could not load the execution history."}
+          {initial ? `No quote updates in ${monthLabel}.` : "Could not load the update history."}
         </p>
       ) : (
         <ol className="divide-y divide-border/55">

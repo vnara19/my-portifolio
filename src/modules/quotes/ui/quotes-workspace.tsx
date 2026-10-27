@@ -6,7 +6,6 @@ import {
   ArrowLeftIcon,
   CheckCircleIcon,
   CurrencyCircleDollarIcon,
-  LockKeyIcon,
   PencilSimpleIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react/dist/ssr";
@@ -33,8 +32,6 @@ import type { QuoteRunHistoryPage } from "@/modules/quotes/application/get-run-h
 import { providerLabel, type QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 import { LastRefreshCard } from "@/modules/quotes/ui/last-refresh-card";
 import { RefreshRunHistory } from "@/modules/quotes/ui/refresh-run-history";
-import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
-import { describeSelic, formatSelic } from "@/modules/quotes/presentation/selic-format";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
 
@@ -58,12 +55,12 @@ export function QuotesWorkspace({
   month,
   summary,
   history,
-  selic,
+  automaticUpdates,
 }: {
   month: MonthQuotesView | null;
   summary: QuoteRefreshSummary | null;
   history: QuoteRunHistoryPage | null;
-  selic: SelicMonthView | null;
+  automaticUpdates: boolean;
 }) {
   const router = useRouter();
   const monthParam = useSearchParams().get("mes");
@@ -123,8 +120,6 @@ export function QuotesWorkspace({
   }
 
   const monthLabel = formatMonthCompact(month.referenceDate);
-  const previewTotal =
-    month.totalBrl + changed.reduce((total, row) => total + (row.invalid ? 0 : row.previewTotal - row.totalBrl), 0);
   const usdRow = rows.find((row) => row.symbol === "USD");
   const usdRate = usdRow ? previewPrice(usdRow) : null;
   const carriedCount = month.quotes.filter((quote) => quote.carriedFrom !== null).length;
@@ -186,43 +181,23 @@ export function QuotesWorkspace({
               className="transition-transform duration-150 group-hover:-translate-x-0.5"
             />Positions
           </Link>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Monthly quotes</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Quotes</h1>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
           <DevQuoteSyncButton />
-          <p className="font-mono text-xs text-muted-foreground">
-            {formatBrl(previewTotal)}
-            {usdRate ? ` · US$ ${formatUsd(previewTotal / usdRate)}` : ""}
-          </p>
-
-          <p className="text-xs text-muted-foreground" title={describeSelic(selic)} data-testid="selic-month">Selic rate this month <span className="font-mono text-foreground">{formatSelic(selic)}</span>
-            <span className="sr-only"> · {describeSelic(selic)}</span>
-          </p>
           {editMode || editableCount === 0 || month.isLocked ? null : (
             <button
               type="button"
               onClick={() => setEditMode(true)}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />Edit quotes
+              <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />Edit Quotes
             </button>
           )}
         </div>
       </header>
 
-      {editableCount === 0 && month.quotes.length > 0 ? (
-        <div
-          data-testid="quotes-locked"
-          className="mt-6 flex items-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3"
-        >
-          <LockKeyIcon aria-hidden="true" className="shrink-0 text-muted-foreground" size={16} weight="duotone" />
-          <p className="text-xs text-muted-foreground">Quotes for {monthLabel}come from providers or the imported spreadsheet. Manual editing is available only for missing quotes or quotes that failed in the last update.
-          </p>
-        </div>
-      ) : null}
-
-
-      {month.isCurrent ? <LastRefreshCard summary={summary} currentMonth={month.currentMonth} /> : null}
+      {month.isCurrent ? <LastRefreshCard summary={summary} currentMonth={month.currentMonth} automaticUpdates={automaticUpdates} /> : null}
 
       <section className="premium-panel mt-6 overflow-hidden rounded-[24px]" aria-labelledby="month-quotes-title">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 px-5 py-4 sm:px-6">
@@ -234,17 +209,17 @@ export function QuotesWorkspace({
           </span>
           {carriedCount > 0 ? (
             <span className="rounded-full bg-warning/50 px-2 py-0.5 text-[10px] font-semibold text-warning-foreground">
-              {carriedCount} {carriedCount === 1 ? "repetida" : "repetidas"}
+              {carriedCount} carried forward
             </span>
           ) : null}
           {failedCount > 0 ? (
             <span className="rounded-full bg-destructive/12 px-2 py-0.5 text-[10px] font-semibold text-destructive">
-              {failedCount}failed in the last update
+              {failedCount} failed in the last update
             </span>
           ) : null}
           {changeCount > 0 ? (
             <span className="rounded-full bg-warning/50 px-2 py-0.5 text-[10px] font-semibold text-warning-foreground">
-              {changeCount} {changeCount === 1 ? "alterada" : "alteradas"}
+              {changeCount} changed
             </span>
           ) : null}
         </div>
@@ -263,9 +238,7 @@ export function QuotesWorkspace({
                 <th className="px-3 py-3 text-right sm:px-4">Value</th>
                 <th className="hidden px-4 py-3 md:table-cell">Source</th>
                 <th className="hidden px-4 py-3 text-right whitespace-nowrap sm:table-cell">
-                  <span title="Calculated" className="mr-1 font-mono normal-case text-muted-foreground/60">
-                    ƒ
-                  </span>Total position value
+                  Total Position Value
                 </th>
                 <th className="hidden px-4 py-3 pr-5 whitespace-nowrap lg:table-cell sm:pr-6">Last update</th>
               </tr>
@@ -591,8 +564,4 @@ function moveFocus(event: KeyboardEvent<HTMLInputElement>) {
     event.preventDefault();
     target.focus();
   }
-}
-
-function formatUsd(value: number) {
-  return value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

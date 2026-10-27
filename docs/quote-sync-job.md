@@ -45,3 +45,9 @@ FX history coverage is checked daily, including holes before the last sync marke
 The EUR screen displays the reciprocal explicitly (`1 BRL = … EUR`). The stored
 quote and manual input remain BRL per EUR. BTC's primary display is USD; its BRL
 quote remains the valuation and editing contract.
+
+## Quotes screen and Preview
+
+Quotes is scoped to registered portfolio symbols (including retained history), manual quotes and USD/EUR reporting conversions, not the whole market. The selected month controls the displayed monthly quote snapshot and update history. BRL is the valuation reference, so no BRL/BRL provider quote is required.
+
+The development Preview has no scheduled GitHub quote job. Its retained last-success date must not be presented as proof of hourly automatic updates. Production has the separate main-branch schedule described above; the Preview screen explicitly identifies its lack of scheduling. Update History reports recorded update attempts/results for the selected month. Header portfolio totals and Selic are intentionally absent from this screen.

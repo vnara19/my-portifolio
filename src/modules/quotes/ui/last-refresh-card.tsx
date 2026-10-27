@@ -13,9 +13,11 @@ import { formatRefreshDateTime } from "@/modules/quotes/presentation/refresh-tim
 export function LastRefreshCard({
   summary: serverSummary,
   currentMonth,
+  automaticUpdates,
 }: {
   summary: QuoteRefreshSummary | null;
   currentMonth: string;
+  automaticUpdates: boolean;
 }) {
   const { now, summary, time, lastRun, hasIssues } = useQuoteRefresh(serverSummary);
   const lastAttemptIsLatestUpdate =
@@ -55,7 +57,7 @@ export function LastRefreshCard({
               : `: ${lastRun.errorMessage ?? "the update failed."}`}
           </p>
         ) : null}
-        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">Quotes are updated automatically every hour, even when the application is closed, and recalculate positions for {compact(currentMonth)}.
+        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">{automaticUpdates ? `Scheduled updates run hourly and recalculate positions for ${compact(currentMonth)}.` : "Scheduled quote updates are not enabled in this preview."}
         </p>
       </div>
 
