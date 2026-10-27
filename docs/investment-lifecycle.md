@@ -10,12 +10,12 @@ Dated holdings exit active tracking at maturity. Reconciliation records one exte
 
 ## Savings
 
-Savings is a separate fixed-income product in BRL, EUR or USD, with dated deposits, withdrawals, prospective rate changes and bank-balance reconciliation. The source ledger is stored in the existing asset JSON; no database migration is required. Derived monthly snapshots and transactions are rebuilt under the per-user edit lock, preserving unchanged transaction identifiers. Backdated changes and removal support multi-month Undo. Removal archives the registration and preserves its source history; actual outflows use Withdraw Money instead.
+New Savings registration supports BRL CDI and EUR Instant Access only, with dated deposits, withdrawals, prospective rate changes and bank-balance reconciliation. The source ledger is stored in the existing asset JSON; no database migration is required. Derived monthly snapshots and transactions are rebuilt under the per-user edit lock, preserving unchanged transaction identifiers. Backdated changes and removal support multi-month Undo. Removal archives the registration and preserves its source history; actual outflows use Withdraw Money instead.
 
 - BRL CDI: known deposits retain their original principal and tax date. Public CDI accrues on Brazilian business days. The supplied bank-registration profile uses Brazilian-resident CDB withholding: IOF followed by regressive IR. A redemption identifies its original deposit when several lots are available; no FIFO order is assumed. This models the bank balance, not the user's worldwide tax obligations.
 - Existing BRL net balance without old deposit history: manual balance updates, with no invented original principal or tax age. Future movements are dated, but the unknown opening balance cannot become an exact automatic tax calculation.
-- Ireland Instant Access Savings: EUR only; explicit AER or nominal p.a. quotation, marginal first-tier/excess rates, actual 365/366-day nominal interest and separate cent carry for paid gross interest and DIRT. The user confirmed 2.5% AER up to EUR 2,500, 1% AER on excess and 33% DIRT. Converting a rounded AER cannot guarantee bank-cent equality; the exact nominal rate is in Deposit Information.
-- Flexible Cash Funds: EUR/USD money-market fund tracking, using supplied gross and **final net APY**. The recorded net APY is applied once, with daily payment and cent carry; no additional DIRT or guessed withholding is deducted. Rates remain effective until the user records a dated update. Start date means the date money starts earning, not an unexecuted order date.
+- Ireland Instant Access Savings: EUR only, with a non-editable account summary instead of product, opening-type, rate-quotation and tax selectors. Existing balance/date is used as its starting point and accrues automatically. Server-side registration pins the confirmed AER/tier/tax conditions; rate edits are rejected for Instant Access. Daily calculation retains separate cent carry for paid gross interest and DIRT. The user confirmed 2.5% AER up to EUR 2,500, 1% AER on excess and 33% DIRT. Converting a rounded AER cannot guarantee bank-cent equality; the exact nominal rate is in Deposit Information.
+- Flexible Cash Funds and USD Savings: no new registration. Historical JSON remains readable for backup compatibility; it is not silently converted into a different product.
 
 Bank reconciliation is investment income/correction rather than a new contribution. A confirmed zero can close a rounding remainder; it does not erase remaining acquisition cost. Automatic calculations use recorded rates and available public reference data, not an authenticated bank feed.
 
@@ -27,7 +27,7 @@ Registration shows a compact identified-asset summary (name, product and exposur
 
 ## Validation and sources
 
-Unit tests cover marginal tiers, AER conversion, leap-year nominal interest, cent carry, final net APY without double taxation, prospective rate changes, CDI tax lots, missing history, withdrawals, reconciliation and residual closure. Isolated integration tests cover three currencies, backdated changes, Undo, idempotency, removal/restore, backup/restore, mandatory maturity, cash rejection and maturity exits.
+Unit tests cover marginal tiers, AER conversion, leap-year nominal interest, cent carry, final net APY without double taxation, prospective rate changes, CDI tax lots, missing history, withdrawals, reconciliation and residual closure. Isolated integration tests cover BRL/EUR and reject new USD registration, backdated changes, Undo, idempotency, removal/restore, backup/restore, mandatory maturity, cash rejection and maturity exits.
 
 - [Revolut Ireland Instant Access interest](https://help.revolut.com/en-IE/help/app-features/savings-vaults/earning-interest-with-instant-access-savings/)
 - [Revolut savings terms](https://www.revolut.com/en-IE/legal/savings-account/)

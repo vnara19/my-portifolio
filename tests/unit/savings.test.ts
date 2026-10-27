@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateSavings, savingsSchema, type Savings } from "@/modules/portfolio/domain/savings";
+import { calculateSavings, savingsSchema, savingsRegistration, EURO_SAVINGS_RATE, type Savings } from "@/modules/portfolio/domain/savings";
 import { portfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 const id = "00000000-0000-4000-8000-000000000001", second = "00000000-0000-4000-8000-000000000002", third = "00000000-0000-4000-8000-000000000003";
 const basic: Savings = { kind: "SAVINGS", currency: "EUR", country: "Ireland", product: "INSTANT", startDate: "2026-10-01", openingType: "DEPOSIT", rates: [{ date: "2026-10-01", grossRate: "2.5", quoteBasis: "PA", tierLimit: "2500", tierRate: "1", taxPercent: "33" }], events: [{ id, date: "2026-10-01", kind: "DEPOSIT", amount: "5000" }] };
@@ -24,4 +24,16 @@ test("confirmed zero closes a rounded remainder without erasing its cost", () =>
     { ...m, kind: "INCOME", quantity: .01, amountBrl: -.01 },
   ], []);
   assert.ok(Math.abs((gains.totalUsd ?? 0) - .08) < .000001);
+});
+
+test("new EUR Savings pins the confirmed account conditions and grows an existing balance", () => {
+  const terms = savingsRegistration(basic);
+  assert.equal(terms.openingType, "BALANCE");
+  assert.deepEqual(terms.rates, [{date: basic.startDate, ...EURO_SAVINGS_RATE}]);
+  assert.equal(calculateSavings(terms, "2026-10-02").automatic, true);
+  assert.ok(Number(calculateSavings(terms, "2026-10-02").balance) > 5000);
+  const changed = savingsRegistration({...basic, rates:[{date:basic.startDate,grossRate:"99",quoteBasis:"PA",taxPercent:"0"}]});
+  assert.deepEqual(changed.rates, terms.rates);
+  assert.throws(() => savingsRegistration({...basic,currency:"USD",product:"FLEXIBLE",rates:[{date:basic.startDate,grossRate:"3",netRate:"2"}]}), /BRL CDI and EUR Instant Access only/);
+  assert.throws(() => savingsRegistration({...basic,product:"FLEXIBLE",rates:[{date:basic.startDate,grossRate:"3",netRate:"2"}]}), /BRL CDI and EUR Instant Access only/);
 });

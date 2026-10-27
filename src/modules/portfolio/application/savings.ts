@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { currentUserId, getUserDb, SCOPED_USER } from "@/lib/user-db";
-import { calculateSavings, readSavings, savingsSchema, savingsAmount, savingsBalance, savingsRateSchema, type Savings } from "../domain/savings";
+import { calculateSavings, readSavings, savingsRegistration, savingsSchema, savingsAmount, savingsBalance, savingsRateSchema, type Savings } from "../domain/savings";
 import { withUndo, MonthEditError } from "./month-editing";
 import { ensureDatedMonth } from "./month-rollover";
 import { primeFixedIncomeRates } from "./cdi-positions";
@@ -100,7 +100,7 @@ export async function createSavings(input: {
     amount: string;
     terms: Savings;
 }) {
-    const terms = savingsSchema.parse(input.terms);
+    const terms = savingsRegistration(input.terms);
     const amount = savingsAmount.parse(input.amount);
     const name = input.name.trim();
     if (!name || name.length > 80)
@@ -144,6 +144,8 @@ export async function changeSavings(input: {
         throw new MonthEditError("This Savings registration was removed. Restore it with Undo or create a new one.");
     if (input.date < terms.startDate || input.date > today())
         throw new MonthEditError("Choose an effective date within the Savings history.");
+    if (terms.product === "INSTANT" && input.kind === "RATE")
+        throw new MonthEditError("Instant Access conditions are fixed for this account.");
     const month = await ensureDatedMonth(input.date);
     await prepare(terms, input.date);
     return withUndo(month.id, async (tx) => {

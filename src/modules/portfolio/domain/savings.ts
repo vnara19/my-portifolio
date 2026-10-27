@@ -161,3 +161,13 @@ export function calculateSavings(s: Savings, asOf: string, cdi: Map<string, stri
     }
     return { balance: balance.toFixed(2), automatic, lots: automatic && s.product === "CDI" ? lots.map(l => ({ id: l.id, date: l.date, net: netLot(l, asOf).toFixed(2) })) : [], entries: entries.filter(e => new D(e.quantity).gt(0)) };
 }
+
+/** User-confirmed Irish account conditions; retained with each dated registration. */
+export const EURO_SAVINGS_RATE = { grossRate: "2.5", quoteBasis: "AER" as const, tierLimit: "2500", tierRate: "1", taxPercent: "33" };
+
+export function savingsRegistration(value: unknown): Savings {
+    const terms = savingsSchema.parse(value);
+    if (terms.currency === "USD" || terms.product === "FLEXIBLE") throw new Error("New Savings supports BRL CDI and EUR Instant Access only.");
+    if (terms.currency === "EUR") return savingsSchema.parse({ ...terms, product: "INSTANT", country: "Ireland", openingType: "BALANCE", rates: [{ date: terms.startDate, ...EURO_SAVINGS_RATE }] });
+    return terms;
+}

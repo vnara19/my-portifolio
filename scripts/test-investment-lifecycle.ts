@@ -56,11 +56,8 @@ async function main() {
             const usdStart = toDateKey(new Date(Date.parse(now) - 2 * 86400000));
             const usdTerms: Savings = { ...terms, currency: "USD", product: "FLEXIBLE", startDate: usdStart, rates: [{ date: usdStart, grossRate: "3.26", netRate: "1.70" }], events: [{ id: randomUUID(), date: usdStart, kind: "DEPOSIT", amount: "1000" }] };
             const usdName = `USD audit ${randomUUID()}`;
-            await createSavings({ name: usdName, amount: "1000", terms: usdTerms });
-            const usdAsset = await db.asset.findFirstOrThrow({ where: { name: usdName } });
-            const usdRow = await db.position.findFirstOrThrow({ where: { assetId: usdAsset.id, portfolioMonthId: current.id } });
-            assert.equal(usdRow.quantity.toFixed(2), "1000.09");
-            assert.equal(usdRow.totalBrl.toFixed(2), "5000.45");
+            await assert.rejects(createSavings({ name: usdName, amount: "1000", terms: usdTerms }), /BRL CDI and EUR Instant Access only/);
+            await assert.rejects(changeSavings({assetId:asset.id,date:now,kind:"RATE",rate:{date:now,grossRate:"99",quoteBasis:"PA"}}), /conditions are fixed/);
             const brStart = toDateKey(new Date(Date.parse(now) - 4 * 86400000));
             await db.rateCoverage.createMany({ data: [{ indexer: "CDI", fromDate: new Date(brStart), throughDate: new Date(now), fetchedAt: new Date() }], skipDuplicates: true });
             for (let d = new Date(brStart); d < new Date(now); d = new Date(+d + 86400000)) {
