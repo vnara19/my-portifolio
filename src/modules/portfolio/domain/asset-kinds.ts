@@ -42,7 +42,7 @@ export type AssetKindDefinition = {
 };
 
 export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
-  savings: { kind: "savings", label: "Savings", hint: "Interest-bearing savings in BRL or EUR", ticker: null, provider: null, instrumentType: null, allowsMaturity: false },
+  savings: { kind: "savings", label: "Savings", hint: "Savings in BRL or EUR", ticker: null, provider: null, instrumentType: null, allowsMaturity: false },
   "us-market": { kind: "us-market", label: "US Market", hint: "Stocks, ETFs and REITs", ticker: "market", provider: "finnhub", instrumentType: "ACAO", allowsMaturity: false },
   "br-market": { kind: "br-market", label: "Brazilian Market", hint: "Stocks, ETFs and Real Estate Funds", ticker: "market", provider: "yahoo", instrumentType: "ACAO", allowsMaturity: false },
   "eu-market": { kind: "eu-market", label: "European Market", hint: "Stocks, UCITS ETFs and ETCs", ticker: "market", provider: "yahoo", instrumentType: "EU_FUND", allowsMaturity: false },
