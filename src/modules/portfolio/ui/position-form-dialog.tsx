@@ -5,6 +5,7 @@ import { liquidityLabel } from "@/lib/liquidity-labels";
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
 import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
+import { SavingsForm } from "./savings-form";
 import { InternationalBondForm } from "./international-bond-form";
 import { productType, listingMarket, LEGACY_DEBT_PRODUCTS } from "../presentation/asset-classification";
 import { englishLabel } from "@/lib/english-labels";
@@ -166,13 +167,14 @@ function PositionForm({
   // General settings.
   const [reviewProduct, setReviewProduct] = useState<string | null>(editing?.productType && (LEGACY_DEBT_PRODUCTS as readonly string[]).includes(editing.productType) ? editing.productType : null);
   const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
-  const [fiTracking, setFiTracking] = useState<"GROSS" | "NET_BR" | "BALANCE">("GROSS");
   const [fiIssuer, setFiIssuer] = useState("");
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
   const [fiRate, setFiRate] = useState("");
   const [kind, setKind] = useState<AssetKind | null>(null);
   const bondEntry = !editing && kind === "international-bond";
-  const busy = isSaving || (bondEntry && bondSaving);
+  const savingsEntry = !editing && kind === "savings";
+  const delegatedEntry = bondEntry || savingsEntry;
+  const busy = isSaving || (delegatedEntry && bondSaving);
   const [verificationEpoch, setVerificationEpoch] = useState(0);
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
@@ -224,7 +226,7 @@ function PositionForm({
 
   const resetFields = () => {
     setBondIssues(["Bond details"]);
-    setFiTracking("GROSS"); setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
+    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
@@ -278,7 +280,7 @@ function PositionForm({
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const fixedIncomeEntry = !editing && kind === "fixed-income";
-  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252", taxMode: fiTracking === "NET_BR" ? "NET_BR" : "GROSS", balanceOnly: fiTracking === "BALANCE" } : null;
+  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252" } : null;
   const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
@@ -397,7 +399,7 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
-  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || (maturity && maturity <= appliedOn) || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date and contracted rate." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
     issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the price per title, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
@@ -562,12 +564,12 @@ function PositionForm({
   const requireField = (label: string, valid: boolean) => { fieldFeedback[label] = { valid }; };
   requireField("Asset type", Boolean(editing ? assetType : kind));
   if (editing) requireField("Asset name", Boolean(typedName));
-  if (!editing && kind && !bondEntry) {
+  if (!editing && kind && !delegatedEntry) {
     if (fixedIncomeEntry) {
       requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
-      requireField(fiTracking === "BALANCE" ? "Current net balance" : "Amount invested", parsedValue !== null && parsedValue > 0);
-      requireField(fiTracking === "BALANCE" ? "Balance date" : "Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
-      if (maturity) requireField("Maturity date (optional)", maturity > appliedOn);
+      requireField("Amount invested", parsedValue !== null && parsedValue > 0);
+      requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
+      requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
       requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success);
     } else if (purchaseEntry) {
       requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
@@ -583,8 +585,8 @@ function PositionForm({
     }
   }
   const remainingFields = Object.entries(fieldFeedback).filter(([, state]) => !state.valid).map(([label]) => label);
-  const activeIssues = bondEntry ? bondIssues : remainingFields;
-  const ready = bondEntry ? bondIssues.length === 0 : issues.length === 0;
+  const activeIssues = delegatedEntry ? bondIssues : remainingFields;
+  const ready = delegatedEntry ? bondIssues.length === 0 : issues.length === 0;
 
   return (
     <FieldFeedbackProvider fields={fieldFeedback}>
@@ -703,7 +705,7 @@ function PositionForm({
 
           </PositionSection>
 
-          {bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
+          {savingsEntry ? <SavingsForm formId={bondFormId} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
             {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
@@ -812,16 +814,15 @@ function PositionForm({
                 {fixedIncomeEntry ? <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
-                    <Field label="Tracking"><Picker aria-label="Fixed-income tracking" searchable={false} value={fiTracking} options={[{value:"GROSS",label:"Automatic Gross Balance"},{value:"NET_BR",label:"New Deposit · Net of Brazilian Taxes"},{value:"BALANCE",label:"Existing Net Balance · Manual Updates"}]} onValueChange={(next) => setFiTracking(next as typeof fiTracking)} /><p className="mt-1 text-xs text-muted-foreground">Gross excludes taxes. Net calculation uses Brazilian individual CDB tax rules and requires the original deposit amount and date. Record each new deposit separately. An existing net balance with unknown deposits requires manual updates. Exclude deposits already tracked separately.</p></Field>
                     <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
-                    <Field label={fiTracking === "BALANCE" ? "Current net balance (BRL)" : "Amount invested (BRL)"}><input aria-label={fiTracking === "BALANCE" ? "Current net balance" : "Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
-                    <Field label={fiTracking === "BALANCE" ? "Balance date" : "Purchase date"}><DatePicker aria-label={fiTracking === "BALANCE" ? "Balance date" : "Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
-                    <Field label="Maturity date (optional)"><DatePicker aria-label="Maturity date (optional)" value={maturity} onChange={setMaturity} min={appliedOn} /><p className="mt-1 text-xs text-muted-foreground">Leave blank to keep this investment active until you record a withdrawal. A dated investment closes automatically at maturity.</p></Field>
+                    <Field label={"Amount invested (BRL)"}><input aria-label={"Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
+                    <Field label={"Purchase date"}><DatePicker aria-label={"Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
+                    <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>
                     <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
                     <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
                     <Field label="Redemption"><Picker aria-label="Redemption" searchable={false} value={liquidity || "No vencimento"} options={[{ value: "No vencimento", label: "At maturity" }, { value: "D+0", label: "Daily liquidity" }]} onValueChange={setLiquidity} /></Field>
                   </div>
-                  <p className="text-xs text-muted-foreground">{fiTracking === "BALANCE" ? "Manual net balance · automatic accrual unavailable without original deposits" : fiTracking === "NET_BR" ? "Calculated net balance · one known deposit · Brazilian individual tax rules" : fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
+                  <p className="text-xs text-muted-foreground">{fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
                 </> : null}
                 {purchaseEntry ? <>
                   {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
@@ -924,7 +925,7 @@ function PositionForm({
 
 
       <footer
-        data-issue-count={bondEntry ? bondIssues.length : issues.length}
+        data-issue-count={delegatedEntry ? bondIssues.length : issues.length}
         className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-4 sm:px-6"
       >
         <div className="min-w-0 flex-1 basis-56" aria-live="polite">
@@ -949,7 +950,7 @@ function PositionForm({
         </div>
         <div className="ml-auto flex gap-2">
           <Dialog.Close className={secondaryButtonClass} disabled={busy}>Cancel</Dialog.Close>
-          <button type={bondEntry ? "submit" : "button"} form={bondEntry ? bondFormId : undefined} onClick={bondEntry ? undefined : submit} disabled={busy || (!editing && !ready) || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
+          <button type={delegatedEntry ? "submit" : "button"} form={delegatedEntry ? bondFormId : undefined} onClick={delegatedEntry ? undefined : submit} disabled={busy || (!editing && !ready) || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
             {busy ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
             {busy ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </button>

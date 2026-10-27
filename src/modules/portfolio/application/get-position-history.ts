@@ -1,3 +1,5 @@
+import { readSavings, type Savings, type SavingsCalculation } from "../domain/savings";
+import { savingsState } from "./savings";
 import { readInternationalBond, type InternationalBond } from "../domain/international-bond";
 
 /** Assemble user-scoped position, cost and transaction history without contacting market-data providers. */
@@ -65,6 +67,7 @@ export type PositionHistoryView = {
 
   transactions: PositionTransactionView[];
 
+  savings?: { terms: Savings; state: SavingsCalculation | null; error?: string };
   bond?: InternationalBond | null;
   cdi: CdiView | null;
 
@@ -111,6 +114,7 @@ export type PositionTransactionView = {
 
 
   automatic?: boolean;
+  locked?: boolean;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -290,6 +294,7 @@ export async function getPositionHistory({
       prices: asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null,
       history: asset.quoteSymbol ? await readHistoryState(asset.quoteSymbol) : null,
       transactions: transactions.filter((entry) => entry.accountId === accountId),
+      savings: readSavings(asset.fixedIncomeContract) ? await (async()=>{const terms=readSavings(asset.fixedIncomeContract)!;try{return {terms,state:await savingsState(prisma,terms,toDateKey(new Date(Math.min(+today,+lastDayOf(selected.referenceDate)))))};}catch(error){return{terms,state:null,error:error instanceof Error?error.message:"Savings could not be calculated."};}})() : undefined,
       bond: readInternationalBond(asset.fixedIncomeContract),
       cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate) : null,
       rate: rateOf(positions, accountId, selected.id, asset.autoIncome),
@@ -376,7 +381,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
     : null;
   let projection: CdiView["projection"] = null;
 
-  if (readFixedIncomeContract(position.asset.fixedIncomeContract)?.taxMode !== "NET_BR" && until && !parts.some((part) => part.indexer === "IPCA") && (latest || parts.every((part) => part.indexer === "PRE"))) {
+  if (until && !parts.some((part) => part.indexer === "IPCA") && (latest || parts.every((part) => part.indexer === "PRE"))) {
 
 
     const total = parts.reduce((sum, part) => sum.plus(part.weight), new Prisma.Decimal(0));
@@ -472,6 +477,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
       transferId: true,
       position: {
         select: {
+          asset: { select: { assetType: true } },
           accountId: true,
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
@@ -489,6 +495,8 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
     quantity: row.quantity.toNumber(),
     unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
     amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
+    locked: row.position.asset.assetType === "savings",
+    automatic: row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
     note: row.note,
     transferId: row.transferId,
     monthId: row.position.portfolioMonthId,

@@ -34,10 +34,10 @@ test("product and market facets cascade without mixing geographic exposure or ca
 });
 
 test("the filter has exactly the user-approved registration products", () => {
-  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"]));
+  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "Savings", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"]));
   assert.equal(productType("fixed-income", "", "CRI"), "");
   assert.equal(productType("fixed-income"), "");
-  assert.equal(PRODUCT_TYPES.length, 13);
+  assert.equal(PRODUCT_TYPES.length, 14);
 });
 
 test("registration classifications map to the same filter keys", () => {

@@ -15,7 +15,7 @@ export const ASSET_KINDS = [
   "br-stock",
   "crypto",
   "treasury",
-  "fixed-income", "international-bond",
+  "fixed-income", "international-bond", "savings",
   "brl-cash",
   "usd-balance",
   "eur-balance",
@@ -42,6 +42,7 @@ export type AssetKindDefinition = {
 };
 
 export const ASSET_KIND_DEFINITIONS: Record<AssetKind, AssetKindDefinition> = {
+  savings: { kind: "savings", label: "Savings", hint: "Interest-bearing savings in BRL, EUR or USD", ticker: null, provider: null, instrumentType: null, allowsMaturity: false },
   "us-market": { kind: "us-market", label: "US Market", hint: "Stocks, ETFs and REITs", ticker: "market", provider: "finnhub", instrumentType: "ACAO", allowsMaturity: false },
   "br-market": { kind: "br-market", label: "Brazilian Market", hint: "Stocks, ETFs and Real Estate Funds", ticker: "market", provider: "yahoo", instrumentType: "ACAO", allowsMaturity: false },
   "eu-market": { kind: "eu-market", label: "European Market", hint: "Stocks, UCITS ETFs and ETCs", ticker: "market", provider: "yahoo", instrumentType: "EU_FUND", allowsMaturity: false },
@@ -226,6 +227,7 @@ export function defaultAllocation(kind: AssetKind, symbol: string | null): Alloc
         subclass: symbol === "BTC" ? "BTC" : symbol && STABLECOINS.has(symbol) ? "Stablecoin" : "Altcoin",
         duration: "-",
       };
+    case "savings": return { assetClass: "Renda Fixa", subclass: "Savings", duration: "Curto" };
     case "international-bond":
       return { assetClass: "Renda Fixa", subclass: "International Bonds", duration: "Longo" };
     case "fixed-income":

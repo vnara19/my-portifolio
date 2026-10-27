@@ -24,10 +24,11 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
   let realized = new Prisma.Decimal(0);
   for (const movement of movements) {
     // Transfers need carried acquisition cost across accounts; do not treat them as sales.
-    if (movement.transferId || movement.usdRate === null || !Number.isFinite(movement.usdRate) || movement.usdRate <= 0) return unavailableGains();
+    const capitalized = movement.kind === "INCOME" && movement.quantity > 0;
+    if (movement.transferId || (!capitalized && (movement.usdRate === null || !Number.isFinite(movement.usdRate) || movement.usdRate <= 0))) return unavailableGains();
     const state = costs.get(movement.holding) ?? { units: new Prisma.Decimal(0), cost: new Prisma.Decimal(0) };
     const units = new Prisma.Decimal(movement.quantity);
-    const amount = new Prisma.Decimal(movement.amountBrl).div(movement.usdRate);
+    const amount = new Prisma.Decimal(movement.amountBrl).div(capitalized ? 1 : movement.usdRate!);
     if (movement.kind === "OPENING" || movement.kind === "CONTRIBUTION") {
       if (units.lte(0) || amount.lt(0)) return unavailableGains();
       state.units = state.units.plus(units);
@@ -47,6 +48,7 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
     } else {
       state.units = amount.lt(0) ? state.units.minus(units) : state.units.plus(units);
       if (state.units.lt(0)) return unavailableGains();
+      if (state.units.eq(0) && amount.lt(0)) { realized = realized.minus(state.cost); state.cost = new Prisma.Decimal(0); }
     }
     costs.set(movement.holding, state);
   }

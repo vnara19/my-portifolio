@@ -128,7 +128,7 @@ export function PositionTransactions({
                 const negative = entry.kind === "WITHDRAWAL" || entry.amountBrl < 0;
 
                 const editable =
-                  !entry.automatic && editableMonthId !== null && entry.monthId === editableMonthId && entry.accountId === editableAccountId;
+                  !entry.automatic && !entry.locked && editableMonthId !== null && entry.monthId === editableMonthId && entry.accountId === editableAccountId;
 
                 return (
                   <tr key={entry.id} className="border-t border-border/60" data-transaction-kind={entry.kind} data-transaction-filter={filterKey(entry)}>

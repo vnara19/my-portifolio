@@ -14,7 +14,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     db.positionTransaction.findMany({
       where: { occurredOn: { lt: end }, position: { portfolioMonth: { referenceDate: { lte: referenceDate } } } },
       orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-      select: { kind: true, occurredOn: true, quantity: true, amountBrl: true, transferId: true, note: true, position: { select: { accountId: true, assetId: true } } },
+      select: { kind: true, createdAt: true, occurredOn: true, quantity: true, amountBrl: true, transferId: true, note: true, position: { select: { accountId: true, assetId: true } } },
     }),
     db.position.findMany({ where: { portfolioMonth: { referenceDate }, quantity: { gt: 0 } }, select: { accountId: true, assetId: true, quantity: true, totalBrl: true, asset: { select: { fixedIncomeContract: true, quoteSymbol: true } } } }),
     db.dailyQuote.findMany({ where: { symbol: "USD", quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
@@ -28,6 +28,8 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   const holding = (row: { accountId: string; assetId: string }) => `${row.accountId}:${row.assetId}`;
   const bonds = new Map(bondAssets.map((asset) => [asset.id, readInternationalBond(asset.fixedIncomeContract)]));
   const interest = new Map<string, { remaining: Prisma.Decimal; usdPerNative: Prisma.Decimal; units: Prisma.Decimal }>();
+  // A savings payout is available before same-day withdrawal instructions.
+  transactions.sort((a,b) => +a.occurredOn - +b.occurredOn || Number(b.note === "Savings automatic return") - Number(a.note === "Savings automatic return") || +a.createdAt - +b.createdAt);
   const movements = transactions.map((row) => {
     const key = holding(row.position);
     const usdRate = historicalRate(row.occurredOn);

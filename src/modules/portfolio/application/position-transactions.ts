@@ -42,25 +42,20 @@ export async function addTransaction(input: { monthId: string; transaction: Tran
     if (position.asset.appliedOn && input.transaction.occurredOn < toDateKey(position.asset.appliedOn)) throw new MonthEditError("The transaction cannot precede this deposit.");
     if (position.asset.maturityDate && input.transaction.occurredOn >= toDateKey(position.asset.maturityDate)) throw new MonthEditError("This investment ends at maturity. Register a new investment instead.");
     const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
-    if (contract?.taxMode === "NET_BR" && input.transaction.kind === "CONTRIBUTION") throw new MonthEditError("Record each new deposit as a separate position so its tax date stays exact.");
     const values = parseValues(position, month.referenceDate, input.transaction.kind, input.transaction);
-    if (contract && input.transaction.kind === "WITHDRAWAL" && !contract.balanceOnly) {
+    if (contract && input.transaction.kind === "WITHDRAWAL") {
       const day = new Date(input.transaction.occurredOn);
       await valueCdiPositions(transaction, { where: { id: position.id }, asOf: input.transaction.occurredOn });
       const valued = await transaction.position.findUniqueOrThrow({ where: { id: position.id } });
       if (valued.incomeCalculationError) throw new MonthEditError("Rates are incomplete for this withdrawal date. Update the rate history before recording the withdrawal.");
-      const available = contract.taxMode === "NET_BR" ? valued.totalBrl : valued.quantity;
+      const available = valued.quantity;
       if (values.amountBrl.gt(available) || available.lte(0)) throw new MonthEditError("The withdrawal exceeds the balance on this date.");
       const ledger = await transaction.positionTransaction.findMany({ where: { occurredOn: { lte: day }, position: { assetId: position.assetId, accountId: position.accountId } }, select: { kind: true, quantity: true } });
       const first = await transaction.position.findFirst({ where: { assetId: position.assetId, accountId: position.accountId }, orderBy: { portfolioMonth: { referenceDate: "asc" } }, select: { openingQuantity: true } });
       const units = ledger.reduce((sum, item) => sum.plus(item.kind === "WITHDRAWAL" ? item.quantity.neg() : item.kind === "CONTRIBUTION" || item.kind === "OPENING" ? item.quantity : 0), first?.openingQuantity ?? new Prisma.Decimal(0));
       const fraction = values.amountBrl.div(available);
       values.quantity = units.mul(fraction).toDecimalPlaces(12);
-      if (contract.taxMode === "NET_BR") {
-        const net = values.amountBrl;
-        values.amountBrl = valued.quantity.mul(fraction).toDecimalPlaces(2);
-        values.note = `Net withdrawal: BRL ${net.toFixed(2)}; gross balance removed ${values.amountBrl.toFixed(2)}`;
-      }
+
     }
     await transaction.positionTransaction.create({
       data: { userId: SCOPED_USER, positionId: position.id, ...values },
@@ -95,7 +90,7 @@ export async function updateTransaction(input: {
     }
 
     const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
-    if (contract?.taxMode === "NET_BR" || (contract && !contract.balanceOnly && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
+    if ((contract && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
     const values = parseValues(position, month.referenceDate, kind, input.transaction);
     await transaction.positionTransaction.update({ where: { id: entry.id }, data: values });
     await recomputePosition(transaction, position.id, "The correction would make the position negative.");
@@ -134,7 +129,6 @@ export async function liquidatePosition(input: { monthId: string; liquidation: L
   return withUndo(input.monthId, async (transaction, month) => {
     const { liquidation } = input;
     const position = await findPosition(transaction, month.id, liquidation.positionId);
-    if (readFixedIncomeContract(position.asset.fixedIncomeContract)?.taxMode === "NET_BR") throw new MonthEditError("Use Add / Withdraw to record the net amount removed from this deposit.");
     const occurredOn = parseOccurredOn(liquidation.occurredOn, month.referenceDate);
 
 
@@ -229,6 +223,7 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
     throw new MonthEditError("The position does not belong to this reporting month.");
   }
 
+  if (position.asset.assetType === "savings") throw new MonthEditError("Use the Savings panel to change money or rates.");
   if (position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and coupon form to change this holding.");
   return position;
 }
@@ -244,6 +239,7 @@ async function findMonthTransaction(transaction: Transaction, monthId: string, t
   }
 
   if (entry.note === MATURITY_EXIT_NOTE) throw new MonthEditError("This is an automatic maturity exit, not a manual withdrawal.");
+  if (entry.position.asset.assetType === "savings") throw new MonthEditError("Use the Savings panel to manage its source instructions.");
   if (entry.position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and cash receipt form for this holding.");
   return entry;
 }

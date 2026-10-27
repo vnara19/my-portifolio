@@ -565,7 +565,6 @@ function PositionRow({
           >
             <AssetClassDot position={position} className="mr-2 align-middle" />{positionTitle(position.assetName, position.ticker)}
           </Link>
-          {position.netBalance ? <span className="ml-2 text-[10px] text-muted-foreground">Calculated Net</span> : position.manualNetBalance ? <span className="ml-2 text-[10px] text-muted-foreground">Manual Net Balance</span> : null}
           {position.bondAtCost ? <span className="ml-2 text-[10px] text-muted-foreground">At Cost</span> : null}
           {position.bondValuationDate ? <span className="ml-2 text-[10px] text-muted-foreground">Manual · {position.bondValuationDate}</span> : null}
           {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}

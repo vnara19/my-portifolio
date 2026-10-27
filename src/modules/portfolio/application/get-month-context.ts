@@ -1,3 +1,4 @@
+import { refreshSavings } from "./savings";
 import { applyMaturityExits } from "./maturity-exits";
 import { ensureMonthsUpToDate } from "./month-rollover";
 import {
@@ -16,6 +17,7 @@ export async function getMonthContext(
 ): Promise<MonthContext> {
   await ensureMonthsUpToDate();
   await applyMaturityExits();
+  await refreshSavings();
   const months = await getPortfolioMonths();
 
   return { months, selected: resolveSelectedMonth(months, value) as PortfolioMonthSummary | null };

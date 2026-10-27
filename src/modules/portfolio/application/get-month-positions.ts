@@ -1,3 +1,4 @@
+import { readSavings } from "../domain/savings";
 import { productType, listingMarket, reviewedDebtProduct } from "../presentation/asset-classification";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 import { hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "../presentation/position-display";
@@ -40,8 +41,6 @@ export type MonthPosition = {
   market?: string;
 
   fixedIncomeEstimate?: boolean;
-  netBalance?: boolean;
-  manualNetBalance?: boolean;
   bondAtCost?: boolean;
   bondValuationDate?: string | null;
   autoIncome?: boolean;
@@ -228,12 +227,10 @@ export async function getMonthPositions(
             cashAccount: position.asset.cashAccount,
             assetType,
             productType: displayProduct,
-            market: listingMarket(displayProduct === "Stablecoin" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry),
+            market: listingMarket(displayProduct === "Stablecoin" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry ?? readSavings(position.asset.fixedIncomeContract)?.country),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
-            netBalance: readFixedIncomeContract(position.asset.fixedIncomeContract)?.taxMode === "NET_BR",
-            manualNetBalance: readFixedIncomeContract(position.asset.fixedIncomeContract)?.balanceOnly,
             fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,

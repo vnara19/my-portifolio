@@ -211,6 +211,7 @@ const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>()
 
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const newAsset = input.addition.newAsset;
+  if (newAsset?.kind === "savings") throw new MonthEditError("Use the Savings form to register a Savings investment.");
   if (newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind)) throw new MonthEditError("Cash-only positions are no longer supported. Add an investment instead.");
   if (newAsset?.bondContract && newAsset.kind !== "international-bond") throw new MonthEditError("Bond terms require International Bonds.");
   const bond = newAsset?.kind === "international-bond" ? internationalBondSchema.parse(newAsset.bondContract) : null;
@@ -226,14 +227,15 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     if (input.addition.purchase) throw new MonthEditError("Use the direct bond form for this holding.");
     input.addition.value = bond.faceAmount;
   }
+  if (newAsset?.kind === "fixed-income" && !newAsset.fixedIncomeContract) throw new MonthEditError("Enter the CDB, LCI or LCA contract terms and maturity date.");
   const fixed = newAsset?.kind === "fixed-income" && newAsset.fixedIncomeContract ? brazilianFixedIncomeSchema.parse(newAsset.fixedIncomeContract) : null;
   if (fixed) {
     fixed.basis = "BUSINESS_252";
     newAsset!.fixedIncomeContract = fixed;
-    if (!newAsset!.appliedOn || (newAsset!.maturityDate && newAsset!.maturityDate <= newAsset!.appliedOn)) throw new MonthEditError("Enter a maturity date after the purchase date.");
+    if (!newAsset!.appliedOn || !newAsset!.maturityDate || newAsset!.maturityDate <= newAsset!.appliedOn) throw new MonthEditError("Enter a maturity date after the purchase date.");
     if (fixed.indexer !== "CDI" && Number(fixed.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");
     newAsset!.name = fixedIncomeName(fixed, newAsset!.maturityDate ?? "", newAsset!.appliedOn!);
-    newAsset!.autoIncome = !fixed.balanceOnly;
+    newAsset!.autoIncome = true;
   }
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
@@ -280,7 +282,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     bondFx = { acquisition, current, usd };
   }
   let fixedFx: Awaited<ReturnType<typeof fetchReferenceFxLatest>> | null = null;
-  if (fixed && !fixed.balanceOnly) {
+  if (fixed) {
     const fixedDb = await requirePrisma();
     if (newAsset!.appliedOn! > toDateKey(calendarDay(new Date()))) throw new MonthEditError("The purchase date cannot be in the future.");
     fixedFx = await fetchReferenceFxLatest("USD", newAsset!.appliedOn!);
@@ -675,6 +677,9 @@ async function assertIncomeRates(
 
 
 export async function removePosition(input: { monthId: string; positionId: string }) {
+  const db=await requirePrisma();
+  const owned=await db.position.findFirst({where:{id:input.positionId,portfolioMonthId:input.monthId},select:{assetId:true,asset:{select:{assetType:true}}}});
+  if(owned?.asset.assetType === "savings")return (await import("./savings")).removeSavings(owned.assetId);
   return withUndo(input.monthId, async (transaction, month) => {
     const linkedMovement = await transaction.positionTransaction.findFirst({
       where: {
@@ -834,7 +839,6 @@ async function resolveAdditionAsset(
       throw new MonthEditError("The selected asset does not exist.");
     }
 
-    if (asset.assetType === "fixed-income" && (asset.fixedIncomeContract as { taxMode?: string } | null)?.taxMode === "NET_BR") throw new MonthEditError("Record each new deposit as a separate position to preserve its tax date.");
     if (["brl-cash", "usd-balance", "eur-balance"].includes(assetTypeOf(asset))) throw new MonthEditError("Cash-only positions are no longer supported.");
     if (asset.maturityDate && toDateKey(asset.maturityDate) <= (addition.purchase?.occurredOn ?? toDateKey(calendarDay(new Date())))) throw new MonthEditError("This investment has matured. Register a new investment instead.");
     return asset;
@@ -923,7 +927,6 @@ async function resolveAdditionAsset(
       ...(input.kind === "international-bond" && input.bondContract ? { fixedIncomeContract: input.bondContract } : {}),
       ...(input.kind === "fixed-income" && input.fixedIncomeContract ? { fixedIncomeContract: input.fixedIncomeContract } : {}),
       ...incomeOfNewAsset(input),
-      ...(input.kind === "fixed-income" && input.fixedIncomeContract?.balanceOnly && input.appliedOn ? { appliedOn: parseMaturityDate(input.appliedOn) } : {}),
     },
     select: { id: true },
   });
@@ -1490,7 +1493,7 @@ export async function withUndo(
     transaction: Transaction,
     month: { id: string; referenceDate: Date },
   ) => Promise<{ created?: CreatedEntities; assets?: AssetState[] } | void>,
-  options: { carryForward?: boolean } = {},
+  options: { carryForward?: boolean; linkedMonths?: boolean } = {},
 ) {
   const prisma = await requirePrisma();
   const userId = await currentUserId();
@@ -1502,7 +1505,7 @@ export async function withUndo(
         await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${"portfolio-edits"}))`;
         const month = await assertEditable(transaction, monthId);
         const before = await readSnapshot(transaction, month);
-        const later = options.carryForward ? await transaction.portfolioMonth.findMany({ where: { referenceDate: { gt: month.referenceDate } }, orderBy: { referenceDate: "asc" }, select: { id: true, referenceDate: true } }) : [];
+        const later = (options.carryForward || options.linkedMonths) ? await transaction.portfolioMonth.findMany({ where: { referenceDate: { gt: month.referenceDate } }, orderBy: { referenceDate: "asc" }, select: { id: true, referenceDate: true } }) : [];
         const previous = await Promise.all(later.map((m) => readSnapshot(transaction, m)));
         const extras = await mutate(transaction, month);
         const after = await readSnapshot(transaction, month);
@@ -1520,7 +1523,7 @@ export async function withUndo(
           created: extras?.created,
           assets: extras?.assets,
           following,
-          carried: options.carryForward,
+          carried: options.carryForward || options.linkedMonths,
         });
 
         return { referenceDate: month.referenceDate, undoToken };

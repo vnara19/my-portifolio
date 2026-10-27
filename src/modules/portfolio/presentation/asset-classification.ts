@@ -2,7 +2,7 @@ import { BRAZILIAN_DEBT_PRODUCTS } from "../domain/brazilian-fixed-income";
 import type { AssetType } from "../domain/classification";
 
 /** User-facing products mirror the supported Add position flows, not bond details. */
-export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"] as const;
+export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", "Savings", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"] as const;
 export const LEGACY_DEBT_PRODUCTS = BRAZILIAN_DEBT_PRODUCTS;
 export function reviewedDebtProduct(value: unknown): string | null {
   if (!value || typeof value !== "object" || !("displayProduct" in value)) return null;
@@ -15,6 +15,7 @@ export function productType(type: AssetType, instrument = "", product?: string |
   if ((type === "crypto" || type.endsWith("-cash") || type.endsWith("-balance")) && cryptoSubclass === "Stablecoin") return "Stablecoin";
   if (type.endsWith("-cash") || type.endsWith("-balance")) return "Cash Account";
   if (type === "crypto") return cryptoSubclass === "BTC" ? "Bitcoin" : cryptoSubclass === "Stablecoin" ? "Stablecoin" : cryptoSubclass === "Altcoin" ? "Altcoin" : "";
+  if (type === "savings") return "Savings";
   if (type === "pension") return "Pension Plan";
   if (type === "treasury") return "Tesouro Direto";
   if (type === "fixed-income") return product && (BRAZILIAN_DEBT_PRODUCTS as readonly string[]).includes(product) ? product : "";
@@ -27,6 +28,7 @@ export function productType(type: AssetType, instrument = "", product?: string |
 
 export function listingMarket(type: AssetType, currency?: string, issuerCountry?: string | null) {
   if (type === "crypto") return "Global";
+  if (type === "savings") return issuerCountry || (currency === "BRL" ? "Brazil" : "Europe");
   if (type === "international-bond" && issuerCountry) return ({ US: "United States", USA: "United States", "United States of America": "United States", BR: "Brazil", Brasil: "Brazil", IE: "Ireland" } as Record<string, string>)[issuerCountry] ?? issuerCountry;
   if (type.endsWith("-cash") || type.endsWith("-balance") || type === "pension") return currency === "EUR" || type === "eur-balance" ? "Europe" : currency === "USD" || type === "usd-balance" ? "United States" : "Brazil";
   if (type.startsWith("us-")) return "United States";

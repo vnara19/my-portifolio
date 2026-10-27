@@ -69,6 +69,7 @@ import {
   transactionMonthOf,
   type TransactionEdit,
 } from "@/modules/portfolio/ui/position-transaction-dialog";
+import { SavingsManager } from "./savings-form";
 import { PositionTransactions } from "@/modules/portfolio/ui/position-transactions";
 import { InternationalBondPanel } from "./international-bond-panel";
 import { CdiPanel } from "@/modules/portfolio/ui/cdi-panel";
@@ -184,7 +185,7 @@ export function PositionDetail({
         ? `No position in ${selectedLabel}.`
         : null;
 
-  const canLiquidate = history.cdi?.contract?.taxMode !== "NET_BR" && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
+  const canLiquidate = !history.savings && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
   const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
 
 
@@ -289,12 +290,12 @@ export function PositionDetail({
             ) : null}
             <button
               type="button"
-              onClick={() => setMovement((value) => ({ open: true, key: value.key + 1, edit: null }))}
+              onClick={() => history.savings ? document.getElementById("savings-manager")?.scrollIntoView() : setMovement((value) => ({ open: true, key: value.key + 1, edit: null }))}
               disabled={editBlocked !== null || Boolean(history.bond)}
               title={editBlocked ?? `Contribution, withdrawal or return in ${selectedLabel}`}
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />{editPosition?.netBalance ? "Withdraw" : "Add / Withdraw"}
+              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />Add / Withdraw
             </button>
             <button
               type="button"
@@ -461,6 +462,7 @@ export function PositionDetail({
         recorded={recordedByMonth(view.transactions)}
       />
 
+      {history.savings && !history.savings.terms.archived ? <><SavingsManager assetId={history.assetId} terms={history.savings.terms} state={history.savings.state} onSaved={notify} />{history.savings.error ? <p role="status" className="mt-3 text-xs text-warning-foreground">{history.savings.error}</p>:null}</> : null}
       <PositionTransactions
         transactions={transactions}
         quoted={quoted}
@@ -521,7 +523,6 @@ export function PositionDetail({
             unitPriceBrl: editPosition.unitPriceBrl,
             totalBrl: editPosition.totalBrl,
             autoIncome: Boolean(editPosition.autoIncome && editPosition.calculationStartDate),
-            netBalance: editPosition.netBalance,
           }}
           edit={movement.edit}
           formKey={movement.key}
@@ -550,13 +551,11 @@ export function PositionDetail({
               <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Remove {editPosition.assetName}?
               </Dialog.Title>
 
-              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">Deletes this position in {selectedLabel}.
-                {editPosition.liquidated ? "" : " To close the position while preserving history, liquidate it."}
-              </Dialog.Description>
+              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{editPosition.assetType === "savings" ? "Removes this Savings registration from all reporting months. Use Withdraw Money for an actual withdrawal. Undo is available." : `Deletes this position in ${selectedLabel}.${editPosition.liquidated ? "" : " To close the position while preserving history, liquidate it."}`}</Dialog.Description>
               <div className="mt-6 flex flex-wrap justify-end gap-2">
                 <Dialog.Close className={secondaryButtonClass} disabled={isDeleting}>Cancel
                 </Dialog.Close>
-                {editPosition.liquidated ? null : (
+                {editPosition.liquidated || editPosition.assetType === "savings" ? null : (
                   <button
                     type="button"
                     disabled={isDeleting}
