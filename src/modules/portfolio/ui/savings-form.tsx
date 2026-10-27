@@ -17,7 +17,7 @@ function EuroSavingsConditions({ rate = EURO_SAVINGS_RATE }: { rate?: Omit<Savin
         <dl className="mt-3 space-y-2 text-muted-foreground">
             <div className="flex flex-wrap justify-between gap-x-4"><dt>{rate.tierLimit ? `On the first ${money(rate.tierLimit)}` : "Gross annual rate"}</dt><dd>{rate.grossRate}% {quotation} gross</dd></div>
             {rate.tierLimit ? <div className="flex flex-wrap justify-between gap-x-4"><dt>On the amount above {money(rate.tierLimit)}</dt><dd>{rate.tierRate}% {quotation} gross</dd></div> : null}
-            <div className="flex flex-wrap justify-between gap-x-4"><dt>DIRT on interest</dt><dd>{rate.taxPercent ?? "33"}%</dd></div>
+            <div className="flex flex-wrap justify-between gap-x-4"><dt>Tax on Interest</dt><dd>{rate.taxPercent ?? "33"}%</dd></div>
         </dl>
         <p className="mt-3 text-xs text-muted-foreground">Daily interest, including weekends. Tax is deducted from interest.</p>
     </div>;
@@ -35,7 +35,7 @@ export function SavingsForm({ formId, onSaved, onPendingChange, onValidationChan
     const [error, setError] = useState<string | null>(null);
     const [pending, start] = useTransition();
     const euro = currency === "EUR";
-    const dateLabel = !euro && opening === "DEPOSIT" ? "Deposit date" : "Balance date";
+    const dateLabel = !euro && opening === "DEPOSIT" ? "Deposit Date" : "Starting Date";
     const terms = { kind: "SAVINGS" as const, currency, country: euro ? "Ireland" : "Brazil",
         product: euro ? "INSTANT" : "CDI", startDate: date, openingType: euro ? "BALANCE" : opening,
         rates: [{ date, ...(euro ? EURO_SAVINGS_RATE : { grossRate: number(gross) }) }],
@@ -64,12 +64,11 @@ export function SavingsForm({ formId, onSaved, onPendingChange, onValidationChan
         </div>
         {euro ? <EuroSavingsConditions /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
-            {!euro ? <Field label="Starting amount type"><Picker aria-label="Starting amount type" value={opening} options={[{ value: "DEPOSIT", label: "Original Deposit" }, { value: "BALANCE", label: "Existing Balance" }]} onValueChange={v => setOpening(v as typeof opening)} /></Field> : null}
+            {!euro ? <Field label="Starting amount type"><Picker aria-label="Starting amount type" value={opening} options={[{ value: "DEPOSIT", label: "New Deposit" }, { value: "BALANCE", label: "Existing Balance" }]} onValueChange={v => setOpening(v as typeof opening)} /></Field> : null}
             <Field label={`Starting amount (${currency})`}><input aria-label="Savings starting amount" inputMode="decimal" className={inputClass} value={amount} onChange={e => setAmount(e.target.value)} /></Field>
             <Field label={dateLabel}><DatePicker aria-label="Savings start date" value={date} onChange={setDate} max={new Date().toISOString().slice(0, 10)} /></Field>
             {!euro ? <Field label="Percentage of CDI (%)"><input aria-label="Savings gross rate" inputMode="decimal" className={inputClass} value={gross} onChange={e => setGross(e.target.value)} placeholder="100" /></Field> : null}
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">{euro ? "Enter your balance on this date. Interest is calculated automatically from then on; you can add or withdraw money later." : opening === "BALANCE" ? "Enter the bank’s current net balance. Update it manually until the original deposit history is known." : "Known deposits earn CDI on Brazilian business days, with Brazilian resident CDB withholding."}</p>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </form></FieldFeedbackProvider>;
 }
