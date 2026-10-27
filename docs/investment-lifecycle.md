@@ -4,7 +4,7 @@ Purchases are direct investment entries. No cash deposit, funding source, receiv
 
 ## Brazilian Fixed Income
 
-The registration is restored to CDB, LCI and LCA, with issuer, purchase date, invested amount, CDI / fixed / IPCA terms and mandatory maturity after purchase. The contract balance uses the original gross accrual logic. Savings-specific net tracking and manual opening-balance modes are not part of this form.
+The registration is restored to CDB, LCI and LCA, with issuer, purchase date, invested amount, CDI / fixed / IPCA terms and mandatory maturity after purchase. Redemption is fixed to At Maturity at the write boundary; daily-liquidity reserves belong in Savings. The contract balance uses the original gross accrual logic. Savings-specific net tracking and manual opening-balance modes are not part of this form.
 
 Dated holdings exit active tracking at maturity. Reconciliation records one external withdrawal and zeroes later carried snapshots, without creating cash or a tax settlement. Historical pre-maturity holdings remain. Repeated visits are idempotent. Missing final rates are not invented bank receipts.
 
@@ -23,7 +23,7 @@ Bank reconciliation is investment income/correction rather than a new contributi
 
 Withdrawals and maturity exits are capital outflows, not investment losses. A later acquisition is acquisition cost, not profit. Capitalized Savings income increases units without adding acquisition cost; closed holding gains remain in the USD gain ledger. Ordinary movements require their dated FX. The existing portfolio-value chart shows tracked balances and identifies itself as a balance chart, not a time-weighted return chart.
 
-Savings display native currency consistently. Generic transaction editing is locked for derived Savings entries; source changes belong in its dedicated panel. Generated ETF prefixes and redundant subtitles remain display-only normalization, without renaming stored assets.
+Registration shows a compact identified-asset summary (name, product and exposure class), without repeating listing market or instrument type. Official GPCA11 issuer metadata identifies it as a fixed-income ETF even when provider metadata labels it EQUITY. Savings display native currency consistently. Generic transaction editing is locked for derived Savings entries; source changes belong in its dedicated panel. Generated ETF prefixes and redundant subtitles remain display-only normalization, without renaming stored assets.
 
 ## Validation and sources
 

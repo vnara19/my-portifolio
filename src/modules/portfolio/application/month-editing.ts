@@ -919,7 +919,7 @@ async function resolveAdditionAsset(
       quoteSymbol: symbol,
       baseCurrency: input.bondContract?.currency ?? identity?.currency ?? baseCurrencyOf(input.kind, symbol),
       maturityDate,
-      liquidity: automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
+      liquidity: input.kind === "fixed-income" ? "No vencimento" : automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance" || input.kind === "eur-balance"),
 

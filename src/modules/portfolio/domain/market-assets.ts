@@ -39,14 +39,15 @@ export function marketIdentity(kind: typeof MARKET_KINDS[number], symbol: string
     { symbol: "VWCE.DE", currency: "EUR", exposure: "equity", isin: "IE00BK5BQT80", source: "https://fund-docs.vanguard.com/FTSE_All-World_UCITS_ETF_USD_Accumulating_9679_EU_INT_EN.pdf" },
     { symbol: "BND", currency: "USD", exposure: "bond", source: "https://advisors.vanguard.com/investments/products/bnd/vanguard-total-bond-market-etf" },
     { symbol: "VOO", currency: "USD", exposure: "equity", source: "https://workplace.vanguard.com/assets/corp/fund_communications/pdf_publish/us-products/fact-sheet/F0968.pdf" },
+    ...["GPCA11.SAO", "GPCA11.SA"].map(symbol => ({ symbol, currency: "BRL", exposure: "bond" as const, source: "https://www.grao.com.br/etf/gpca11" })),
     { symbol: "IMAB11.SAO", currency: "BRL", exposure: "bond", source: "https://www.itnow.com.br/imab11/" },
     { symbol: "EUNA.DE", currency: "EUR", exposure: "bond", isin: "IE00BDBRDM35", source: "https://www.ishares.com/it/investitore-privato/it/prodotti/291770/ishares-core-global-aggregate-bond-ucits-etf-eur-hedged-acc-fund" },
   ];
   const reference = references.find((listing) => listing.symbol === symbol);
   if (reference && reference.currency !== meta.currency) throw new Error("The listing currency differs from the issuer reference. Please verify the listing.");
   if ((kind === "us-market" && meta.currency !== "USD") || (kind === "br-market" && meta.currency !== "BRL")) throw new Error("The ticker belongs to a different market or trading currency.");
-  const etf = meta.instrumentType === "ETF";
-  const stock = meta.instrumentType === "EQUITY" && !/\b(ETF|ETC|ETN|UCITS)\b/i.test(meta.name ?? "");
+  const etf = meta.instrumentType === "ETF" || Boolean(reference) || /\bETF\b|fundo de [ií]ndice/i.test(meta.name ?? "");
+  const stock = !etf && meta.instrumentType === "EQUITY" && !/\b(ETF|ETC|ETN|UCITS)\b/i.test(meta.name ?? "");
   // The full legal product name identifies a Brazilian FII; a ticker ending in 11 does not.
   const fii = kind === "br-market" && /fundo de investimento imobili[aá]rio/i.test(meta.name ?? "");
   const fundClassification = !stock && !fii && (etf || meta.instrumentType === "MUTUALFUND" || /\b(ETF|ETC|UCITS)\b/i.test(meta.name ?? "")) ? classifyFundName(meta.name ?? "") : null;

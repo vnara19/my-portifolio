@@ -81,3 +81,11 @@ test("European history uses historical EUR FX instead of storing EUR values as B
   });
   assert.equal(saved[0].valueBrl.toNumber(), 300);
 });
+
+test("official GPCA11 reference corrects provider equity metadata to a fixed-income ETF", () => {
+  const identity = marketIdentity("br-market", "GPCA11.SAO", metadata("GRAO TEVA ITBR TESOURO IPCA", "EQUITY", "BRL"));
+  assert.equal(identity.instrumentType, "ETF");
+  assert.equal(identity.assetType, "br-etf");
+  assert.equal(identity.exposure, "bond");
+  assert.equal(marketAllocation(identity)[0].assetClass, "Renda Fixa");
+});

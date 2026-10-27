@@ -7,7 +7,7 @@ import { liquidityLabel } from "@/lib/liquidity-labels";
 import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
 import { SavingsForm } from "./savings-form";
 import { InternationalBondForm } from "./international-bond-form";
-import { productType, listingMarket, LEGACY_DEBT_PRODUCTS } from "../presentation/asset-classification";
+import { productType, LEGACY_DEBT_PRODUCTS } from "../presentation/asset-classification";
 import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
@@ -522,7 +522,7 @@ function PositionForm({
                     kind,
                     ticker: symbol,
                     maturityDate,
-                    liquidity: autoLiquidity ?? normalizeLiquidity(liquidity),
+                    liquidity: fixedIncomeEntry ? "No vencimento" : autoLiquidity ?? normalizeLiquidity(liquidity),
                     quoteCheckToken:
                       response?.status === "found" || response?.status === "unavailable" ? response.token : null,
                     manualPriceBrl: needsManualPrice || ownTreasuryPrice ? manualPrice.trim() : null,
@@ -642,7 +642,7 @@ function PositionForm({
         {!editing && catalogAsset ? (
           <div className="mx-5 mt-3 sm:mx-6" data-asset-existing="">
             <StatusLine tone="success">
-              {`${catalogAsset.name} already exists: the position uses this asset and the allocation from its latest position.`}
+              {"Existing asset found. Its saved classification will be used."}
             </StatusLine>
           </div>
         ) : null}
@@ -807,9 +807,10 @@ function PositionForm({
                 ) : null}
 
                 {!editing && !automaticName && !fixedIncomeEntry ? <Field label={"Asset name"}><input aria-label={"Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={"For example, Bank X CDB"} className={inputClass} /></Field> : null}
-                {automaticName && typedName ? <ReadOnly label="Asset" value={typedName} /> : null}
-                {!editing && kind ? <ReadOnly label="Asset Class" value={allocationRows.length ? [...new Set(allocationRows.map((row) => englishLabel(row.assetClass)))].join(" / ") : "Unclassified"} /> : null}
-                {!editing && kind ? <><ReadOnly label="Asset Type" value={productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, fixedIncomeEntry ? fiProduct : null, null, allocationRows[0]?.subclass) || "Select the security to identify its product"} />{listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined) !== "Other Markets" ? <ReadOnly label="Market" value={listingMarket(identity?.assetType ?? kind, baseCurrency ?? undefined)} /> : null}</> : null}
+                {!editing && kind && !fixedIncomeEntry && (identity || automaticName && typedName) ? <div aria-label="Identified asset" className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+                  {typedName ? <p className="font-medium">{typedName.replace(/^ETF\s*[-–:]\s*/i, "")}</p> : null}
+                  <p className="mt-1 text-sm text-muted-foreground">{[productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, null, null, allocationRows[0]?.subclass), ...new Set(allocationRows.map(row => englishLabel(row.assetClass)))].filter(Boolean).join(" · ")}</p>
+                </div> : null}
                 {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
                 {fixedIncomeEntry ? <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -820,9 +821,9 @@ function PositionForm({
                     <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>
                     <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
                     <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
-                    <Field label="Redemption"><Picker aria-label="Redemption" searchable={false} value={liquidity || "No vencimento"} options={[{ value: "No vencimento", label: "At maturity" }, { value: "D+0", label: "Daily liquidity" }]} onValueChange={setLiquidity} /></Field>
+
                   </div>
-                  <p className="text-xs text-muted-foreground">{fiIndexer === "IPCA" ? "Gross reference balance · published IPCA only" : "Gross contractual accrual"}</p>
+
                 </> : null}
                 {purchaseEntry ? <>
                   {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
@@ -853,7 +854,7 @@ function PositionForm({
                     <ReadOnly label="Quote date" value={selectedTreasury.quoteDate.split("-").reverse().join("/")} />
                   </div></details> : null}
                 </> : null}
-                {identity ? <ReadOnly label="Instrument type" value={identity.exposure === "real-estate" ? "Real Estate Fund" : identity.instrumentType.replace("EU_", "").replace("ACAO", "Stock")} /> : null}
+
                 {purchaseEntry && (identity || kind === "crypto") ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
                   <summary className="cursor-pointer text-muted-foreground">Details</summary>
                   <div className="mt-3 flex flex-col gap-4">
