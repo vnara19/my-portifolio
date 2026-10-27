@@ -2,6 +2,8 @@
 const LABELS: Readonly<Record<string, string>> = {
   Caixa: "Cash",
   Cripto: "Cryptocurrency",
+  Crypto: "Cryptocurrency",
+  CRIPTO: "Cryptocurrency",
   "Renda Fixa": "Fixed Income",
   "Renda Variável": "Equities",
   Reserva: "Commodities",

@@ -39,7 +39,7 @@ const MAX_DECIMALS = 8;
 
 const INSTRUMENT_LABELS: Record<string, string> = {
   ACAO: "Stock",
-  CRIPTO: "Crypto",
+  CRIPTO: "Cryptocurrency",
   ETF: "ETF",
   FIAT: "Currency",
 };
@@ -325,26 +325,29 @@ function QuoteRow({
   onChange: (text: string) => void;
 }) {
   const totalChanged = row.changed && !row.invalid && Math.abs(row.previewTotal - row.totalBrl) > 0.005;
+  const symbolLabel = row.symbol.replace(/\.(SAO|SA)$/i, "");
+  const currencyName = row.symbol === "USD" ? "US Dollar" : row.symbol === "EUR" ? "Euro" : null;
+  const assetNames = [...new Set(row.assets.map(name => name.replace(/^ETF\s*[-–:]\s*/i, "").trim()))]
+    .filter(name => name.replace(/\.(SAO|SA)$/i, "").toUpperCase() !== symbolLabel.toUpperCase());
+  const subtitle = currencyName ?? assetNames.join(", ");
 
   return (
     <tr data-testid="quote-row" className="align-top transition-colors duration-150 hover:bg-white/[0.018]">
       <td className="px-4 py-4 pl-5 sm:pl-6">
         <p className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-mono text-sm font-semibold text-foreground">{row.symbol}</span>
+          <span className="font-mono text-sm font-semibold text-foreground">{symbolLabel}</span>
           {row.instrumentType ? (
             <span className="text-[10px] text-muted-foreground">
               {INSTRUMENT_LABELS[row.instrumentType] ?? row.instrumentType}
             </span>
           ) : null}
         </p>
-        <p className="mt-1 max-w-[340px] text-[11px] leading-snug text-muted-foreground">
-          {row.assets.length > 0 ? row.assets.join(", ") : "No positions use this quote"}
+        {subtitle ? <p className="mt-1 max-w-[340px] text-[11px] leading-snug text-muted-foreground">{subtitle}</p> : null}
+        <p className="mt-0.5 text-[10px] text-muted-foreground/80">
+          {row.quantities.length > 0
+            ? `${row.quantities.length} ${row.quantities.length === 1 ? "Position" : "Positions"}`
+            : currencyName ? "Reporting Currency" : "No Active Positions"}
         </p>
-        {row.quantities.length > 0 ? (
-          <p className="mt-0.5 text-[10px] text-muted-foreground/80">
-            {row.quantities.length} {row.quantities.length === 1 ? "position" : "positions"}
-          </p>
-        ) : null}
         <div className="mt-1.5 md:hidden">
           <QuoteOrigin row={row} />
         </div>
