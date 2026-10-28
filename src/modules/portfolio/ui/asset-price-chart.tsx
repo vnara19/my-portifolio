@@ -198,8 +198,7 @@ export function AssetPriceChart({
 
                 return (
                   <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-                    <p className="text-[11px] font-medium text-foreground">{pointLabel(row.point)}</p>
-                    <p className="mt-1 font-mono text-xs text-foreground">
+                    <p className="font-mono text-xs text-foreground">
                       {row.value === null ? "—" : format(row.value)}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">Quote for {dayFormat.format(new Date(row.t))}
