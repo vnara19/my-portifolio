@@ -101,6 +101,7 @@ export type PositionTransactionView = {
   id: string;
   accountId: string;
   accountLabel: string;
+  positionId?: string;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
 
   transferId: string | null;
@@ -493,6 +494,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
       amountBrl: true,
       note: true,
       transferId: true,
+      positionId: true,
       position: {
         select: {
           asset: { select: { assetType: true } },
@@ -506,6 +508,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
 
   return rows.map((row) => ({
     id: row.id,
+    positionId: row.positionId,
     accountId: row.position.accountId,
     accountLabel: "",
     kind: row.kind,

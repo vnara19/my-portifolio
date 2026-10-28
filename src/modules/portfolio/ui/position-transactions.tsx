@@ -46,6 +46,8 @@ function dayLabel(day: string) {
 
 export function PositionTransactions({
   transactions,
+  selectedMonth,
+  defaultPeriod = "all",
   quoted,
   dollars,
   editableMonthId,
@@ -56,7 +58,9 @@ export function PositionTransactions({
   onRemove,
 }: {
   transactions: PositionTransactionView[];
-  editableAccountId: string;
+  selectedMonth?: string;
+  defaultPeriod?: "all" | "month";
+  editableAccountId: string | null;
   showAccountLabels?: boolean;
   quoted: boolean;
   dollars: boolean;
@@ -69,8 +73,11 @@ export function PositionTransactions({
  const { formatBrl, formatPriceBrl } = usePositionMoney();
 
   const [filter, setFilter] = useState<KindFilter>("all");
-  const kinds = new Set(transactions.map(filterKey));
-  const shown = filter === "all" ? transactions : transactions.filter((entry) => filterKey(entry) === filter);
+  const [period, setPeriod] = useState<"all" | "month" | null>(null);
+  const currentPeriod = period ?? defaultPeriod;
+  const inPeriod = currentPeriod === "month" && selectedMonth ? transactions.filter(entry => entry.month === selectedMonth) : transactions;
+  const kinds = new Set(inPeriod.map(filterKey));
+  const shown = filter === "all" ? inPeriod : inPeriod.filter((entry) => filterKey(entry) === filter);
 
   return (
     <CollapsibleSection
@@ -81,7 +88,8 @@ export function PositionTransactions({
       testId="position-transactions-section"
     >
       <div className="px-5 pt-1 pb-5 sm:px-6">
-      {transactions.length > 0 ? <RecordedTotals transactions={transactions} /> : null}
+      {selectedMonth ? <div role="group" aria-label="Transaction period" className="mb-4 flex flex-wrap gap-2">{([{value:"all",label:"All Transactions"},{value:"month",label:monthLabel(selectedMonth)}] as const).map(option=><button key={option.value} type="button" aria-pressed={currentPeriod===option.value} onClick={()=>{setPeriod(option.value);setFilter("all");}} className={cn("rounded-full border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50",currentPeriod===option.value?"border-primary/40 bg-primary/10 text-primary":"border-border text-muted-foreground")}>{option.label}</button>)}</div>:null}
+      {inPeriod.length > 0 ? <RecordedTotals transactions={inPeriod} /> : null}
 
       {transactions.length > 0 ? (
         <div role="group" aria-label="Transaction type" className="mt-4 flex flex-wrap items-center gap-1.5">
@@ -101,7 +109,7 @@ export function PositionTransactions({
               {englishLabel(option.label)}
               {option.key === "all" ? null : (
                 <span className="ml-1.5 font-mono text-[10px] opacity-70">
-                  {transactions.filter((entry) => filterKey(entry) === option.key).length}
+                  {inPeriod.filter((entry) => filterKey(entry) === option.key).length}
                 </span>
               )}
             </button>
@@ -109,7 +117,7 @@ export function PositionTransactions({
         </div>
       ) : null}
 
-      {transactions.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-[11px] text-muted-foreground">No transactions recorded.
         </p>
       ) : (
@@ -123,7 +131,7 @@ export function PositionTransactions({
                 {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "Exchange rate" : "Price"}</th> : null}
                 <th className="py-2 pr-3 text-right">Value</th>
                 <th className="py-2 pr-3">Note</th>
-                <th className="py-2" aria-label="Stocks" />
+                <th className="py-2" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -131,7 +139,7 @@ export function PositionTransactions({
                 const negative = entry.kind === "WITHDRAWAL" || entry.amountBrl < 0;
 
                 const editable =
-                  !entry.automatic && !entry.locked && editableMonthId !== null && entry.monthId === editableMonthId && entry.accountId === editableAccountId;
+                  !isAutomaticIncome(entry) && !entry.locked && Boolean(entry.positionId) && editableMonthId !== null && (editableAccountId === null || entry.accountId === editableAccountId);
 
                 return (
                   <tr key={entry.id} className="border-t border-border/60" data-transaction-kind={entry.kind} data-transaction-filter={filterKey(entry)}>

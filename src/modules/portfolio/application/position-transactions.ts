@@ -1,3 +1,4 @@
+import { purchaseCost, purchaseNote } from "../domain/purchase-cost";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 
@@ -69,6 +70,7 @@ export async function updateTransaction(input: {
   monthId: string;
   transactionId: string;
   transaction: TransactionInput;
+  nativeTrade?: { currency: "BRL" | "USD" | "EUR"; price: string; commission: string; fxBrl: string };
 }) {
   return withUndo(input.monthId, async (transaction, month) => {
     const entry = await findMonthTransaction(transaction, month.id, input.transactionId);
@@ -91,7 +93,18 @@ export async function updateTransaction(input: {
 
     const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
     if ((contract && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
-    const values = parseValues(position, month.referenceDate, kind, input.transaction);
+    let values;
+    if (input.nativeTrade) {
+      if (!position.asset.quoteSymbol || (kind !== "CONTRIBUTION" && kind !== "WITHDRAWAL")) throw new MonthEditError("This transaction is not a trade.");
+      const trade = input.nativeTrade;
+      if (trade.currency === "BRL" && trade.fxBrl !== "1") throw new MonthEditError("BRL transactions use an exchange rate of 1.");
+      const side = kind === "WITHDRAWAL" ? "SELL" : "BUY";
+      const cost = purchaseCost(input.transaction.quantity ?? "", trade.price, trade.commission, trade.fxBrl, side);
+      const suffix = / Treasury .+$/.exec(input.transaction.note ?? "")?.[0] ?? "";
+      const originalNote = input.transaction.note?.replace(/^(?:Purchase|Sale):.*?BRL\/(?:USD|EUR|BRL)\.(?: Invested [A-Z]{3} [\d.]+\.)?(?: Treasury .+)?$/, "").trim();
+      values = { kind, occurredOn: parseOccurredOn(input.transaction.occurredOn, month.referenceDate), quantity: cost.quantity, unitPriceBrl: cost.unitPriceBrl, amountBrl: cost.amountBrl, note: `${purchaseNote({ ...trade, occurredOn: input.transaction.occurredOn, side }, cost.quantity.toString(), trade.fxBrl)}${suffix}${originalNote ? ` ${originalNote}` : ""}` };
+      if (values.note.length > MAX_NOTE_LENGTH) throw new MonthEditError("The corrected trade note is too long. Shorten the note before saving.");
+    } else values = parseValues(position, month.referenceDate, kind, input.transaction);
     await transaction.positionTransaction.update({ where: { id: entry.id }, data: values });
     await recomputePosition(transaction, position.id, "The correction would make the position negative.");
   }, { carryForward: true });

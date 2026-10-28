@@ -1,4 +1,5 @@
 "use client";
+import { SavingsMovementButton } from "./savings-movement-dialog";
 import { positionTitle, showPositionTicker } from "../presentation/position-display";
 
 import { nativeUnitPrice } from "../presentation/position-display";
@@ -610,6 +611,7 @@ function PositionRow({
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
           <td colSpan={COLUMN_COUNT} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
             <PositionDetails position={position} />
+            {position.assetType === "savings" ? <div className="mt-4"><SavingsMovementButton assetId={position.assetId} name={position.assetName} /></div> : null}
           </td>
         </tr>
       ) : null}

@@ -142,7 +142,7 @@ function TransactionForm({
 
   const editDelta = edit ? (edit.kind === "WITHDRAWAL" ? -edit.quantity : edit.quantity) : 0;
   const before = { quantity: (quoted ? target.quantity : target.totalBrl) - editDelta, marketPrice: target.unitPriceBrl };
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(edit ? 1 : 0);
   const [kindSelected, setKindSelected] = useState(Boolean(edit));
   const [modeSelected, setModeSelected] = useState(Boolean(edit));
   const [kind, setKind] = useState<StoredTransactionKind>(edit?.kind ?? "CONTRIBUTION");
@@ -235,7 +235,7 @@ function TransactionForm({
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {edit ? `Correct ${TRANSACTION_LABELS[edit.kind].toLocaleLowerCase("en-GB")}` : `Transactions ${target.assetName}`}
+            {edit ? "Edit Transaction" : `Transactions ${target.assetName}`}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {edit ? `${target.assetName} · ` : ""}
@@ -251,7 +251,7 @@ function TransactionForm({
         </Dialog.Close>
       </header>
 
-      <FlowSteps steps={["Transaction", "Values", "Review"]} current={step} />
+      <FlowSteps steps={edit ? ["Values", "Review"] : ["Transaction", "Values", "Review"]} current={edit ? step - 1 : step} />
       <div className="min-h-[min(20rem,42dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
         {step === 0 ? <>
           <FlowHeading title={edit ? "Which transaction would you like to correct?" : "What happened to this position?"} description="Choose the transaction. The next step adapts to your selection." />
@@ -266,8 +266,8 @@ function TransactionForm({
           </Field>}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span>Balance before the transaction</span><span className="font-mono text-foreground">{formatBrl(marketBefore)}{quoted ? ` · ${formatNumber(before.quantity, 8)} ${unit}` : ""}</span></div>
         </> : step === 1 ? <>
-          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the contribution"}`} description="Enter the details you have. The application calculates the rest and highlights any mismatch." />
-          <Field label="How would you like to enter this?">
+          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description="Enter the details you have. The application calculates the rest and highlights any mismatch." />
+          {edit ? null : <Field label="How would you like to enter this?">
             <Picker
               aria-label="Entry method"
               options={MODE_OPTIONS}
@@ -275,7 +275,8 @@ function TransactionForm({
               onValueChange={(next) => { setMode(next as MovementMode); setModeSelected(true); }}
               placeholder="Choose how to enter values"
             />
-          </Field>
+          </Field>}
+          {edit ? <p className="mt-3 text-sm font-medium">{quoted && kind === "CONTRIBUTION" ? "Buy" : quoted && kind === "WITHDRAWAL" ? "Sell" : kind === "INCOME" ? "Income / Dividend" : TRANSACTION_LABELS[kind]}</p> : null}
           {modeSelected ? <div className="mt-5 space-y-4">
         {mode === "total" ? (
           <div className="space-y-2">
@@ -389,11 +390,11 @@ function TransactionForm({
           data-testid="transaction-preview"
           className="grid gap-4 border-y border-border/60 py-5 sm:grid-cols-3"
         >
-          <PreviewCell title="Before" lines={[quoted ? `${formatNumber(before.quantity, 8)} ${unit}` : null, formatBrl(marketBefore)]} />
+          {edit ? null : <PreviewCell title="Before" lines={[quoted ? `${formatNumber(before.quantity, 8)} ${unit}` : null, formatBrl(marketBefore)]} />}
           <PreviewCell
             title={TRANSACTION_LABELS[plan.kind]}
             tone={plan.kind === "WITHDRAWAL" ? "down" : "up"}
-            note={quoted && plan.quantity && plan.unitPrice ? `${formatPriceBrl(plan.unitPrice)} por ${dollars ? "US dollar" : "unidade"}` : undefined}
+            note={quoted && plan.quantity && plan.unitPrice ? `${formatPriceBrl(plan.unitPrice)} per ${dollars ? "US dollar" : "unit"}` : undefined}
             lines={[
               quoted && plan.quantity
                 ? `${sign}${formatNumber(plan.quantity, 8)} ${unit}`
@@ -403,11 +404,11 @@ function TransactionForm({
               plan.amount ? `${sign}${formatBrl(plan.amount)}` : "—",
             ]}
           />
-          <PreviewCell
+          {edit ? null : <PreviewCell
             title="After"
             lines={[quoted ? `${formatNumber(Math.max(plan.after, 0), 8)} ${unit}` : null, formatBrl(Math.max(marketAfter, 0))]}
             note={quoted ? "using the monthly quote" : undefined}
-          />
+          />}
         </section>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -420,14 +421,14 @@ function TransactionForm({
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border/70 bg-background/30 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
-        <span className="hidden text-[11px] text-muted-foreground sm:inline">Step {step + 1}of 3</span>
+        <span className="hidden text-[11px] text-muted-foreground sm:inline">Step {edit ? step : step + 1} of {edit ? 2 : 3}</span>
 
         <div className="ml-auto flex items-center gap-2">
-          {step === 0 ? <Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close> : <button type="button" onClick={() => setStep(step - 1)} disabled={isSaving} className={secondaryButtonClass}>Back</button>}
+          {step === 0 || (edit && step === 1) ? <Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close> : <button type="button" onClick={() => setStep(step - 1)} disabled={isSaving} className={secondaryButtonClass}>Back</button>}
           {step < 2 ? <button type="button" onClick={() => setStep(step + 1)} disabled={step === 0 ? !kindSelected && !opening : !modeSelected || !canSave} className={primaryButtonClass}>
             {step === 1 ? "Review transaction" : "Continue"}
           </button> : <button type="button" onClick={save} disabled={!canSave} className={primaryButtonClass}>
-            {isSaving ? "Saving…" : edit ? "Save correction" : `Record ${TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("en-GB")}`}
+            {isSaving ? "Saving…" : edit ? "Save Changes" : `Record ${TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("en-GB")}`}
           </button>}
         </div>
       </footer>

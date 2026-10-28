@@ -41,3 +41,28 @@ Unit tests cover marginal tiers, AER conversion, leap-year nominal interest, cen
 Asset detail uses a presentation-only native-currency history: USD for the supported cryptocurrency purchase flow, otherwise the registered BRL/USD/EUR asset currency. Monthly snapshots and dated transactions are converted before replaying average acquisition cost and realized gains. Recorded execution FX takes precedence, then a dated public observation (up to seven days old); a legacy monthly fallback is explicitly approximate. Missing FX makes the affected native view unavailable rather than relabelling BRL or using today's rate. Raw BRL editing/write payloads remain separate and unchanged.
 
 The detail currency provider applies consistently to metrics, chart axes/tooltips, month rows and transactions. The quote chart has one asset currency and retains its period controls and converted purchase markers. Native monthly return excludes recorded capital movements; its percentage uses Modified Dietz dated capital weights. The value-over-time graph remains a balance chart, so purchases increase the balance without being represented as investment return. Monthly balance attribution retains its separate flow bars. Gaps and missing observations do not acquire an invented exact return.
+
+
+### Detail actions and historical corrections
+
+Position details retain Remove for deleting an erroneous reporting-month record.
+Purchases and sales are entered from Positions; detail headers no longer repeat
+Liquidate, Add / Withdraw or Edit Position. Savings movements are opened from the
+expanded Savings row in Positions and load the current owned ledger independently
+of the reporting month being viewed.
+
+Transactions offers All Transactions and the selected reporting month. Selecting a
+month filters the view; it does not restrict correction of manually recorded
+transactions in other months. Corrections use the transaction's own position and
+month identifiers, retain server-side ownership checks and carry quantity changes
+through later months with multi-month Undo. Generated Savings/accrual entries and
+bond-derived records retain their product-specific protections.
+
+Quoted purchase/sale corrections show quantity, native execution price, commission
+and recorded BRL exchange rate. Totals and stored BRL basis are calculated on the
+server using decimal arithmetic; fees are not mistaken for a quantity/price
+mismatch. A historical reference conversion is editable when an actual execution
+rate is available. Dates remain within the transaction's owning reporting month;
+changing a transaction to a different month requires re-entering it in that month.
+No new dividend/coupon entry option is exposed. Existing income history is retained;
+unrecorded cash distributions are excluded from the displayed total return.

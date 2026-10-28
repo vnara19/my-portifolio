@@ -1,4 +1,5 @@
 "use client";
+import { TradeCorrectionDialog } from "./trade-correction-dialog";
 import { investmentMonthReturn } from "../domain/position-money";
 import { usePositionMoney } from "./position-money-context";
 
@@ -10,7 +11,7 @@ import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
 import NumberFlow from "@number-flow/react";
-import { ArrowLeftIcon, ArrowsDownUpIcon, ChartPieSliceIcon, CoinsIcon, HandCoinsIcon, InfoIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeftIcon, ChartPieSliceIcon, CoinsIcon, HandCoinsIcon, InfoIcon, MagnifyingGlassIcon, TrashIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
@@ -21,7 +22,7 @@ import { KpiCard } from "@/components/product/kpi-card";
 import { cn } from "@/lib/utils";
 import type { EditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
-import type { PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
+import type { PositionHistoryView, PositionTransactionView } from "@/modules/portfolio/application/get-position-history";
 import type { HistorySlot, PositionSummary, PresentSlot } from "@/modules/portfolio/domain/position-history";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 
@@ -35,16 +36,14 @@ import { ChangeKpiCard } from "@/modules/portfolio/ui/kpi-card";
 import { PositionAttribution } from "@/modules/portfolio/ui/position-attribution";
 import { PositionEvolutionChart } from "@/modules/portfolio/ui/position-evolution-chart";
 import { MonthHighlights } from "@/modules/portfolio/ui/position-highlights";
-import { PositionFormDialog, type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
+import { type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
 import { PositionMonthsTable } from "@/modules/portfolio/ui/position-months-table";
-import { PositionTransactionDialog, transactionMonthOf, type TransactionEdit } from "@/modules/portfolio/ui/position-transaction-dialog";
-import { SavingsManager } from "./savings-form";
+import { PositionTransactionDialog, transactionMonthOf, type TransactionEdit, type TransactionMonth, type TransactionTarget } from "@/modules/portfolio/ui/position-transaction-dialog";
 import { PositionTransactions } from "@/modules/portfolio/ui/position-transactions";
 import { InternationalBondPanel } from "./international-bond-panel";
 import { CdiPanel } from "@/modules/portfolio/ui/cdi-panel";
 import { ratesLabel } from "@/modules/portfolio/presentation/income-rate";
 import { recordedByMonth } from "@/modules/portfolio/domain/position-transactions";
-import { LiquidationDialog } from "@/modules/portfolio/ui/liquidation-dialog";
 
 const SCOPES = ["todas"] as const;
 
@@ -87,14 +86,13 @@ function PositionDetailContent({
 
 
   const [scopeParam, setScopeParam] = useQueryState("contas", parseAsStringLiteral(SCOPES).withOptions({ shallow: false }));
-  const [form, setForm] = useState({ open: false, key: 0 });
-  const [movement, setMovement] = useState<{ open: boolean; key: number; edit: TransactionEdit | null }>({
+  const [movement, setMovement] = useState<{ open: boolean; key: number; edit: TransactionEdit | null; target?: TransactionTarget; month?: TransactionMonth }>({
     open: false,
     key: 0,
     edit: null,
   });
-  const [liquidation, setLiquidation] = useState({ open: false, key: 0 });
 
+  const [tradeCorrection, setTradeCorrection] = useState<PositionTransactionView | null>(null);
   const [removal, setRemoval] = useState(false);
   const [isDeleting, startDeleting] = useTransition();
   const [isRemoving, startRemoving] = useTransition();
@@ -168,7 +166,7 @@ function PositionDetailContent({
         ? `No position in ${selectedLabel}.`
         : null;
 
-  const canLiquidate = !history.savings && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
+
 
 
   const lastSlot = [...slots].reverse().find((slot): slot is PresentSlot => slot.kind === "present") ?? null;
@@ -260,34 +258,6 @@ function PositionDetailContent({
               : `No position in ${selectedLabel}`}
           </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {canLiquidate ? (
-              <button
-                type="button"
-                onClick={() => setLiquidation((value) => ({ open: true, key: value.key + 1 }))}
-                title={`Full withdrawal on ${selectedLabel}`}
-                className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <HandCoinsIcon aria-hidden="true" size={14} weight="bold" />Liquidate
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => history.savings ? document.getElementById("savings-manager")?.scrollIntoView() : setMovement((value) => ({ open: true, key: value.key + 1, edit: null }))}
-              disabled={editBlocked !== null || Boolean(history.bond)}
-              title={editBlocked ?? `Contribution, withdrawal or return in ${selectedLabel}`}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />Add / Withdraw
-            </button>
-            <button
-              type="button"
-              onClick={() => setForm((value) => ({ open: true, key: value.key + 1 }))}
-              disabled={editBlocked !== null || Boolean(history.bond)}
-              title={editBlocked ?? `Edit the position in ${selectedLabel}`}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />Edit position
-            </button>
             {editBlocked === null ? (
               <button
                 type="button"
@@ -445,19 +415,24 @@ function PositionDetailContent({
         recorded={recordedByMonth(view.transactions)}
       />
 
-      {history.savings && !history.savings.terms.archived ? <><SavingsManager assetId={history.assetId} terms={history.savings.terms} state={history.savings.state} onSaved={notify} />{history.savings.error ? <p role="status" className="mt-3 text-xs text-warning-foreground">{history.savings.error}</p>:null}</> : null}
+
       <PositionTransactions
         transactions={transactions}
+        selectedMonth={history.selectedMonth}
+        defaultPeriod={searchParams.has("mes") ? "month" : "all"}
         quoted={quoted}
         dollars={dollarBalance}
-        editableMonthId={editing && !editing.month.isLocked && !history.bond ? editing.month.id : null}
-        editableAccountId={history.accountId}
+        editableMonthId={!history.bond ? "all" : null}
+        editableAccountId={scope === "all" ? null : history.accountId}
         showAccountLabels={scope === "all"}
         removing={isRemoving}
-        onEdit={(entry) =>
+        onEdit={(entry) => {
+          if (quoted && !dollarBalance && (entry.kind === "CONTRIBUTION" || entry.kind === "WITHDRAWAL")) { setTradeCorrection(entry); return; }
           setMovement((value) => ({
             open: true,
             key: value.key + 1,
+            month: transactionMonthOf(entry.monthId, new Date(`${entry.month}-01T00:00:00Z`)),
+            target: { positionId: entry.positionId!, assetName: history.assetName, quoteSymbol: history.quoteSymbol, quantity: storedHistory?.account.slots.find((s): s is PresentSlot=>s.kind==="present" && s.month===entry.month)?.quantity ?? entry.quantity, unitPriceBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.unitPriceBrl ?? null, totalBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl },
             edit: {
               id: entry.id,
               kind: entry.kind,
@@ -467,8 +442,8 @@ function PositionDetailContent({
               amountBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl,
               note: entry.note,
             },
-          }))
-        }
+          }));
+        }}
         onRemove={(entry) =>
           startRemoving(async () => {
             const result = await removeTransactionAction({ monthId: entry.monthId, transactionId: entry.id });
@@ -477,55 +452,19 @@ function PositionDetailContent({
         }
       />
 
-      {editing && editPosition ? (
-        <LiquidationDialog
-          open={liquidation.open}
-          onOpenChange={(open) => setLiquidation((value) => ({ ...value, open }))}
-          target={{
-            positionId: editPosition.id,
-            assetName: editPosition.assetName,
-            quantity: editPosition.quantity,
-            quoteSymbol: editPosition.quoteSymbol,
-            totalBrl: editPosition.totalBrl,
-          }}
-          formKey={liquidation.key}
-          month={transactionMonthOf(editing.month.id, editing.month.referenceDate, editing.month.label)}
-          onSaved={notify}
-        />
-      ) : null}
-
-      {editing && editPosition ? (
+      {tradeCorrection ? <TradeCorrectionDialog entry={tradeCorrection} original={storedHistory?.transactions.find(t=>t.id===tradeCorrection.id) ?? tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : null}
+      {movement.target && movement.month ? (
         <PositionTransactionDialog
           open={movement.open}
           onOpenChange={(open) => setMovement((value) => ({ ...value, open }))}
-          target={{
-            positionId: editPosition.id,
-            assetName: editPosition.assetName,
-            quoteSymbol: editPosition.quoteSymbol,
-            quantity: editPosition.quantity,
-            unitPriceBrl: editPosition.unitPriceBrl,
-            totalBrl: editPosition.totalBrl,
-            autoIncome: Boolean(editPosition.autoIncome && editPosition.calculationStartDate),
-          }}
+          target={movement.target}
           edit={movement.edit}
           formKey={movement.key}
-          month={transactionMonthOf(editing.month.id, editing.month.referenceDate, editing.month.label)}
+          month={movement.month}
           onSaved={notify}
         />
       ) : null}
 
-      {editing ? (
-        <PositionFormDialog
-          open={form.open}
-          onOpenChange={(open) => setForm((value) => ({ ...value, open }))}
-          target={editPosition ? { mode: "edit", position: editPosition } : null}
-          formKey={form.key}
-          catalog={editing.catalog}
-          month={editing.month}
-          occupied={new Set(editing.occupied)}
-          onSaved={notify}
-        />
-      ) : null}
       {editing && editPosition ? (
         <Dialog.Root open={removal} onOpenChange={(open) => !isDeleting && setRemoval(open)}>
           <Dialog.Portal>
@@ -534,23 +473,10 @@ function PositionDetailContent({
               <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Remove {editPosition.assetName}?
               </Dialog.Title>
 
-              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{editPosition.assetType === "savings" ? "Removes this Savings registration from all reporting months. Use Withdraw Money for an actual withdrawal. Undo is available." : `Deletes this position in ${selectedLabel}.${editPosition.liquidated ? "" : " To close the position while preserving history, liquidate it."}`}</Dialog.Description>
+              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{editPosition.assetType === "savings" ? "Removes this Savings registration from all reporting months. Use Withdraw Money for an actual withdrawal. Undo is available." : `Deletes this position in ${selectedLabel}. Record an actual sale from Positions to preserve its history.`}</Dialog.Description>
               <div className="mt-6 flex flex-wrap justify-end gap-2">
                 <Dialog.Close className={secondaryButtonClass} disabled={isDeleting}>Cancel
                 </Dialog.Close>
-                {editPosition.liquidated || editPosition.assetType === "savings" ? null : (
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={() => {
-                      setRemoval(false);
-                      setLiquidation((value) => ({ open: true, key: value.key + 1 }));
-                    }}
-                    className={cn(secondaryButtonClass, "gap-2")}
-                  >
-                    <HandCoinsIcon aria-hidden="true" size={14} weight="bold" />Liquidate
-                  </button>
-                )}
                 <button
                   type="button"
                   disabled={isDeleting}
