@@ -27,13 +27,12 @@ import type { HistorySlot, PositionSummary, PresentSlot } from "@/modules/portfo
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 
 import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
-import { formatPoints, formatQuantity, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
+import { formatQuantity, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
 import { AssetPriceChart } from "@/modules/portfolio/ui/asset-price-chart";
 import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, handOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { ChangeKpiCard } from "@/modules/portfolio/ui/kpi-card";
-import { PositionAttribution } from "@/modules/portfolio/ui/position-attribution";
 import { PositionEvolutionChart } from "@/modules/portfolio/ui/position-evolution-chart";
 import { MonthHighlights } from "@/modules/portfolio/ui/position-highlights";
 import { type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
@@ -77,7 +76,6 @@ function PositionDetailContent({
   history: PositionHistoryView | null;
   editing: PositionEditing | null;
 }) {
- const { formatBrl } = usePositionMoney();
 
   const history = storedHistory && storedHistory.native ? {...storedHistory,account:storedHistory.native.account,all:storedHistory.all?storedHistory.native.all:null,prices:storedHistory.native.prices} : storedHistory;
   const searchParams = useSearchParams();
@@ -252,11 +250,6 @@ function PositionDetailContent({
           </div>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
-          <p className="font-mono text-xs text-muted-foreground">
-            {current
-              ? formatBrl(current.valueBrl)
-              : `No position in ${selectedLabel}`}
-          </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {editBlocked === null ? (
               <button
@@ -397,7 +390,6 @@ function PositionDetailContent({
             <BalanceChangeChart slots={slots} selectedMonth={history.selectedMonth} scope={scope} />
           </div>
         </section>
-        {!atCost ? <PositionAttribution summary={summary} quoted={quoted || Boolean(history.bond)} /> : null}
       </div>
 
 
@@ -651,7 +643,7 @@ function PositionKpis({
         }
         detail={
           summary.shareChange !== null && summary.previousMonth
-            ? `${formatPoints(summary.shareChange)} since ${monthLabel(summary.previousMonth)}`
+            ? `${summary.shareChange > 0 ? "Up from" : summary.shareChange < 0 ? "Down from" : "Unchanged from"} ${sharePercent.format((current!.share - summary.shareChange) / 100)} in ${monthLabel(summary.previousMonth)}`
             : current
               ? `From ${formatBrl(current.portfolioTotalBrl)} in the portfolio`
               : `No position in ${selectedLabel}`

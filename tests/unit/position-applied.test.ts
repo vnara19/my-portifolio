@@ -64,7 +64,6 @@ test("BRL opening balance and contributions affect cost; returns do not; withdra
 
   assert.equal(present[3].realizedBrl, 5);
   assert.equal(at("2026-04").gainBrl, 10);
-  assert.equal(at("2026-01").startValueBrl, 1000);
   assert.equal(at("2026-04").costSource, "opening");
 });
 

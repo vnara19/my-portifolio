@@ -134,21 +134,10 @@ export type PositionSummary = {
   current: PresentSlot | null;
   shareChange: number | null;
   monthStep: StepHighlight | null;
-  startValueBrl: number | null;
-
-  endValueBrl: number | null;
-  priceGainBrl: number | null;
-  flowsBrl: number | null;
-  changeBrl: number | null;
 
 
-  growthPercent: number | null;
 
-  heldChangeBrl: number | null;
-  heldMonths: number;
-  monthsSinceFirst: number;
-  segments: number;
-  stepCount: number;
+
   best: StepHighlight | null;
   worst: StepHighlight | null;
   averagePriceBrl: number | null;
@@ -160,13 +149,6 @@ export type PositionSummary = {
   appliedBrl?: number | null;
 
   gainBrl?: number | null;
-  attributionSource?: HistorySource;
-  recorded?: RecordedMonth;
-  incomeBrl?: number;
-  capitalizedIncomeBrl?: number;
-  internalBrl?: number;
-  openingBrl?: number;
-  unexplainedBrl?: number;
 };
 
 const EPSILON = 1e-9;
@@ -518,256 +500,48 @@ function mergeRecordedMonths(months: RecordedMonth[]): RecordedMonth {
 
 
 export function summarizeHistory(slots: HistorySlot[], selectedMonth: string, quoted: boolean): PositionSummary {
-  const selectedIndex = slots.findIndex((slot) => slot.month === selectedMonth);
-  const firstIndex = slots.findIndex((slot) => slot.kind === "present");
-  const empty: PositionSummary = {
-    selectedMonth,
-    state: firstIndex === -1 ? "never" : "before",
-    firstMonth: null,
-    lastPresentMonth: null,
-    previousMonth: null,
-    previousPresent: false,
-    current: null,
-    shareChange: null,
-    monthStep: null,
-    startValueBrl: null,
-    endValueBrl: null,
-    priceGainBrl: null,
-    flowsBrl: null,
-    changeBrl: null,
-    growthPercent: null,
-    heldChangeBrl: null,
-    heldMonths: 0,
-    monthsSinceFirst: 0,
-    segments: 0,
-    stepCount: 0,
-    best: null,
-    worst: null,
-    averagePriceBrl: null,
-    costBasisBrl: null,
-  };
-
-  if (selectedIndex === -1 || firstIndex === -1) {
-    return empty;
-  }
-
-  const previousIndex = findLastIndex(slots, selectedIndex - 1, (slot) => slot.kind !== "missing");
+  const selectedIndex = slots.findIndex(slot => slot.month === selectedMonth);
+  const firstIndex = slots.findIndex(slot => slot.kind === "present");
+  const empty: PositionSummary = { selectedMonth, state: firstIndex === -1 ? "never" : "before", firstMonth: null, lastPresentMonth: null, previousMonth: null, previousPresent: false, current: null, shareChange: null, monthStep: null, best: null, worst: null, averagePriceBrl: null, costBasisBrl: null };
+  if (selectedIndex === -1 || firstIndex === -1) return empty;
+  const previousIndex = findLastIndex(slots, selectedIndex - 1, slot => slot.kind !== "missing");
   const previous = previousIndex === -1 ? null : slots[previousIndex];
+  if (firstIndex > selectedIndex) return { ...empty, previousMonth: previous?.month ?? null };
   const selected = slots[selectedIndex];
-
-  if (firstIndex > selectedIndex) {
-    return {
-      ...empty,
-      previousMonth: previous?.month ?? null,
-    };
-  }
-
-  let start: number | null = null;
-  let priceGain = 0;
-  let flows = 0;
-  let growth = 1;
-  let heldChange = 0;
-  let held = 0;
-  let sinceFirst = 0;
-  let segments = 0;
-  let cost = 0;
-  let costQuantity = 0;
+  const present = slots.slice(firstIndex, selectedIndex + 1).filter((slot): slot is PresentSlot => slot.kind === "present");
+  const recorded = present.some(slot => slot.recorded !== null);
+  const current = selected.kind === "present" ? selected : null;
+  const steps = present.flatMap((slot, index) => slot.step && (recorded || index > 0) ? [{ ...slot.step, month: slot.month }] : []);
+  const ranked = [...steps].sort((left, right) => metric(right, quoted) - metric(left, quoted));
+  // Preserve the legacy average-price calculation; it is shared with the price chart.
+  let cost = 0, costQuantity = 0;
+  let initialized = false;
   let lastPresent: PresentSlot | null = null;
-  const steps: StepHighlight[] = [];
-
-  for (const slot of slots.slice(firstIndex, selectedIndex + 1)) {
-    if (slot.kind === "missing") {
-      continue;
-    }
-
-    sinceFirst += 1;
-
-    if (slot.kind === "absent") {
-      if (slot.exitBrl !== null) {
-        flows += slot.exitBrl;
-        cost = 0;
-        costQuantity = 0;
-      }
-
-      continue;
-    }
-
-    held += 1;
-
-    if (start === null) {
-      start = slot.valueBrl;
-      segments = 1;
-      cost = slot.valueBrl;
-      costQuantity = slot.quantity;
-    } else if (slot.entryBrl !== null) {
-      flows += slot.entryBrl;
-      segments += 1;
-      cost = slot.valueBrl;
-      costQuantity = slot.quantity;
-    } else if (slot.step && lastPresent) {
-      steps.push({ ...slot.step, month: slot.month });
-      heldChange += slot.step.changeBrl;
-
-      if (quoted && slot.step.priceEffectBrl !== null && slot.step.flowBrl !== null) {
-        priceGain += slot.step.priceEffectBrl;
-        flows += slot.step.flowBrl;
-      } else {
-        flows += slot.step.changeBrl;
-      }
-
-      const ratio = quoted
-        ? lastPresent.priceBrl && slot.priceBrl !== null
-          ? slot.priceBrl / lastPresent.priceBrl
-          : null
-        : Math.abs(lastPresent.valueBrl) > EPSILON
-          ? slot.valueBrl / lastPresent.valueBrl
-          : null;
-
-      if (ratio !== null) {
-        growth *= ratio;
-      }
-
-
+  if (!recorded) for (const slot of slots.slice(firstIndex, selectedIndex + 1)) {
+    if (slot.kind === "absent") { if (slot.exitBrl !== null) { cost = 0; costQuantity = 0; } continue; }
+    if (slot.kind !== "present") continue;
+    if (!initialized || slot.entryBrl !== null) { initialized = true; cost = slot.valueBrl; costQuantity = slot.quantity; }
+    else if (slot.step && lastPresent) {
       const delta = slot.quantity - costQuantity;
-
-      if (delta > EPSILON && slot.priceBrl !== null) {
-        cost += delta * slot.priceBrl;
-      } else if (delta < -EPSILON && costQuantity > EPSILON) {
-        cost -= (cost / costQuantity) * -delta;
-      }
-
+      if (delta > EPSILON && slot.priceBrl !== null) cost += delta * slot.priceBrl;
+      else if (delta < -EPSILON && costQuantity > EPSILON) cost -= cost / costQuantity * -delta;
       costQuantity = slot.quantity;
     }
-
     lastPresent = slot;
   }
-
-  const current = selected.kind === "present" ? selected : null;
-  const end = current ? current.valueBrl : 0;
-  const ranked = [...steps].sort((left, right) => metric(right, quoted) - metric(left, quoted));
-  const previousPresent = previous?.kind === "present";
-
-  const summary: PositionSummary = {
-    selectedMonth,
-    state: current ? "present" : "absent",
-    firstMonth: slots[firstIndex].month,
-    lastPresentMonth: lastPresent?.month ?? null,
-    previousMonth: previous?.month ?? null,
-    previousPresent,
-    current,
-    shareChange:
-      current && previous && previous.kind === "present" ? current.share - previous.share : null,
-    monthStep: current?.step ? { ...current.step, month: current.month } : null,
-    startValueBrl: start,
-    endValueBrl: end,
-    priceGainBrl: quoted ? roundCents(priceGain) : null,
-    flowsBrl: quoted ? roundCents(flows) : null,
-    changeBrl: start === null ? null : roundCents(end - start),
-    growthPercent: steps.length === 0 ? null : (growth - 1) * 100,
-    heldChangeBrl: steps.length === 0 ? null : roundCents(heldChange),
-    heldMonths: held,
-    monthsSinceFirst: sinceFirst,
-    segments,
-    stepCount: steps.length,
-    best: ranked.length >= 2 ? ranked[0] : null,
-    worst: ranked.length >= 2 ? ranked.at(-1)! : null,
-    averagePriceBrl:
-      quoted && current && costQuantity > EPSILON ? cost / costQuantity : null,
-    costBasisBrl: quoted && current ? roundCents(cost) : null,
-  };
-
-  return withRecordedSummary(summary, slots.slice(firstIndex, selectedIndex + 1), quoted);
-}
-
-
-function withRecordedSummary(summary: PositionSummary, slots: HistorySlot[], quoted: boolean): PositionSummary {
-  const present = slots.filter((slot): slot is PresentSlot => slot.kind === "present");
-  const recordedSlots = present.filter((slot) => slot.recorded !== null);
-  const current = summary.current;
   const applied = current?.appliedBrl ?? null;
-  const gain = current?.gainBrl ?? null;
-  if (recordedSlots.length === 0) {
-    return { ...summary, costSource: "estimated", attributionSource: "estimated", appliedBrl: applied, gainBrl: gain };
-  }
-
-  const recorded = mergeRecordedMonths(recordedSlots.map((slot) => slot.recorded!));
-  const first = present[0];
-  const firstBase = first.openingQuantity ?? first.quantity - (first.recorded?.quantityDelta ?? 0) - (first.recorded?.openingQuantity ?? 0);
-  const start = first.recorded
-    ? (quoted ? firstBase * (first.priceBrl ?? 0) : firstBase) + first.recorded.openingBrl
-    : first.valueBrl;
-  let priceGain = 0;
-  let flows = 0;
-  let internal = 0;
-  let capitalizedIncome = 0;
-  let openings = 0;
-  let segments = 0;
-  let outside = true;
-  const steps: StepHighlight[] = [];
-
-  for (const slot of slots) {
-    if (slot.kind === "absent") {
-      flows += slot.exitBrl ?? 0;
-      outside = true;
-      continue;
-    }
-    if (slot.kind !== "present") {
-      continue;
-    }
-    if (outside) {
-      segments += 1;
-      outside = false;
-    }
-    if (slot.entryBrl !== null) {
-      flows += slot.entryBrl;
-    }
-    if (!slot.step) {
-      continue;
-    }
-    const step = slot.step;
-    priceGain += step.priceEffectBrl ?? 0;
-    flows += step.flowBrl ?? 0;
-    internal += step.internalBrl ?? 0;
-    capitalizedIncome += step.capitalizedIncomeBrl ?? 0;
-    openings += step.openingBrl ?? 0;
-    if (slot !== first && slot.recorded && step.fromMonth === slot.month) {
-
-      const base = slot.openingQuantity ?? slot.quantity - slot.recorded.quantityDelta - slot.recorded.openingQuantity;
-      openings += (quoted ? base * (slot.priceBrl ?? 0) : base) + slot.recorded.openingBrl;
-    }
-    steps.push({ ...step, month: slot.month });
-  }
-
-  const end = summary.endValueBrl ?? 0;
-  const ranked = [...steps].sort((left, right) => metric(right, quoted) - metric(left, quoted));
   const units = current?.appliedUnits ?? 0;
   return {
-    ...summary,
-    startValueBrl: roundCents(start),
-    priceGainBrl: quoted ? roundCents(priceGain) : 0,
-    flowsBrl: roundCents(flows),
-    incomeBrl: recorded.incomeBrl,
-    capitalizedIncomeBrl: roundCents(capitalizedIncome),
-    internalBrl: roundCents(internal),
-    openingBrl: roundCents(openings),
-
-
-    unexplainedBrl: roundCents(end - start - priceGain - flows - internal - capitalizedIncome - openings),
-    changeBrl: roundCents(end - start),
-    growthPercent: quoted ? summary.growthPercent : null,
-    stepCount: steps.length,
-    segments,
-    best: ranked.length >= 2 ? ranked[0] : null,
-    worst: ranked.length >= 2 ? ranked.at(-1)! : null,
-    attributionSource: present.every((slot) => slot.source === "recorded") ? "recorded" : "mixed",
-    recorded,
-
-
-    costSource: current?.appliedFromOpening ? "opening" : "known",
-    averagePriceBrl: quoted && current && applied !== null && units > QUANTITY_TOLERANCE ? applied / units : null,
-    costBasisBrl: quoted && current ? applied : null,
-    appliedBrl: applied,
-    gainBrl: gain,
+    selectedMonth, state: current ? "present" : "absent", firstMonth: slots[firstIndex].month,
+    lastPresentMonth: present.at(-1)?.month ?? null, previousMonth: previous?.month ?? null,
+    previousPresent: previous?.kind === "present", current,
+    shareChange: current && previous?.kind === "present" ? current.share - previous.share : null,
+    monthStep: current?.step ? { ...current.step, month: current.month } : null,
+    best: ranked.length >= 2 ? ranked[0] : null, worst: ranked.length >= 2 ? ranked.at(-1)! : null,
+    averagePriceBrl: recorded ? (quoted && applied !== null && units > QUANTITY_TOLERANCE ? applied / units : null) : quoted && current && costQuantity > EPSILON ? cost / costQuantity : null,
+    costBasisBrl: quoted && current ? (recorded ? applied : roundCents(cost)) : null,
+    costSource: !recorded ? "estimated" : current?.appliedFromOpening ? "opening" : "known",
+    appliedBrl: applied, gainBrl: current?.gainBrl ?? null,
   };
 }
 

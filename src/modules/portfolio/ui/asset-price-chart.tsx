@@ -133,7 +133,7 @@ export function AssetPriceChart({
         </li>
         {averagePriceBrl !== null && activeCurrency === "BRL" ? (
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="w-3.5 border-t border-dashed border-warning-foreground" />
+            <span className="w-3.5 border-t border-dashed border-[#cc79a7]" />
             {averageLabel}
           </li>
         ) : null}
@@ -181,7 +181,7 @@ export function AssetPriceChart({
             {averagePriceBrl !== null && activeCurrency === "BRL" ? (
               <ReferenceLine
                 y={averagePriceBrl}
-                stroke="var(--warning-foreground)"
+                stroke="#cc79a7"
                 strokeOpacity={0.7}
                 strokeDasharray="5 4"
                 ifOverflow="extendDomain"

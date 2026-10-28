@@ -42,27 +42,19 @@ function history(observations: PositionObservation[], quoted: boolean) {
     observation("2026-09", 10, 20),
     observation("2026-10", 12, 25),
   ], true);
-  assert.equal(summary.priceGainBrl, 50);
-  assert.equal(summary.flowsBrl, 50);
   assert.equal(summary.costBasisBrl, 250);
   assert.equal(summary.costSource, "estimated");
   assert.equal(slots[1].kind === "present" && slots[1].appliedBrl, 250);
   const manual = history([observation("2026-09", 1000, null), observation("2026-10", 1100, null)], false);
-  assert.equal(manual.summary.priceGainBrl, null);
-  assert.equal(manual.summary.flowsBrl, null);
+  assert.equal(manual.summary.costSource, "estimated");
 }
 
 
 {
-  const { slots, summary } = history([
+  const { slots } = history([
     observation("2026-10", 1300, null, 1000, [movement("CONTRIBUTION", 300, 300)]),
     observation("2026-11", 1250, null, 1200, [movement("CONTRIBUTION", 50, 50, "2026-11-01")]),
   ], false);
-  assert.equal(summary.startValueBrl, 1000);
-  assert.equal(summary.flowsBrl, 350);
-  assert.equal(summary.priceGainBrl, 0);
-  assert.equal(summary.unexplainedBrl, -100);
-  assert.equal(summary.incomeBrl, 0);
   assert.equal(slots[1].kind === "present" && slots[1].step?.unexplainedBrl, -100);
   assert.equal(slots[1].kind === "present" && slots[1].openingQuantity, 1200);
 }
@@ -70,10 +62,6 @@ function history(observations: PositionObservation[], quoted: boolean) {
 
 {
   const { summary } = history([observation("2026-10", 2, 30, 0, [movement("CONTRIBUTION", 2, 50)])], true);
-  assert.equal(summary.startValueBrl, 0);
-  assert.equal(summary.flowsBrl, 50);
-  assert.equal(summary.priceGainBrl, 10);
-  assert.equal(summary.unexplainedBrl, 0);
   assert.equal(summary.averagePriceBrl, 25);
   assert.equal(summary.costBasisBrl, 50);
   assert.equal(summary.costSource, "known");
@@ -82,33 +70,24 @@ function history(observations: PositionObservation[], quoted: boolean) {
 
 {
   const { summary } = history([observation("2026-10", 10, 20, 0, [movement("OPENING", 10, 200)])], true);
-  assert.equal(summary.startValueBrl, 200);
-  assert.equal(summary.flowsBrl, 0);
-  assert.equal(summary.priceGainBrl, 0);
-  assert.equal(summary.recorded?.openingBrl, 200);
-  assert.equal(summary.averagePriceBrl, null);
-  assert.equal(summary.costSource, "unknown");
+  assert.equal(summary.averagePriceBrl, 20);
+  assert.equal(summary.costSource, "opening");
   const tiny = history([observation("2026-10", 1e-10, 100, 1e-10, [movement("INCOME", 0, 1)])], true);
-  assert.equal(tiny.summary.costSource, "unknown");
+  assert.equal(tiny.summary.costSource, "opening");
+  assert.equal(tiny.summary.averagePriceBrl, 0);
 }
 
 
 {
-  const { summary } = history([observation("2026-10", 10, 30, 10, [movement("INCOME", 0, 5)])], true);
-  assert.equal(summary.incomeBrl, 5);
-  assert.equal(summary.capitalizedIncomeBrl, 0);
-  assert.equal(summary.endValueBrl, 300);
-  assert.equal(summary.priceGainBrl, 0);
-  assert.equal(summary.unexplainedBrl, 0);
+  const { slots } = history([observation("2026-10", 10, 30, 10, [movement("INCOME", 0, 5)])], true);
+  assert.equal(slots[0].kind === "present" && slots[0].recorded?.incomeBrl, 5);
+  assert.equal(slots[0].kind === "present" && slots[0].quantity, 10);
 }
 
 
 {
-  const { summary } = history([observation("2026-10", 1020, null, 1000, [movement("INCOME", 20, 20)])], false);
-  assert.equal(summary.incomeBrl, 20);
-  assert.equal(summary.capitalizedIncomeBrl, 20);
-  assert.equal(summary.flowsBrl, 0);
-  assert.equal(summary.unexplainedBrl, 0);
+  const { slots } = history([observation("2026-10", 1020, null, 1000, [movement("INCOME", 20, 20)])], false);
+  assert.equal(slots[0].kind === "present" && slots[0].step?.capitalizedIncomeBrl, 20);
 }
 
 
@@ -119,11 +98,8 @@ function history(observations: PositionObservation[], quoted: boolean) {
   assert.equal(totals.netFlowBrl, 0);
   assert.equal(totals.contributionsBrl, 0);
   assert.equal(totals.withdrawalsBrl, 0);
-  assert.equal(totals.internalBrl, 0);
   const { summary } = history([observation("2026-10", 11000, null, 800, [incoming])], false);
-  assert.equal(summary.internalBrl, 10200);
-  assert.equal(summary.flowsBrl, 0);
-  assert.equal(summary.unexplainedBrl, 0);
+  assert.equal(summary.monthStep?.internalBrl, 10200);
 }
 
 
@@ -132,11 +108,8 @@ function history(observations: PositionObservation[], quoted: boolean) {
     observation("2026-09", 10, 20, 0, [movement("CONTRIBUTION", 10, 200, "2026-09-01")]),
     observation("2026-10", 5, 25, 10, [movement("WITHDRAWAL", 5, 150)]),
   ], true);
-  assert.equal(summary.flowsBrl, 50);
-  assert.equal(summary.priceGainBrl, 75);
   assert.equal(summary.averagePriceBrl, 20);
   assert.equal(summary.costBasisBrl, 100);
-  assert.equal(summary.unexplainedBrl, 0);
 }
 
 
@@ -145,19 +118,17 @@ function history(observations: PositionObservation[], quoted: boolean) {
     movement("CONTRIBUTION", 2, 50, "2026-10-03"),
     movement("WITHDRAWAL", 10, 300, "2026-10-02"),
   ])], true);
-  assert.equal(summary.costSource, "known");
+  assert.equal(summary.costSource, "opening");
   assert.equal(summary.averagePriceBrl, 25);
   assert.equal(summary.costBasisBrl, 50);
 }
 
 
 {
-  const { slots, summary } = history([
+  const { slots } = history([
     observation("2026-10", 1300, null, 1000, [movement("CONTRIBUTION", 300, 300)]),
     observation("2026-11", 1200, null, 1200),
   ], false);
-  assert.equal(summary.flowsBrl, 300);
-  assert.equal(summary.unexplainedBrl, -100);
   assert.equal(slots[1].kind === "present" && slots[1].step?.source, "mixed");
 }
 

@@ -66,3 +66,18 @@ rate is available. Dates remain within the transaction's owning reporting month;
 changing a transaction to a different month requires re-entering it in that month.
 No new dividend/coupon entry option is exposed. Existing income history is retained;
 unrecorded cash distributions are excluded from the displayed total return.
+
+
+### Detail chart simplification
+
+The detail header does not duplicate the Position Value KPI. Sources of Change and
+its cumulative waterfall summary calculations have been removed. Monthly steps,
+dated capital flows, cost replay and return calculations remain shared by the
+remaining charts, Month By Month and Transactions. Existing recorded income is
+preserved; no new dividend/coupon entry option is added.
+
+Portfolio Weight compares against the preceding reporting month using its actual
+percentage (for example, Up from 15.1% in Sept/26), avoiding a misleading percent
+label for a percentage-point difference. On the price chart, the dashed average
+purchase-price line is purple; purchase dots remain blue and withdrawal dots
+remain orange, with the existing legend entries unchanged.

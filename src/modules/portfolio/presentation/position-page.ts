@@ -65,15 +65,7 @@ export function formatSignedBrl(value: number) {
 }
 
 
-export function formatPoints(value: number) {
-  const formatted = new Intl.NumberFormat("en-GB", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-    signDisplay: "exceptZero",
-  }).format(value);
 
-  return `${formatted} p.p.`;
-}
 
 
 export function formatEstimatedPrice(value: number) {
