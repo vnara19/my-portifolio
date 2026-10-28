@@ -45,7 +45,7 @@ export function PositionMonthsTable({
   return (
     <CollapsibleSection
       id="months"
-      title="Month by Month"
+      title="Month By Month"
       summary={`${presentCount} ${presentCount === 1 ? "reporting month" : "reporting months"}`}
       testId="position-months-section"
     >

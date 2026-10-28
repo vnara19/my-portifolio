@@ -138,7 +138,7 @@ function PositionDetailContent({
   const view = scope === "all" && history.all ? history.all : history.account;
   const { slots, summary } = view;
   const performances = slots.flatMap((slot,index)=>{
-    if(slot.kind!=="present" || !slot.step)return [];
+    if(slot.kind!=="present" || !slot.step || slot.month>history.selectedMonth)return [];
     const previous=slots[index-1];
     const result=investmentMonthReturn(slot,previous?.kind==="present"?previous.valueBrl:null);
     return result.amount===null?[]:[{...slot.step,month:slot.month,changeBrl:result.amount,changePercent:result.percent,pricePercent:result.percent}];
