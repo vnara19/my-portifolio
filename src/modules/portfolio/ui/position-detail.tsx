@@ -382,7 +382,7 @@ function PositionDetailContent({
         </section>
       ) : null}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2 [&>*]:min-w-0">
+      <div className="mt-6 grid grid-cols-1 gap-6 [&>*]:min-w-0">
         <section className="premium-panel rounded-[24px] p-5 sm:p-7" aria-labelledby="balance-change-title">
           <h2 id="balance-change-title" className="text-base font-semibold tracking-[-0.025em]">Monthly Balance Change
           </h2>
