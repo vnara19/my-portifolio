@@ -26,7 +26,7 @@ import type { HistorySlot, PositionSummary, PresentSlot } from "@/modules/portfo
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 
 import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
-import { formatPoints, formatQuantity, formatUsd, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
+import { formatPoints, formatQuantity, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
 import { AssetPriceChart } from "@/modules/portfolio/ui/asset-price-chart";
 import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
@@ -169,7 +169,6 @@ function PositionDetailContent({
         : null;
 
   const canLiquidate = !history.savings && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
-  const usdValue = null;
 
 
   const lastSlot = [...slots].reverse().find((slot): slot is PresentSlot => slot.kind === "present") ?? null;
@@ -249,7 +248,7 @@ function PositionDetailContent({
               <span
                 data-testid="position-liquidity"
                 className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
-              >Liquidity <span className="font-mono text-foreground/85">{liquidityLabel(history.liquidity)}</span>
+              >Liquidity · <span className="whitespace-nowrap text-foreground/85">{liquidityLabel(history.liquidity)}</span>
               </span>
             ) : null}
           </div>
@@ -359,7 +358,7 @@ function PositionDetailContent({
         </div>
       ) : null}
 
-      {storedHistory?.native?.error ? <p role="status" className="mt-5 text-sm text-warning-foreground">{storedHistory.native.error}</p> : storedHistory?.native?.estimated ? <p role="status" className="mt-5 text-xs text-muted-foreground">Some older transactions use monthly exchange rates. Their converted cost is approximate.</p> : null}
+      {storedHistory?.native?.error ? <p role="status" className="mt-5 text-sm text-warning-foreground">{storedHistory.native.error}</p> : null}
       <div className="mt-7">
         <PositionKpis
           costReturn={costReturn}
@@ -368,7 +367,7 @@ function PositionDetailContent({
           quoted={quoted}
           quoteSymbol={history.quoteSymbol}
           ticker={history.ticker}
-          usdValue={usdValue}
+          approximateCost={storedHistory?.native?.estimated ?? false}
           selectedLabel={selectedLabel}
           firstEver={firstEver}
           dollarBalance={dollarBalance}
@@ -591,7 +590,7 @@ function PositionKpis({
   quoted,
   quoteSymbol,
   ticker,
-  usdValue,
+  approximateCost,
   selectedLabel,
   firstEver,
   dollarBalance,
@@ -602,12 +601,12 @@ function PositionKpis({
   quoted: boolean;
   quoteSymbol: string | null;
   ticker: string | null;
-  usdValue: number | null;
+  approximateCost: boolean;
   selectedLabel: string;
   firstEver: string | null;
   dollarBalance: boolean;
 }) {
- const { formatBrl, formatPriceBrl, formatSignedBrl, formatEstimatedPrice, currency } = usePositionMoney();
+ const { formatBrl, formatSignedBrl, formatEstimatedPrice, currency } = usePositionMoney();
 
   const current = summary.current;
   const step = summary.monthStep;
@@ -644,11 +643,7 @@ function PositionKpis({
         detail={
           absent ??
           liquidatedOn ??
-          (quoted && current!.priceBrl !== null
-            ? `${formatQuantity(current!.quantity, quoteSymbol, ticker)} × ${formatPriceBrl(current!.priceBrl)}`
-            : usdValue !== null
-              ? `US$ ${formatUsd(usdValue)}`
-              : `${currency} balance`)
+          (quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
         }
       />
 
@@ -668,7 +663,7 @@ function PositionKpis({
         detail={
           absent ??
           (quoted && average !== null ? (
-            <span data-testid="position-average-price" title={averagePriceLabel(summary.costSource, dollarBalance)}>
+            <span data-testid="position-average-price" title={approximateCost ? "Converted using monthly exchange rates where dated execution FX is unavailable." : averagePriceLabel(summary.costSource, dollarBalance)}>
               {dollarBalance ? "Average Exchange Rate" : "Average Purchase Price"} {formatEstimatedPrice(average)}
             </span>
           ) : firstEver ? (
