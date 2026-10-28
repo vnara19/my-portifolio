@@ -1,3 +1,4 @@
+import { nativeHistory, datedFx, type MoneyCurrency } from "../domain/position-money";
 import { readSavings, type Savings, type SavingsCalculation } from "../domain/savings";
 import { savingsState } from "./savings";
 import { readInternationalBond, type InternationalBond } from "../domain/international-bond";
@@ -40,6 +41,8 @@ export type OtherAccountHolding = {
 export type PositionHistoryView = {
   accountId: string;
   assetId: string;
+  displayCurrency?: MoneyCurrency;
+  native?: { account: PositionScopeView; all: PositionScopeView; prices: PriceHistory | null; estimated: boolean; error?: string };
   assetName: string;
   ticker: string | null;
   quoteSymbol: string | null;
@@ -146,6 +149,7 @@ export async function getPositionHistory({
           ticker: true,
           quoteSymbol: true,
           baseCurrency: true,
+          assetType: true,
           maturityDate: true,
           liquidity: true,
           autoIncome: true,
@@ -274,7 +278,21 @@ export async function getPositionHistory({
     const lastDay = lastDayOf(selected.referenceDate);
     const usdQuote = (await readMonthQuoteValues(prisma, selected.referenceDate, ["USD"])).get("USD");
 
+    const displayCurrency: MoneyCurrency = asset.assetType === "crypto" ? "USD" : asset.baseCurrency === "EUR" ? "EUR" : asset.baseCurrency === "USD" ? "USD" : "BRL";
+    const prices = asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null;
+    let native: PositionHistoryView["native"];
+    if(displayCurrency !== "BRL") {
+      const [fxSeries, daily] = await Promise.all([readQuoteSeries(prisma,[displayCurrency]), prisma.dailyQuote.findMany({where:{symbol:displayCurrency},orderBy:{quoteDate:"asc"},select:{quoteDate:true,valueBrl:true}})]);
+      const monthly=new Map(fxSeries.map(p=>[monthKey(p.referenceDate),p.valueBrl.toNumber()]));
+      const dailyFx=daily.map(p=>({day:toDateKey(p.quoteDate),rate:p.valueBrl.toNumber()}));
+      try {
+        const converted=nativeHistory({currency:displayCurrency,observations,months:monthTotals,transactions,monthly,daily:dailyFx,accountId,selectedMonth,quoted});
+        const nativePrices=prices?{...prices,points:prices.points.flatMap(point=>{const fx=datedFx(point.day,null,displayCurrency,dailyFx,monthly);return fx?[{...point,valueBrl:point.valueBrl/fx.rate,valueUsd:null}]:[];})}:null;
+        native={...converted,prices:nativePrices};
+      }catch(error){native={account:{slots:[],summary:summarizeHistory([],selectedMonth,quoted),transactions:[]},all:{slots:[],summary:summarizeHistory([],selectedMonth,quoted),transactions:[]},prices:null,estimated:false,error:error instanceof Error?error.message:"Historical currency conversion is unavailable."};}
+    }
     return {
+      displayCurrency, native,
       accountId,
       assetId,
       assetName: asset.name,
@@ -291,7 +309,7 @@ export async function getPositionHistory({
       otherAccounts: [...others.values()],
       account: scope(accountId),
       all: others.size > 0 ? scope(null) : null,
-      prices: asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null,
+      prices,
       history: asset.quoteSymbol ? await readHistoryState(asset.quoteSymbol) : null,
       transactions: transactions.filter((entry) => entry.accountId === accountId),
       savings: readSavings(asset.fixedIncomeContract) ? await (async()=>{const terms=readSavings(asset.fixedIncomeContract)!;try{return {terms,state:await savingsState(prisma,terms,toDateKey(new Date(Math.min(+today,+lastDayOf(selected.referenceDate)))))};}catch(error){return{terms,state:null,error:error instanceof Error?error.message:"Savings could not be calculated."};}})() : undefined,

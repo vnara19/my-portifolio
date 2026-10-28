@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -7,8 +8,8 @@ import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YA
 
 import { cn } from "@/lib/utils";
 import type { PositionSummary } from "@/modules/portfolio/domain/position-history";
-import { formatBrl } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatSignedBrl, monthLabel } from "@/modules/portfolio/presentation/position-page";
+
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type Mode = "since-entry" | "month";
@@ -30,6 +31,8 @@ const FLOW_COLOR = "#cc79a7";
 
 
 export function PositionAttribution({ summary, quoted }: { summary: PositionSummary; quoted: boolean }) {
+ const { formatBrl, formatSignedBrl } = usePositionMoney();
+
   const [mode, setMode] = useState<Mode>("since-entry");
   const touch = useTouchTooltip();
   const bars = mode === "since-entry" ? sinceEntryBars(summary, quoted) : monthBars(summary, quoted);
@@ -43,7 +46,7 @@ export function PositionAttribution({ summary, quoted }: { summary: PositionSumm
   return (
     <section className="premium-panel @container rounded-[24px] p-5 sm:p-7" aria-labelledby="attribution-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="attribution-title" className="text-base font-semibold tracking-[-0.025em]">Sources of change
+        <h2 id="attribution-title" className="text-base font-semibold tracking-[-0.025em]">Sources of Change
         </h2>
         <div role="group" aria-label="Attribution period" className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
           {(

@@ -1,5 +1,8 @@
 "use client";
+import { investmentMonthReturn } from "../domain/position-money";
+import { usePositionMoney } from "./position-money-context";
 
+import { PositionMoneyProvider } from "./position-money-context";
 import { liquidityLabel } from "@/lib/liquidity-labels";
 import { bondCostReturn } from "../domain/international-bond";
 
@@ -7,30 +10,13 @@ import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
 import NumberFlow from "@number-flow/react";
-import {
-  ArrowLeftIcon,
-  ArrowsDownUpIcon,
-  ChartPieSliceIcon,
-  CoinsIcon,
-  HandCoinsIcon,
-  InfoIcon,
-  MagnifyingGlassIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-  TrendDownIcon,
-  TrendUpIcon,
-} from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeftIcon, ArrowsDownUpIcon, ChartPieSliceIcon, CoinsIcon, HandCoinsIcon, InfoIcon, MagnifyingGlassIcon, PencilSimpleIcon, TrashIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { useCallback, useRef, useState, useTransition } from "react";
 
-import {
-  removePositionAction,
-  removeTransactionAction,
-  undoChangeAction,
-  type EditActionResult,
-} from "@/app/actions/edit-month";
+import { removePositionAction, removeTransactionAction, undoChangeAction, type EditActionResult } from "@/app/actions/edit-month";
 import { KpiCard } from "@/components/product/kpi-card";
 import { cn } from "@/lib/utils";
 import type { EditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
@@ -38,22 +24,9 @@ import type { MonthPosition } from "@/modules/portfolio/application/get-month-po
 import type { PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
 import type { HistorySlot, PositionSummary, PresentSlot } from "@/modules/portfolio/domain/position-history";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
-import {
-  formatBrl,
-  formatPriceBrl,
-} from "@/modules/portfolio/presentation/portfolio-format";
+
 import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
-import {
-  formatEstimatedPrice,
-  formatPoints,
-  formatQuantity,
-  formatSignedBrl,
-  formatUsd,
-  monthLabel,
-  monthRangeLabel,
-  positionHref,
-  positionsTableHref,
-} from "@/modules/portfolio/presentation/position-page";
+import { formatPoints, formatQuantity, formatUsd, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
 import { AssetPriceChart } from "@/modules/portfolio/ui/asset-price-chart";
 import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
@@ -64,11 +37,7 @@ import { PositionEvolutionChart } from "@/modules/portfolio/ui/position-evolutio
 import { MonthHighlights } from "@/modules/portfolio/ui/position-highlights";
 import { PositionFormDialog, type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
 import { PositionMonthsTable } from "@/modules/portfolio/ui/position-months-table";
-import {
-  PositionTransactionDialog,
-  transactionMonthOf,
-  type TransactionEdit,
-} from "@/modules/portfolio/ui/position-transaction-dialog";
+import { PositionTransactionDialog, transactionMonthOf, type TransactionEdit } from "@/modules/portfolio/ui/position-transaction-dialog";
 import { SavingsManager } from "./savings-form";
 import { PositionTransactions } from "@/modules/portfolio/ui/position-transactions";
 import { InternationalBondPanel } from "./international-bond-panel";
@@ -79,7 +48,7 @@ import { LiquidationDialog } from "@/modules/portfolio/ui/liquidation-dialog";
 
 const SCOPES = ["todas"] as const;
 
-const brlWhole = new Intl.NumberFormat("en-GB", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
 const signedPercent = new Intl.NumberFormat("en-GB", {
   style: "percent",
   maximumFractionDigits: 2,
@@ -99,13 +68,19 @@ export type PositionEditing = {
   catalog: EditingCatalog;
 };
 
-export function PositionDetail({
-  history,
+export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null}) {
+  return <PositionMoneyProvider currency={props.history?.displayCurrency ?? "BRL"}><PositionDetailContent {...props} /></PositionMoneyProvider>;
+}
+function PositionDetailContent({
+  history: storedHistory,
   editing,
 }: {
   history: PositionHistoryView | null;
   editing: PositionEditing | null;
 }) {
+ const { formatBrl } = usePositionMoney();
+
+  const history = storedHistory && storedHistory.native ? {...storedHistory,account:storedHistory.native.account,all:storedHistory.all?storedHistory.native.all:null,prices:storedHistory.native.prices} : storedHistory;
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
@@ -161,7 +136,15 @@ export function PositionDetail({
 
   const scope: "account" | "all" = scopeParam === "todas" && history.all ? "all" : "account";
   const view = scope === "all" && history.all ? history.all : history.account;
-  const { summary, slots } = view;
+  const { slots, summary } = view;
+  const performances = slots.flatMap((slot,index)=>{
+    if(slot.kind!=="present" || !slot.step)return [];
+    const previous=slots[index-1];
+    const result=investmentMonthReturn(slot,previous?.kind==="present"?previous.valueBrl:null);
+    return result.amount===null?[]:[{...slot.step,month:slot.month,changeBrl:result.amount,changePercent:result.percent,pricePercent:result.percent}];
+  });
+  const ranked=performances.filter(p=>p.changePercent!==null).sort((a,b)=>b.changePercent!-a.changePercent!);
+  const performanceSummary={...view.summary,monthStep:performances.find(p=>p.month===history.selectedMonth)??null,best:ranked.length>1?ranked[0]:null,worst:ranked.length>1?ranked.at(-1)!:null};
 
 
   const transactions = view.transactions;
@@ -186,7 +169,7 @@ export function PositionDetail({
         : null;
 
   const canLiquidate = !history.savings && !history.bond && editBlocked === null && editPosition !== null && !editPosition.liquidated;
-  const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
+  const usdValue = null;
 
 
   const lastSlot = [...slots].reverse().find((slot): slot is PresentSlot => slot.kind === "present") ?? null;
@@ -274,7 +257,7 @@ export function PositionDetail({
         <div className="flex flex-col items-start gap-3 sm:items-end">
           <p className="font-mono text-xs text-muted-foreground">
             {current
-              ? `${formatBrl(current.valueBrl)}${usdValue !== null ? ` · US$ ${formatUsd(usdValue)}` : ""}`
+              ? formatBrl(current.valueBrl)
               : `No position in ${selectedLabel}`}
           </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -376,11 +359,12 @@ export function PositionDetail({
         </div>
       ) : null}
 
+      {storedHistory?.native?.error ? <p role="status" className="mt-5 text-sm text-warning-foreground">{storedHistory.native.error}</p> : storedHistory?.native?.estimated ? <p role="status" className="mt-5 text-xs text-muted-foreground">Some older transactions use monthly exchange rates. Their converted cost is approximate.</p> : null}
       <div className="mt-7">
         <PositionKpis
           costReturn={costReturn}
           atCost={atCost}
-          summary={summary}
+          summary={performanceSummary}
           quoted={quoted}
           quoteSymbol={history.quoteSymbol}
           ticker={history.ticker}
@@ -393,7 +377,7 @@ export function PositionDetail({
 
 
       <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="position-evolution-title">
-        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">{atCost ? "Carrying value over time" : "Position value over time"}
+        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">{atCost ? "Carrying Value Over Time" : "Position Value Over Time"}
         </h2>
         <div className="mt-5">
           <PositionEvolutionChart
@@ -438,7 +422,7 @@ export function PositionDetail({
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         <section className="premium-panel rounded-[24px] p-5 sm:p-7" aria-labelledby="balance-change-title">
-          <h2 id="balance-change-title" className="text-base font-semibold tracking-[-0.025em]">Monthly balance change
+          <h2 id="balance-change-title" className="text-base font-semibold tracking-[-0.025em]">Monthly Balance Change
           </h2>
           <div className="mt-5">
             <BalanceChangeChart slots={slots} selectedMonth={history.selectedMonth} scope={scope} />
@@ -480,8 +464,8 @@ export function PositionDetail({
               kind: entry.kind,
               occurredOn: entry.occurredOn,
               quantity: entry.quantity,
-              unitPriceBrl: entry.unitPriceBrl,
-              amountBrl: entry.amountBrl,
+              unitPriceBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.unitPriceBrl ?? entry.unitPriceBrl,
+              amountBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl,
               note: entry.note,
             },
           }))
@@ -623,6 +607,8 @@ function PositionKpis({
   firstEver: string | null;
   dollarBalance: boolean;
 }) {
+ const { formatBrl, formatPriceBrl, formatSignedBrl, formatEstimatedPrice, currency } = usePositionMoney();
+
   const current = summary.current;
   const step = summary.monthStep;
   const applied = summary.appliedBrl ?? null;
@@ -640,15 +626,15 @@ function PositionKpis({
   return (
     <section aria-label="Position metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
-        label={atCost ? "Carrying value at cost" : "Position value"}
+        label={atCost ? "Carrying Value at Cost" : "Position Value"}
         testId="position-value"
-        valueText={current ? brlWhole.format(current.valueBrl) : "—"}
+        valueText={current ? formatBrl(current.valueBrl) : "—"}
         icon={<CoinsIcon aria-hidden="true" size={18} weight="duotone" />}
         value={
           current ? (
             <NumberFlow
               value={current.valueBrl}
-              format={{ style: "currency", currency: "BRL", maximumFractionDigits: 0 }}
+              format={{ style: "currency", currency, maximumFractionDigits: 2 }}
               locales="en-GB"
             />
           ) : (
@@ -662,19 +648,19 @@ function PositionKpis({
             ? `${formatQuantity(current!.quantity, quoteSymbol, ticker)} × ${formatPriceBrl(current!.priceBrl)}`
             : usdValue !== null
               ? `US$ ${formatUsd(usdValue)}`
-              : "BRL balance")
+              : `${currency} balance`)
         }
       />
 
 
       <KpiCard
-        label="Invested amount"
+        label="Invested Amount"
         testId="position-applied"
-        valueText={current && applied !== null ? brlWhole.format(applied) : "—"}
+        valueText={current && applied !== null ? formatBrl(applied) : "—"}
         icon={<HandCoinsIcon aria-hidden="true" size={18} weight="duotone" />}
         value={
           current && applied !== null ? (
-            <NumberFlow value={applied} format={{ style: "currency", currency: "BRL", maximumFractionDigits: 0 }} locales="en-GB" />
+            <NumberFlow value={applied} format={{ style: "currency", currency, maximumFractionDigits: 2 }} locales="en-GB" />
           ) : (
             <span className="text-muted-foreground">—</span>
           )
@@ -683,7 +669,7 @@ function PositionKpis({
           absent ??
           (quoted && average !== null ? (
             <span data-testid="position-average-price" title={averagePriceLabel(summary.costSource, dollarBalance)}>
-              {dollarBalance ? "Average exchange rate" : "Average cost"} {formatEstimatedPrice(average)}
+              {dollarBalance ? "Average Exchange Rate" : "Average Purchase Price"} {formatEstimatedPrice(average)}
             </span>
           ) : firstEver ? (
             `Since ${monthLabel(firstEver)}`
@@ -717,7 +703,7 @@ function PositionKpis({
       />
 
       <ChangeKpiCard
-        label="Monthly change"
+        label="Monthly Return"
         testId="position-month-change"
         changeBrl={step?.changeBrl ?? null}
         changePercent={step?.changePercent ?? null}
@@ -727,7 +713,7 @@ function PositionKpis({
       />
 
       <KpiCard
-        label="Portfolio weight"
+        label="Portfolio Weight"
         testId="position-share"
         valueText={current ? sharePercent.format(current.share / 100) : "—"}
         icon={<ChartPieSliceIcon aria-hidden="true" size={18} weight="duotone" />}
@@ -756,7 +742,7 @@ function PositionKpis({
 
 
 function averagePriceLabel(costSource: PositionSummary["costSource"], dollarBalance: boolean) {
-  const subject = dollarBalance ? "Average exchange rate" : "Average cost";
+  const subject = dollarBalance ? "Average Exchange Rate" : "Average Purchase Price";
   return costSource === "known" ? `${subject} at purchase` : costSource === "opening" ? `${subject} with opening balance` : `${subject} (estimated)`;
 }
 

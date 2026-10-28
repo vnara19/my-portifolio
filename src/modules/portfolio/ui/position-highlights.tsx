@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -10,10 +11,12 @@ import { useTransition } from "react";
 import { cn } from "@/lib/utils";
 import type { PositionSummary, StepHighlight } from "@/modules/portfolio/domain/position-history";
 import { formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatSignedBrl, monthLabel } from "@/modules/portfolio/presentation/position-page";
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 
 
 export function MonthHighlights({ summary, quoted }: { summary: PositionSummary; quoted: boolean }) {
+ const { formatSignedBrl } = usePositionMoney();
+
   const [, startTransition] = useTransition();
   const [, setMonth] = useQueryState("mes", { shallow: false, startTransition });
 
@@ -22,8 +25,8 @@ export function MonthHighlights({ summary, quoted }: { summary: PositionSummary;
   }
 
   const rows = [
-    { key: "best", label: "Best month", step: summary.best, testId: "position-best-month" },
-    { key: "worst", label: "Worst month", step: summary.worst, testId: "position-worst-month" },
+    { key: "best", label: "Best Month", step: summary.best, testId: "position-best-month" },
+    { key: "worst", label: "Worst Month", step: summary.worst, testId: "position-worst-month" },
   ];
 
   return (
@@ -31,7 +34,7 @@ export function MonthHighlights({ summary, quoted }: { summary: PositionSummary;
       <Popover.Trigger
         data-testid="position-highlights"
         className="group mt-3 -ml-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-popup-open:text-foreground"
-      >Best and worst month
+      >Best and Worst Month
         <CaretDownIcon
           aria-hidden="true"
           size={10}
@@ -42,7 +45,7 @@ export function MonthHighlights({ summary, quoted }: { summary: PositionSummary;
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="start" sideOffset={6} collisionPadding={12} className="z-[60] outline-none">
           <Popover.Popup
-            aria-label="Best and worst month"
+            aria-label="Best and Worst Month"
             className="w-[min(17rem,calc(100vw-1.5rem))] origin-[var(--transform-origin)] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl outline-none transition-[scale,opacity] duration-100 ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             {rows.map((row) => {

@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { isAutomaticAccrualNote, englishTransactionNote } from "@/lib/transaction-notes";
 
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
 import type { PositionTransactionView } from "@/modules/portfolio/application/get-position-history";
 import { recordedByMonth, TRANSACTION_LABELS } from "@/modules/portfolio/domain/position-transactions";
 import { formatDay } from "@/modules/portfolio/presentation/maturity";
-import { formatBrl, formatPriceBrl } from "@/modules/portfolio/presentation/portfolio-format";
+
 import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { CollapsibleSection } from "@/modules/portfolio/ui/collapsible-section";
 
@@ -65,6 +66,8 @@ export function PositionTransactions({
   onEdit: (entry: PositionTransactionView) => void;
   onRemove: (entry: PositionTransactionView) => void;
 }) {
+ const { formatBrl, formatPriceBrl } = usePositionMoney();
+
   const [filter, setFilter] = useState<KindFilter>("all");
   const kinds = new Set(transactions.map(filterKey));
   const shown = filter === "all" ? transactions : transactions.filter((entry) => filterKey(entry) === filter);
@@ -73,7 +76,7 @@ export function PositionTransactions({
     <CollapsibleSection
       id="position-transactions"
       title="Transactions"
-      summary={`${transactions.length} ${transactions.length === 1 ? "registro" : "registros"}`}
+      summary={`${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"}`}
       icon={<ArrowsDownUpIcon aria-hidden="true" className="text-primary" size={16} weight="bold" />}
       testId="position-transactions-section"
     >
@@ -211,6 +214,8 @@ export function PositionTransactions({
 
 
 function RecordedTotals({ transactions }: { transactions: PositionTransactionView[] }) {
+ const { formatBrl } = usePositionMoney();
+
   const totals = [...recordedByMonth(transactions).values()].reduce(
     (sum, month) => ({
       contributions: sum.contributions + month.contributionsBrl,

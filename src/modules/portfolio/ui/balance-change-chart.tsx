@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -7,8 +8,8 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 
 import { cn } from "@/lib/utils";
 import type { HistorySlot } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatSignedBrl, monthLabel } from "@/modules/portfolio/presentation/position-page";
+import { formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type ChangeRow = {
@@ -43,6 +44,8 @@ export function BalanceChangeChart({
   selectedMonth: string;
   scope: "account" | "all";
 }) {
+ const { formatBrl, formatSignedBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
   const [period, setPeriod] = useState<Period>("12m");
   const firstIndex = slots.findIndex((slot) => slot.kind === "present");

@@ -1,24 +1,14 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
 import { useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Brush,
-  Line,
-  ReferenceArea,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, Brush, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import type { HistorySlot } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPriceBrl, formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
 import { formatQuantity, monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
@@ -56,6 +46,8 @@ export function PositionEvolutionChart({
 
   scopeLabel: "account" | "all";
 }) {
+ const { formatBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
 
   const { rows, bridges, missingRuns, defaultEnd } = useMemo(() => buildRows(slots, selectedMonth), [slots, selectedMonth]);
@@ -373,6 +365,8 @@ function EvolutionTooltip({
   ticker: string | null;
   scopeLabel: "account" | "all";
 }) {
+ const { formatBrl, formatPriceBrl } = usePositionMoney();
+
   const slot = row.slot;
 
   return (

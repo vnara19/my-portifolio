@@ -35,3 +35,9 @@ Unit tests cover marginal tiers, AER conversion, leap-year nominal interest, cen
 - [Itaú Cofrinhos](https://www.itau.com.br/cofrinhos)
 - [Receita Federal, IN 1585 article 46](https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=67494)
 - [Decree 6306, IOF annex](https://www2.camara.leg.br/legin/fed/decret/2007/decreto-6306-14-dezembro-2007-566561-normaatualizada-pe.html)
+
+## Asset detail currency and returns
+
+Asset detail uses a presentation-only native-currency history: USD for the supported cryptocurrency purchase flow, otherwise the registered BRL/USD/EUR asset currency. Monthly snapshots and dated transactions are converted before replaying average acquisition cost and realized gains. Recorded execution FX takes precedence, then a dated public observation (up to seven days old); a legacy monthly fallback is explicitly approximate. Missing FX makes the affected native view unavailable rather than relabelling BRL or using today's rate. Raw BRL editing/write payloads remain separate and unchanged.
+
+The detail currency provider applies consistently to metrics, chart axes/tooltips, month rows and transactions. The quote chart has one asset currency and retains its period controls and converted purchase markers. Native monthly return excludes recorded capital movements; its percentage uses Modified Dietz dated capital weights. The value-over-time graph remains a balance chart, so purchases increase the balance without being represented as investment return. Monthly balance attribution retains its separate flow bars. Gaps and missing observations do not acquire an invented exact return.

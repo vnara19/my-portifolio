@@ -1,25 +1,16 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 /** Show month-end prices alongside the position's cost basis and dated cash movements. */
 
 import { englishLabel } from "@/lib/english-labels";
 
 import { useState } from "react";
-import {
-  Line,
-  LineChart,
-  ReferenceArea,
-  ReferenceDot,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Line, LineChart, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import { monthFromKey } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPercent, formatPriceBrl } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
 import { formatUsd, monthLabel } from "@/modules/portfolio/presentation/position-page";
 import type { PriceHistory, PricePoint } from "@/modules/quotes/domain/price-history";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
@@ -56,11 +47,11 @@ export function AssetPriceChart({
 
   markers?: PriceMarker[];
 }) {
-  const canUseUsd = symbol !== "USD" && prices.points.some((point) => point.valueUsd !== null);
-  const [currency, setCurrency] = useState<Currency>("BRL");
+ const { formatBrl, formatPriceBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
   const [rangeKey, setRangeKey] = useState<RangeKey>("all");
-  const activeCurrency: Currency = canUseUsd ? currency : "BRL";
+  const activeCurrency: Currency = "BRL";
   const activeRange: RangeKey = rangeKey;
 
   const points = prices.points;
@@ -116,17 +107,6 @@ export function AssetPriceChart({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {canUseUsd ? (
-            <Segmented
-              label="Chart currency"
-              options={[
-                { key: "BRL", label: "R$" },
-                { key: "USD", label: "US$" },
-              ]}
-              value={activeCurrency}
-              onChange={(next) => setCurrency(next as Currency)}
-            />
-          ) : null}
           {change !== null ? (
             <span
               data-testid="price-range-change"

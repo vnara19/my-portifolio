@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -7,7 +8,7 @@ import { ArrowDownRightIcon, ArrowUpRightIcon } from "@phosphor-icons/react/dist
 import type { ReactNode } from "react";
 
 import { KpiCard } from "@/components/product/kpi-card";
-import { formatBrl } from "@/modules/portfolio/presentation/portfolio-format";
+
 
 
 const percentFormat = new Intl.NumberFormat("en-GB", {
@@ -33,6 +34,8 @@ export function ChangeKpiCard({
   testId?: string;
   footer?: ReactNode;
 }) {
+ const { formatBrl } = usePositionMoney();
+
   return (
     <KpiCard
       label={englishLabel(label)}

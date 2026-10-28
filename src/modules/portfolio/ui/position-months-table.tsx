@@ -1,4 +1,5 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -7,18 +8,8 @@ import { cn } from "@/lib/utils";
 import { CollapsibleSection } from "@/modules/portfolio/ui/collapsible-section";
 import type { HistorySlot, PresentSlot } from "@/modules/portfolio/domain/position-history";
 import type { RecordedMonth } from "@/modules/portfolio/domain/position-transactions";
-import {
-  formatBrl,
-  formatPercent,
-  formatPriceBrl,
-  formatSharePercent,
-} from "@/modules/portfolio/presentation/portfolio-format";
-import {
-  formatQuantity,
-  formatSignedBrl,
-  monthLabel,
-  monthRangeLabel,
-} from "@/modules/portfolio/presentation/position-page";
+import { formatPercent, formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatQuantity, monthLabel, monthRangeLabel } from "@/modules/portfolio/presentation/position-page";
 
 type TableRow =
   | { kind: "present"; slot: PresentSlot; first: boolean; returned: boolean; cameFrom: string[] }
@@ -45,6 +36,8 @@ export function PositionMonthsTable({
 
   recorded: Map<string, RecordedMonth> | null;
 }) {
+ const { formatSignedBrl } = usePositionMoney();
+
   const rows = buildTableRows(slots).reverse();
   const presentCount = slots.filter((slot) => slot.kind === "present").length;
   const columnCount = quoted ? 8 : 5;
@@ -52,7 +45,7 @@ export function PositionMonthsTable({
   return (
     <CollapsibleSection
       id="months"
-      title="Month by month"
+      title="Month by Month"
       summary={`${presentCount} ${presentCount === 1 ? "reporting month" : "reporting months"}`}
       testId="position-months-section"
     >
@@ -129,6 +122,8 @@ function PresentRow({
   ticker: string | null;
   recorded: RecordedMonth | null;
 }) {
+ const { formatBrl, formatPriceBrl, formatSignedBrl } = usePositionMoney();
+
   const { slot } = row;
   const step = slot.step;
 
