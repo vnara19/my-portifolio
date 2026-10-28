@@ -1,4 +1,6 @@
 "use client";
+import { Dialog } from "@base-ui/react/dialog";
+import { backdropClass, centeredPopupClass, secondaryButtonClass } from "./edit-dialogs";
 import { usePositionMoney } from "./position-money-context";
 
 import { isAutomaticAccrualNote, englishTransactionNote } from "@/lib/transaction-notes";
@@ -72,6 +74,7 @@ export function PositionTransactions({
 }) {
  const { formatBrl, formatPriceBrl } = usePositionMoney();
 
+  const [toRemove, setToRemove] = useState<PositionTransactionView | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
   const [period, setPeriod] = useState<{ month: string | undefined; value: "all" | "month" } | null>(null);
   const currentPeriod = period && period.month === selectedMonth ? period.value : defaultPeriod;
@@ -200,7 +203,7 @@ export function PositionTransactions({
                             type="button"
                             aria-label={`Delete ${entry.transferId ? "liquidation" : TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("en-GB")} on ${dayLabel(entry.occurredOn)}`}
                             disabled={removing}
-                            onClick={() => onRemove(entry)}
+                            onClick={() => setToRemove(entry)}
                             className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-40"
                           >
                             <TrashIcon aria-hidden="true" size={14} />
@@ -215,6 +218,11 @@ export function PositionTransactions({
           </table>
         </div>
       )}
+      <Dialog.Root open={toRemove !== null} onOpenChange={open=>{if(!open)setToRemove(null);}}><Dialog.Portal><Dialog.Backdrop className={backdropClass}/><Dialog.Popup className={centeredPopupClass}>
+        <Dialog.Title className="text-base font-semibold">Delete Transaction?</Dialog.Title>
+        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${formatBrl(toRemove.amountBrl)}. This removes the recorded transaction and recalculates later holdings. Use Edit to correct its values instead.` : ""}</Dialog.Description>
+        <div className="mt-5 flex justify-end gap-2"><Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close><button type="button" disabled={removing} className={`${secondaryButtonClass} border-destructive/40 text-destructive`} onClick={()=>{if(toRemove){onRemove(toRemove);setToRemove(null);}}}>Delete Transaction</button></div>
+      </Dialog.Popup></Dialog.Portal></Dialog.Root>
       </div>
     </CollapsibleSection>
   );

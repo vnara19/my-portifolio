@@ -50,7 +50,7 @@ export function EditToast({
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!toast || toast.tone === "error") {
+    if (!toast || toast.tone === "error" || toast.undoToken) {
       return;
     }
 
