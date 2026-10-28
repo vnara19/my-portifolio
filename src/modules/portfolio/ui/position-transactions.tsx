@@ -73,8 +73,8 @@ export function PositionTransactions({
  const { formatBrl, formatPriceBrl } = usePositionMoney();
 
   const [filter, setFilter] = useState<KindFilter>("all");
-  const [period, setPeriod] = useState<"all" | "month" | null>(null);
-  const currentPeriod = period ?? defaultPeriod;
+  const [period, setPeriod] = useState<{ month: string | undefined; value: "all" | "month" } | null>(null);
+  const currentPeriod = period && period.month === selectedMonth ? period.value : defaultPeriod;
   const inPeriod = currentPeriod === "month" && selectedMonth ? transactions.filter(entry => entry.month === selectedMonth) : transactions;
   const kinds = new Set(inPeriod.map(filterKey));
   const shown = filter === "all" ? inPeriod : inPeriod.filter((entry) => filterKey(entry) === filter);
@@ -88,7 +88,7 @@ export function PositionTransactions({
       testId="position-transactions-section"
     >
       <div className="px-5 pt-1 pb-5 sm:px-6">
-      {selectedMonth ? <div role="group" aria-label="Transaction period" className="mb-4 flex flex-wrap gap-2">{([{value:"all",label:"All Transactions"},{value:"month",label:monthLabel(selectedMonth)}] as const).map(option=><button key={option.value} type="button" aria-pressed={currentPeriod===option.value} onClick={()=>{setPeriod(option.value);setFilter("all");}} className={cn("rounded-full border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50",currentPeriod===option.value?"border-primary/40 bg-primary/10 text-primary":"border-border text-muted-foreground")}>{option.label}</button>)}</div>:null}
+      {selectedMonth ? <div role="group" aria-label="Transaction period" className="mb-4 flex flex-wrap gap-2">{([{value:"all",label:"All Transactions"},{value:"month",label:monthLabel(selectedMonth)}] as const).map(option=><button key={option.value} type="button" aria-pressed={currentPeriod===option.value} onClick={()=>{setPeriod({ month: selectedMonth, value: option.value });setFilter("all");}} className={cn("rounded-full border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50",currentPeriod===option.value?"border-primary/40 bg-primary/10 text-primary":"border-border text-muted-foreground")}>{option.label}</button>)}</div>:null}
       {inPeriod.length > 0 ? <RecordedTotals transactions={inPeriod} /> : null}
 
       {transactions.length > 0 ? (
