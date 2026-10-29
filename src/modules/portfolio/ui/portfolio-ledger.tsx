@@ -34,7 +34,7 @@ function PortfolioLedgerContent({ledger,selectedMonth}:{ledger:PortfolioLedger;s
  const trade=Boolean(selected?.quoteSymbol && selected.quoteSymbol!=="USD" && (selected.kind==="CONTRIBUTION"||selected.kind==="WITHDRAWAL"));
  const cash=(value:number|null,signed=false)=>value===null?"\u2014":signed?formatSignedBrl(value):formatBrl(value);
  return <>
- <CollapsibleSection id="portfolio-months" title="Month By Month" summary={`${ledger.rows.length} reporting months`} testId="portfolio-months-section">
+ <CollapsibleSection id="portfolio-months" title="Month By Month" summary={`${ledger.rows.length} ${ledger.rows.length === 1 ? "month" : "months"}`} testId="portfolio-months-section">
  <div className="overflow-x-auto"><table className="w-full min-w-[700px] border-collapse text-left" data-testid="portfolio-months"><thead><tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
  <th className="px-5 py-3">Reporting Month</th><th className="px-4 py-3 text-right">Value (USD)</th><th className="px-4 py-3 text-right">Change</th><th className="px-4 py-3 text-right" title="Change in value excluding contributions, withdrawals and opening balance adjustments. Includes prices, interest and currency movements.">Investment Change</th><th className="px-5 py-3 text-right">Contributions and Redemptions</th>
  </tr></thead><tbody>{[...ledger.rows].reverse().map(row=>{const query=new URLSearchParams(params.toString());query.set("mes",row.month);return <tr key={row.month} aria-current={row.month===selectedMonth?"date":undefined} className={cn("border-b border-border/55 align-top text-xs",row.month===selectedMonth?"bg-primary/5":"hover:bg-white/[0.018]")}>

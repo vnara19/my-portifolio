@@ -46,7 +46,7 @@ export function PositionMonthsTable({
     <CollapsibleSection
       id="months"
       title="Month By Month"
-      summary={`${presentCount} ${presentCount === 1 ? "reporting month" : "reporting months"}`}
+      summary={`${presentCount} ${presentCount === 1 ? "month" : "months"}`}
       testId="position-months-section"
     >
       <div className="overflow-x-auto">
