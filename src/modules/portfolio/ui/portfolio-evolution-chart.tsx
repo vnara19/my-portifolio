@@ -189,7 +189,7 @@ export function PortfolioEvolutionChart({
                                 className="size-1.5 rounded-full"
                                 style={{ backgroundColor: item.color }}
                               />
-                              <span className="text-[10px] text-muted-foreground">{item.name}</span>
+                              <span className="text-[10px] text-muted-foreground">{englishLabel(item.name)}</span>
                               <span className="ml-auto font-mono text-[10px] text-muted-foreground">
                                 {formatCurrency(Number(item.value), "USD")}
                               </span>
