@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PRODUCT_TYPES, productType, listingMarket } from "@/modules/portfolio/presentation/asset-classification";
 import { defaultAllocation } from "@/modules/portfolio/domain/asset-kinds";
-import { filterPositions, filterOptions, primaryClassOf } from "@/modules/portfolio/presentation/position-filters";
+import { filterPositions, filterOptions, primaryClassOf, normalizeTypeFilter } from "@/modules/portfolio/presentation/position-filters";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
 
 test("product types and reporting geography follow the chosen convention", () => {
@@ -11,8 +11,8 @@ test("product types and reporting geography follow the chosen convention", () =>
   assert.equal(listingMarket("international-bond"), "Other Markets");
   assert.equal(productType("eu-market", "EU_ETC"), "");
   assert.equal(productType("eu-market", "EU_ETF"), "ETF");
-  assert.equal(productType("crypto", "", null, null, "BTC"), "Bitcoin");
-  assert.equal(productType("crypto", "", null, null, "Stablecoin"), "Stablecoin");
+  assert.equal(productType("crypto", "", null, null, "BTC"), "Cryptocurrency");
+  assert.equal(productType("crypto", "", null, null, "Stablecoin"), "Cryptocurrency");
   assert.equal(productType("treasury"), "Tesouro Direto");
   assert.equal(productType("pension"), "Pension Plan");
   assert.equal(productType("us-stock", "REIT"), "REIT/FII");
@@ -34,14 +34,14 @@ test("product and market facets cascade without mixing geographic exposure or ca
 });
 
 test("the filter has exactly the user-approved registration products", () => {
-  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "Savings", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"]));
+  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "Savings", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Cryptocurrency"]));
   assert.equal(productType("fixed-income", "", "CRI"), "");
   assert.equal(productType("fixed-income"), "");
-  assert.equal(PRODUCT_TYPES.length, 14);
+  assert.equal(PRODUCT_TYPES.length, 12);
 });
 
 test("registration classifications map to the same filter keys", () => {
-  for (const [symbol, expected] of [["BTC", "Bitcoin"], ["ETH", "Altcoin"], ["SOL", "Altcoin"], ["USDC", "Stablecoin"], ["USDT", "Stablecoin"]]) {
+  for (const [symbol, expected] of [["BTC", "Cryptocurrency"], ["ETH", "Cryptocurrency"], ["SOL", "Cryptocurrency"], ["USDC", "Cryptocurrency"], ["USDT", "Cryptocurrency"]]) {
     const allocation = defaultAllocation("crypto", symbol);
     assert.equal(productType("crypto", "", null, null, allocation.subclass), expected);
   }
@@ -49,7 +49,7 @@ test("registration classifications map to the same filter keys", () => {
   for (const family of ["Sovereign", "Corporate", "Agency", "Municipal", "Supranational", "CD", "Covered", "Securitized", "Other"]) assert.equal(productType("international-bond", "", null, family), "Bonds");
   assert.equal(productType("br-stock", "FII"), "REIT/FII");
   assert.equal(productType("us-stock", "REIT"), "REIT/FII");
-  assert.equal(productType("usd-balance", "", null, null, "Stablecoin"), "Stablecoin");
+  assert.equal(productType("usd-balance", "", null, null, "Stablecoin"), "Cryptocurrency");
 });
 
 test("class markers use the largest historical allocation without changing saved weights", () => {
@@ -61,4 +61,10 @@ test("class markers use the largest historical allocation without changing saved
   assert.equal(allocations[0].weight, 30);
   assert.equal(primaryClassOf({ allocations: [] }), "Unclassified");
   assert.equal(primaryClassOf({ allocations: [allocations[1], allocations[0]] }), "Renda Fixa");
+});
+
+test("old crypto filter URLs resolve to the single Cryptocurrency product", () => {
+  for (const legacy of ["Bitcoin", "Altcoin", "Stablecoin", "Crypto", "Cryptocurrency"]) {
+    assert.equal(normalizeTypeFilter(legacy), "Cryptocurrency");
+  }
 });

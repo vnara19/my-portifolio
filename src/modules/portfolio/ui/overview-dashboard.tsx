@@ -24,7 +24,7 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
         <div>
           <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Overview
           </p>
-          <h1 className="mt-1 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">Portfolio overview
+          <h1 className="mt-1 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">Portfolio Overview
           </h1>
         </div>
         <DevQuoteSyncButton />
@@ -42,7 +42,7 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
         aria-labelledby="evolution-title"
       >
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio value over time
+          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio Value Over Time
           </h2>
         </div>
 

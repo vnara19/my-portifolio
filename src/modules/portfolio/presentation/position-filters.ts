@@ -39,6 +39,7 @@ export const FILTER_DIMENSIONS: FilterDimension[] = [
 ];
 
 export function normalizeTypeFilter(label: string) {
+  if (["Bitcoin", "Altcoin", "Stablecoin", "Crypto"].includes(label)) return "Cryptocurrency";
   if (["REIT", "FII", "REIT / FII"].includes(label)) return "REIT/FII";
   if (["Government Bond", "Corporate Bond", "Agency Bond", "Municipal Bond", "Supranational Bond", "Negotiable CD", "Covered Bond", "Securitized Bond", "Bond"].includes(label)) return "Bonds";
   return (PRODUCT_TYPES as readonly string[]).includes(label) ? label : "";
@@ -54,18 +55,20 @@ export function marketOf(position: Pick<MonthPosition, "assetType" | "market" | 
 
 /** Legacy multi-class holdings use their largest saved exposure as the visual marker. */
 export function primaryClassOf(position: Pick<MonthPosition, "allocations">) {
-  return [...position.allocations].sort((left, right) => right.weight - left.weight || left.assetClass.localeCompare(right.assetClass))[0]?.assetClass ?? NO_CLASS;
+  const primary = [...position.allocations].sort((left, right) => right.weight - left.weight || left.assetClass.localeCompare(right.assetClass))[0];
+  return primary?.subclass === "Stablecoin" ? "Cripto" : primary?.assetClass ?? NO_CLASS;
 }
 
 export function classesOf(position: MonthPosition) {
   return position.allocations.length === 0
     ? [NO_CLASS]
-    : [...new Set(position.allocations.map((allocation) => allocation.assetClass))];
+    : [...new Set(position.allocations.map((allocation) => allocation.subclass === "Stablecoin" ? "Cripto" : allocation.assetClass))];
 }
 
 
 export function allocationLabel(allocation: { assetClass: string; subclass: string; duration: string }) {
-  return [allocation.assetClass, allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
+  if (allocation.assetClass === "Cripto" || allocation.subclass === "Stablecoin") return "Cryptocurrency";
+  return [allocation.assetClass, allocation.assetClass === "Cripto" ? null : allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
     .filter(Boolean)
     .map((part) => englishLabel(part))
     .join(" · ");

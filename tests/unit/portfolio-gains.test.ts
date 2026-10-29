@@ -24,3 +24,10 @@ test("unknown costs, missing FX, unmatched quantities and transfers do not inven
   }
   assert.equal(portfolioGains([movement("OPENING", 10, 500)], snapshot(10, null)).totalUsd, null);
 });
+
+test("missing gain reasons distinguish absent FX from inconsistent holdings", () => {
+  const reasons: string[] = [];
+  portfolioGains([movement("CONTRIBUTION", 10, 500, null)], snapshot(10, 120), reason => reasons.push(reason));
+  portfolioGains([movement("CONTRIBUTION", 9, 500)], snapshot(10, 120), reason => reasons.push(reason));
+  assert.deepEqual(reasons, ["historical-fx", "ledger-mismatch"]);
+});

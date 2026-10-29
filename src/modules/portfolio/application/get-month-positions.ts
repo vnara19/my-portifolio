@@ -227,7 +227,7 @@ export async function getMonthPositions(
             cashAccount: position.asset.cashAccount,
             assetType,
             productType: displayProduct,
-            market: listingMarket(displayProduct === "Stablecoin" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry ?? readSavings(position.asset.fixedIncomeContract)?.country),
+            market: listingMarket(displayProduct === "Cryptocurrency" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry ?? readSavings(position.asset.fixedIncomeContract)?.country),
             assetTypeInferred: position.asset.assetType === null,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,

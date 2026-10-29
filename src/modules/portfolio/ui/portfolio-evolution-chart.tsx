@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { OverviewHistoryPoint } from "@/modules/portfolio/application/get-overview-data";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
-import { formatBrl, formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatCurrency, formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type StackMode = "total" | "class" | "currency";
@@ -26,8 +26,8 @@ type StackMode = "total" | "class" | "currency";
 type ChartRow = {
   month: string;
   label: string;
-  total: number;
-} & Record<string, number | string>;
+  total: number | null;
+} & Record<string, number | string | null>;
 
 const STACK_MODES: { key: StackMode; label: string }[] = [
   { key: "total", label: "Total" },
@@ -67,9 +67,9 @@ export function PortfolioEvolutionChart({
       history.map((point) => ({
         month: point.month,
         label: formatMonthCompact(point.date),
-        total: point.totalBrl,
-        ...point.byClass,
-        ...point.byCurrency,
+        total: point.totalUsd ?? null,
+        ...point.byClassUsd,
+        ...point.byCurrencyUsd,
       })),
     [history],
   );
@@ -159,7 +159,7 @@ export function PortfolioEvolutionChart({
             <YAxis
               axisLine={false}
               tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-              tickFormatter={(value: number) => formatBrl(value, { compact: true })}
+              tickFormatter={(value: number) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 0 }).format(value)}
               tickLine={false}
               width={62}
             />
@@ -178,7 +178,7 @@ export function PortfolioEvolutionChart({
                 return (
                   <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
                     <p className="text-[11px] font-medium text-foreground">{englishLabel(label)}</p>
-                    <p className="mt-1 font-mono text-xs text-foreground">{formatBrl(total)}</p>
+                    <p className="mt-1 font-mono text-xs text-foreground">{formatCurrency(total, "USD")}</p>
                     {stackMode === "total" ? null : (
                       <div className="mt-2 space-y-1">
                         {payload
@@ -191,7 +191,7 @@ export function PortfolioEvolutionChart({
                               />
                               <span className="text-[10px] text-muted-foreground">{item.name}</span>
                               <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                                {formatBrl(Number(item.value), { compact: true })}
+                                {formatCurrency(Number(item.value), "USD")}
                               </span>
                             </div>
                           ))}

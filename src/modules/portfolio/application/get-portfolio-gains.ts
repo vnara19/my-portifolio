@@ -1,3 +1,5 @@
+import { datedFx } from "../domain/position-money";
+import type { GainIssue } from "../domain/portfolio-gains";
 import { Prisma } from "@/generated/prisma/client";
 import { readInternationalBond } from "../domain/international-bond";
 import { readFixedIncomeContract } from "@/modules/portfolio/domain/brazilian-fixed-income";
@@ -20,11 +22,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     db.dailyQuote.findMany({ where: { symbol: "USD", quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
     db.asset.findMany({ where: { assetType: "international-bond" }, select: { id: true, fixedIncomeContract: true } }),
   ]);
-  const historicalRate = (date: Date) => {
-    // Weekend/holiday trades may use the previous published business-day observation.
-    const rate = rates.findLast((entry) => entry.quoteDate <= date);
-    return rate && date.getTime() - rate.quoteDate.getTime() <= 7 * 86400000 ? rate.valueBrl.toNumber() : null;
-  };
+  const dailyRates=rates.map(r=>({day:r.quoteDate.toISOString().slice(0,10),rate:r.valueBrl.toNumber()}));
   const holding = (row: { accountId: string; assetId: string }) => `${row.accountId}:${row.assetId}`;
   const bonds = new Map(bondAssets.map((asset) => [asset.id, readInternationalBond(asset.fixedIncomeContract)]));
   const interest = new Map<string, { remaining: Prisma.Decimal; usdPerNative: Prisma.Decimal; units: Prisma.Decimal }>();
@@ -32,7 +30,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   transactions.sort((a,b) => +a.occurredOn - +b.occurredOn || Number(b.note === "Savings automatic return") - Number(a.note === "Savings automatic return") || +a.createdAt - +b.createdAt);
   const movements = transactions.map((row) => {
     const key = holding(row.position);
-    const usdRate = historicalRate(row.occurredOn);
+    const usdRate = datedFx(row.occurredOn.toISOString().slice(0,10),row.note,"USD",dailyRates,new Map())?.rate ?? null;
     const movement = { holding: key, kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(), usdRate, transferId: row.transferId, costRecoveryUsd: 0 };
     const bond = bonds.get(row.position.assetId);
     if (!bond || !usdRate) return movement;
@@ -55,5 +53,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     }
     return movement;
   });
-  return portfolioGains(movements, positions.map((row) => ({ holding: holding(row), quantity: readFixedIncomeContract(row.asset?.fixedIncomeContract) && !row.asset.quoteSymbol ? transactions.filter((entry) => holding(entry.position) === holding(row)).reduce((sum, entry) => sum + (entry.kind === "WITHDRAWAL" ? -1 : 1) * entry.quantity.toNumber(), 0) : row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) })));
+  let issue:GainIssue|undefined;
+  const gains=portfolioGains(movements, positions.map((row) => ({ holding: holding(row), quantity: readFixedIncomeContract(row.asset?.fixedIncomeContract) && !row.asset.quoteSymbol ? transactions.filter((entry) => holding(entry.position) === holding(row)).reduce((sum, entry) => sum + (entry.kind === "WITHDRAWAL" ? -1 : 1) * entry.quantity.toNumber(), 0) : row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) })),reason=>{issue=reason;});
+  return {...gains,...(issue?{issue}: {})};
 }

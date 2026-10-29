@@ -16,6 +16,10 @@ const missingAnnualized = "Requires dated external cash flows to calculate annua
 export function OverviewKpis({ overview }: { overview: OverviewData }) {
   const total = overview.reporting.total;
   const gains = overview.gains;
+  const reason = gains.issue === "historical-fx" ? "Historical exchange rates are missing."
+    : gains.issue === "transfer-cost" ? "Original transfer costs are missing."
+    : gains.issue === "ledger-mismatch" ? "Transactions do not reconcile with current holdings."
+    : "Complete purchase history is needed.";
   return <section aria-label="Portfolio summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     <KpiCard compact label="Portfolio value" testId="portfolio-total"
       valueText={money(total.USD, false)}
@@ -25,11 +29,11 @@ export function OverviewKpis({ overview }: { overview: OverviewData }) {
         <span data-currency="BRL">{formatCurrency(total.BRL, "BRL")}</span>
       </span>} />
     <GainCard label="Unrealized gain" testId="unrealized-gain" value={gains.unrealizedUsd} percentage={gains.unrealizedPercent}
-      detail={<span title={missingDay}>Last day <span className="font-mono">— USD · —%</span></span>} />
+      detail={gains.unrealizedUsd === null ? reason : <span title={missingDay}>Daily Gain Unavailable</span>} />
     <GainCard label="Realized gain" testId="realized-gain" value={gains.realizedUsd}
-      detail={<span title={missingDividends}>Total dividends <span className="font-mono">— USD</span></span>} />
+      detail={gains.realizedUsd === null ? reason : <span title={missingDividends}>Includes Recorded Income</span>} />
     <GainCard label="Total gain" testId="total-gain" value={gains.totalUsd} percentage={null} percentageExplanation={missingPerformance}
-      detail={<span title={missingAnnualized}>Annualized yield <span className="font-mono">—%</span></span>} />
+      detail={gains.totalUsd === null ? reason : <span title={missingAnnualized}>Annualized Yield Unavailable</span>} />
   </section>;
 }
 
@@ -40,6 +44,6 @@ function GainCard({ label, testId, value, percentage, percentageExplanation = mi
     tone={value === null || value === 0 ? "neutral" : value > 0 ? "up" : "down"}
     valueText={money(value)} valueClassName="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xl"
     value={<><span title={value === null ? missingCost : "USD average-cost result since the recorded opening balance; acquisition-date FX is included."}>{money(value)}</span>
-      {percentage !== undefined ? <span className="text-sm" title={percentage === null ? percentageExplanation : "Unrealized gain divided by the remaining USD acquisition cost."}>{percent(percentage)}</span> : null}</>}
+      {percentage != null ? <span className="text-sm" title={percentage === null ? percentageExplanation : "Unrealized gain divided by the remaining USD acquisition cost."}>{percent(percentage)}</span> : null}</>}
     detail={detail} />;
 }

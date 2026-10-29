@@ -2,7 +2,7 @@ import { BRAZILIAN_DEBT_PRODUCTS } from "../domain/brazilian-fixed-income";
 import type { AssetType } from "../domain/classification";
 
 /** User-facing products mirror the supported Add position flows, not bond details. */
-export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", "Savings", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Bitcoin", "Altcoin", "Stablecoin"] as const;
+export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", "Savings", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Cryptocurrency"] as const;
 export const LEGACY_DEBT_PRODUCTS = BRAZILIAN_DEBT_PRODUCTS;
 export function reviewedDebtProduct(value: unknown): string | null {
   if (!value || typeof value !== "object" || !("displayProduct" in value)) return null;
@@ -12,9 +12,9 @@ export function reviewedDebtProduct(value: unknown): string | null {
 
 /** Product and listing market are independent from portfolio exposure and currency. */
 export function productType(type: AssetType, instrument = "", product?: string | null, bondFamily?: string | null, cryptoSubclass?: string | null) {
-  if ((type === "crypto" || type.endsWith("-cash") || type.endsWith("-balance")) && cryptoSubclass === "Stablecoin") return "Stablecoin";
+  if ((type === "crypto" || type.endsWith("-cash") || type.endsWith("-balance")) && cryptoSubclass === "Stablecoin") return "Cryptocurrency";
   if (type.endsWith("-cash") || type.endsWith("-balance")) return "Cash Account";
-  if (type === "crypto") return cryptoSubclass === "BTC" ? "Bitcoin" : cryptoSubclass === "Stablecoin" ? "Stablecoin" : cryptoSubclass === "Altcoin" ? "Altcoin" : "";
+  if (type === "crypto") return "Cryptocurrency";
   if (type === "savings") return "Savings";
   if (type === "pension") return "Pension Plan";
   if (type === "treasury") return "Tesouro Direto";

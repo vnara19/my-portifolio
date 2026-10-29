@@ -1,9 +1,11 @@
+import { getMonthPositions } from "./get-month-positions";
+import { valuationCurrency } from "../presentation/position-display";
 import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { getAllocationOverview } from "@/modules/portfolio/application/get-allocation-overview";
-import { ASSET_TYPE_LABELS, assetTypeOf } from "@/modules/portfolio/domain/classification";
+import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import {
   buildFixedIncomeDuration,
   type FixedIncomeDuration,
@@ -25,6 +27,9 @@ export type OverviewHistoryPoint = {
   month: string;
   date: Date;
   totalBrl: number;
+  totalUsd?: number | null;
+  byClassUsd?: Record<string, number>;
+  byCurrencyUsd?: Record<string, number>;
   byClass: Record<string, number>;
   byCurrency: Record<string, number>;
 };
@@ -58,7 +63,7 @@ export type OverviewData = {
   offTargetTolerance: number;
   history: OverviewHistoryPoint[];
 
-  byType: { label: string; valueBrl: number; share: number }[];
+  byType: { label: string; valueBrl: number; valueUsd?: number | null; share: number }[];
   rebalanceGroups: AllocationGroup[];
   fixedIncomeDuration: FixedIncomeDuration;
   classLabels: string[];
@@ -85,7 +90,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
             totalBrl: true,
             asset: { select: { baseCurrency: true, assetType: true, quoteSymbol: true, name: true, cashAccount: true } },
             account: { select: { institutionId: true } },
-            allocations: { select: { assetClass: true, weight: true } },
+            allocations: { select: { assetClass: true, subclass: true, weight: true } },
           },
         },
       },
@@ -107,7 +112,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
 
       for (const position of month.positions) {
         total = total.plus(position.totalBrl);
-        const currency = position.asset.baseCurrency;
+        const currency = valuationCurrency(assetTypeOf(position.asset), position.asset.baseCurrency);
         byCurrency[currency] = (byCurrency[currency] ?? 0) + position.totalBrl.toNumber();
 
         if (position.allocations.length === 0) {
@@ -118,7 +123,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
 
         for (const allocation of position.allocations) {
           const value = position.totalBrl.mul(allocation.weight).toNumber();
-          byClass[allocation.assetClass] = (byClass[allocation.assetClass] ?? 0) + value;
+          const label = allocation.subclass === "Stablecoin" ? "Cripto" : allocation.assetClass;
+          byClass[label] = (byClass[label] ?? 0) + value;
         }
       }
 
@@ -146,20 +152,6 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       selected.referenceDate.getTime() > firstHistory.date.getTime()
         ? selectedHistory.totalBrl - firstHistory.totalBrl
         : null;
-
-    const typeTotals = new Map<string, number>();
-    for (const position of selected.positions) {
-      const label = ASSET_TYPE_LABELS[assetTypeOf(position.asset)];
-      typeTotals.set(label, (typeTotals.get(label) ?? 0) + position.totalBrl.toNumber());
-    }
-    const byType = [...typeTotals.entries()]
-      .filter(([, valueBrl]) => valueBrl > 0)
-      .map(([label, valueBrl]) => ({
-        label,
-        valueBrl,
-        share: selectedHistory.totalBrl === 0 ? 0 : (valueBrl / selectedHistory.totalBrl) * 100,
-      }))
-      .sort((left, right) => right.valueBrl - left.valueBrl);
 
     // Independent quote reads share one network wait instead of three round trips.
     const [quotes, fxSeries, dailyFx] = await Promise.all([
@@ -204,6 +196,25 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       annual: reportingChange(reportingTotal, amountsFor(yearAgoHistory)),
       allTime: reportingChange(reportingTotal, selected.referenceDate > firstHistory.date ? amountsFor(firstHistory) : null),
     };
+
+    for (const point of history) {
+      const rate = point.month === selectedHistory.month ? usdRate : fxByMonth.get(point.month)?.get("USD");
+      point.totalUsd = rate && rate > 0 ? point.totalBrl / rate : null;
+      point.byClassUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byClass).map(([key,value])=>[key,value/rate])) : {};
+      point.byCurrencyUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byCurrency).map(([key,value])=>[key,value/rate])) : {};
+    }
+    // Use precisely the same product resolver as the Positions table.
+    const positionsView = await getMonthPositions(selected.referenceDate);
+    const typeTotals = new Map<string, number>();
+    for (const position of positionsView?.positions ?? []) {
+      if (position.liquidated || position.totalBrl <= 0) continue;
+      const label = position.productType || "Unclassified";
+      typeTotals.set(label, (typeTotals.get(label) ?? 0) + position.totalBrl);
+    }
+    const byType = [...typeTotals].map(([label,valueBrl])=>({label,valueBrl,
+      valueUsd: usdRate && usdRate > 0 ? valueBrl/usdRate : null,
+      share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
+    })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
     const [allocation, gains] = await Promise.all([
       getAllocationOverview(selected.referenceDate),

@@ -27,7 +27,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   BRL: OKABE_ITO.green,
   USD: OKABE_ITO.sky,
   BTC: OKABE_ITO.orange,
-  Altcoins: OKABE_ITO.purple,
+  Altcoins: OKABE_ITO.orange,
   EUR: OKABE_ITO.yellow,
 
   Core: OKABE_ITO.sky,

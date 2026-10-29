@@ -1,3 +1,5 @@
+import { assetTypeOf } from "../domain/classification";
+import { valuationCurrency } from "../presentation/position-display";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { withDerivedCurrency } from "@/modules/portfolio/domain/currency-targets";
@@ -29,7 +31,7 @@ export type AllocationOverview = {
 type PositionForAllocation = {
   totalBrl: Prisma.Decimal;
   strategy: string | null;
-  asset: { baseCurrency: string };
+  asset: { baseCurrency: string; assetType?: string | null };
   allocations: { assetClass: string; subclass: string; duration: string; weight: Prisma.Decimal }[];
 };
 
@@ -56,7 +58,7 @@ export async function getAllocationOverview(
             select: {
               totalBrl: true,
               strategy: true,
-              asset: { select: { baseCurrency: true } },
+              asset: { select: { baseCurrency: true, assetType: true } },
               allocations: {
                 select: { assetClass: true, subclass: true, duration: true, weight: true },
               },
@@ -138,7 +140,8 @@ function aggregatePositions(positions: PositionForAllocation[]): AllocationAggre
 
   for (const position of positions) {
     total = total.plus(position.totalBrl);
-    add(currency, position.asset.baseCurrency, position.totalBrl);
+    const reportingCurrency = valuationCurrency(assetTypeOf({ ...position.asset, assetType: position.asset.assetType ?? null, name: "", quoteSymbol: null }), position.asset.baseCurrency);
+    add(currency, reportingCurrency, position.totalBrl);
     add(strategy, position.strategy ?? UNCLASSIFIED_LABEL, position.totalBrl);
 
     if (position.allocations.length === 0) {
@@ -146,15 +149,16 @@ function aggregatePositions(positions: PositionForAllocation[]): AllocationAggre
       continue;
     }
 
-    for (const allocation of position.allocations) {
+    for (const saved of position.allocations) {
+      const allocation = saved.subclass === "Stablecoin" ? { ...saved, assetClass: "Cripto" } : saved;
       const contribution = position.totalBrl.mul(allocation.weight);
       add(assetClass, allocation.assetClass, contribution);
 
-      const currencyKey = JSON.stringify([allocation.assetClass, position.asset.baseCurrency]);
+      const currencyKey = JSON.stringify([allocation.assetClass, reportingCurrency]);
       const currentCurrency = classCurrency.get(currencyKey);
       classCurrency.set(currencyKey, {
         primary: allocation.assetClass,
-        secondary: position.asset.baseCurrency,
+        secondary: reportingCurrency,
         value: (currentCurrency?.value ?? new Prisma.Decimal(0)).plus(contribution),
       });
 
