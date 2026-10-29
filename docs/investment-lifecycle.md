@@ -81,3 +81,23 @@ percentage (for example, Up from 15.1% in Sept/26), avoiding a misleading percen
 label for a percentage-point difference. On the price chart, the dashed average
 purchase-price line is purple; purchase dots remain blue and withdrawal dots
 remain orange, with the existing legend entries unchanged.
+
+### Portfolio-wide history in Positions
+
+Below the positions table, Month By Month and Transactions are collapsed by
+ default. Their scope is the full owned portfolio, including exited holdings;
+position-table filters do not truncate this accounting history. Monthly values,
+value changes, investment changes and capital movements are shown in USD.
+Investment Change is the change in portfolio value less external funding and
+opening-balance adjustments, including price, accrued interest and currency
+movements. Missing transaction/FX coverage produces an unavailable result rather
+than an invented zero; legacy inferred flows retain an estimation flag.
+
+Transactions reuses the asset-detail table, corrections, deletion confirmation
+and Undo, with an Asset column and USD display values. Trade corrections retain
+the original asset currency, fees and recorded execution FX. Generic corrections
+use the original stored BRL values and owning month/position. Ownership and the
+product-specific protections on generated/Savings/bond records remain enforced.
+Returns cards and filters are hidden globally, but stored income and automatic
+accruals remain in history and accounting. Opening Balance uses consistent casing.
+The asset monthly flow column no longer repeats a Recorded badge.

@@ -26,10 +26,9 @@ type KindFilter = "all" | PositionTransactionView["kind"] | "AUTO_INCOME";
 const FILTERS: { key: KindFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "CONTRIBUTION", label: "Contributions" },
-  { key: "INCOME", label: "Returns" },
   { key: "AUTO_INCOME", label: "Automatic accrual" },
   { key: "WITHDRAWAL", label: "Withdrawals" },
-  { key: "OPENING", label: "Opening balance" },
+  { key: "OPENING", label: "Opening Balance" },
 ];
 
 
@@ -55,6 +54,7 @@ export function PositionTransactions({
   editableMonthId,
   editableAccountId,
   showAccountLabels = false,
+  showAssets = false,
   removing,
   onEdit,
   onRemove,
@@ -64,6 +64,7 @@ export function PositionTransactions({
   defaultPeriod?: "all" | "month";
   editableAccountId: string | null;
   showAccountLabels?: boolean;
+  showAssets?: boolean;
   quoted: boolean;
   dollars: boolean;
 
@@ -129,10 +130,11 @@ export function PositionTransactions({
             <thead>
               <tr className="text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
                 <th className="py-2 pr-3">Day</th>
+                {showAssets ? <th className="py-2 pr-3">Asset</th> : null}
                 <th className="py-2 pr-3">Type</th>
                 {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantity"}</th> : null}
-                {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "Exchange rate" : "Price"}</th> : null}
-                <th className="py-2 pr-3 text-right">Value</th>
+                {quoted ? <th className="py-2 pr-3 text-right">{showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"}</th> : null}
+                <th className="py-2 pr-3 text-right">{showAssets ? "Value (USD)" : "Value"}</th>
                 <th className="py-2 pr-3">Note</th>
                 <th className="py-2" aria-label="Actions" />
               </tr>
@@ -150,6 +152,7 @@ export function PositionTransactions({
                       {dayLabel(entry.occurredOn)}
                       <span className="ml-1.5 text-[10px] text-muted-foreground/70">{monthLabel(entry.month)}</span>
                     </td>
+                    {showAssets ? <td className="py-2.5 pr-3 text-foreground">{entry.assetName}</td> : null}
                     <td className="py-2.5 pr-3">
                       <span
                         className={cn(
@@ -172,17 +175,17 @@ export function PositionTransactions({
                     </td>
                     {quoted ? (
                       <td className="py-2.5 pr-3 text-right font-mono">
-                        {entry.quantity === 0 ? "—" : QUANTITY.format(entry.quantity)}
+                        {entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.quantity)}
                       </td>
                     ) : null}
                     {quoted ? (
                       <td className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
-                        {entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
+                        {!entry.moneyUnavailable && entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
                       </td>
                     ) : null}
                     <td className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
                       {negative ? "−" : ""}
-                      {formatBrl(Math.abs(entry.amountBrl))}
+                      {entry.moneyUnavailable ? "—" : formatBrl(Math.abs(entry.amountBrl))}
                     </td>
                     <td className="max-w-[200px] truncate py-2.5 pr-3 text-muted-foreground">{entry.note ? englishTransactionNote(entry.note) : ""}</td>
                     <td className="py-2.5 text-right">
@@ -220,7 +223,7 @@ export function PositionTransactions({
       )}
       <Dialog.Root open={toRemove !== null} onOpenChange={open=>{if(!open)setToRemove(null);}}><Dialog.Portal><Dialog.Backdrop className={backdropClass}/><Dialog.Popup className={centeredPopupClass}>
         <Dialog.Title className="text-base font-semibold">Delete Transaction?</Dialog.Title>
-        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${formatBrl(toRemove.amountBrl)}. This removes the recorded transaction and recalculates later holdings. Use Edit to correct its values instead.` : ""}</Dialog.Description>
+        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${toRemove.moneyUnavailable ? "Value unavailable" : formatBrl(toRemove.amountBrl)}. This removes the recorded transaction and recalculates later holdings. Use Edit to correct its values instead.` : ""}</Dialog.Description>
         <div className="mt-5 flex justify-end gap-2"><Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close><button type="button" disabled={removing} className={`${secondaryButtonClass} border-destructive/40 text-destructive`} onClick={()=>{if(toRemove){onRemove(toRemove);setToRemove(null);}}}>Delete Transaction</button></div>
       </Dialog.Popup></Dialog.Portal></Dialog.Root>
       </div>
@@ -244,16 +247,15 @@ function RecordedTotals({ transactions }: { transactions: PositionTransactionVie
   const items = [
     { label: "Contributions", value: totals.contributions },
     { label: "Withdrawals", value: totals.withdrawals },
-    { label: "Returns", value: totals.income },
-    ...(totals.opening > 0 ? [{ label: "Opening balance", value: totals.opening }] : []),
+    ...(totals.opening > 0 ? [{ label: "Opening Balance", value: totals.opening }] : []),
   ];
 
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="recorded-totals">
+    <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="recorded-totals">
       {items.map((item) => (
         <div key={item.label} className="rounded-xl border border-border/70 px-3 py-2">
           <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(item.label)}</dt>
-          <dd className="mt-0.5 font-mono text-xs text-foreground">{formatBrl(item.value)}</dd>
+          <dd className="mt-0.5 font-mono text-xs text-foreground">{transactions.some(entry => entry.moneyUnavailable) ? "—" : formatBrl(item.value)}</dd>
         </div>
       ))}
     </dl>

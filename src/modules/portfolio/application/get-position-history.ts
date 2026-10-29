@@ -102,6 +102,13 @@ export type PositionTransactionView = {
   accountId: string;
   accountLabel: string;
   positionId?: string;
+  assetId?: string;
+  assetName?: string;
+  ticker?: string | null;
+  quoteSymbol?: string | null;
+  assetType?: string | null;
+  baseCurrency?: string;
+  moneyUnavailable?: boolean;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
 
   transferId: string | null;
@@ -437,7 +444,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
 }
 
 
-function automaticIncome(
+export function automaticIncome(
   positions: {
     id: string;
     accountId: string;
@@ -481,9 +488,9 @@ function addDay(day: string) {
   return value.toISOString().slice(0, 10);
 }
 
-async function readTransactions(assetId: string): Promise<PositionTransactionView[]> {
+export async function readTransactions(assetId?: string): Promise<PositionTransactionView[]> {
   const rows = await (await getUserDb())!.positionTransaction.findMany({
-    where: { position: { assetId } },
+    where: assetId ? { position: { assetId } } : {},
     orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -497,7 +504,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
       positionId: true,
       position: {
         select: {
-          asset: { select: { assetType: true } },
+          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true } },
           accountId: true,
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
@@ -509,6 +516,12 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
   return rows.map((row) => ({
     id: row.id,
     positionId: row.positionId,
+    assetId: row.position.asset.id,
+    assetName: row.position.asset.name,
+    ticker: row.position.asset.ticker,
+    quoteSymbol: row.position.asset.quoteSymbol,
+    assetType: row.position.asset.assetType,
+    baseCurrency: row.position.asset.baseCurrency,
     accountId: row.position.accountId,
     accountLabel: "",
     kind: row.kind,
@@ -516,7 +529,7 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
     quantity: row.quantity.toNumber(),
     unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
     amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
-    locked: row.position.asset.assetType === "savings",
+    locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
     automatic: row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
     note: row.note,
     transferId: row.transferId,

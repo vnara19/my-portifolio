@@ -237,11 +237,8 @@ function PresentRow({
         {recorded ? (
           <>
             <p>{formatSignedBrl(recorded.netFlowBrl)}</p>
-            <p className="mt-0.5 text-[10px] text-primary">recorded
-              {recorded.incomeBrl !== 0 ? ` · return ${formatSignedBrl(recorded.incomeBrl)}` : ""}
-              {recorded.openingBrl !== 0 ? " · opening balance" : ""}
-              {recorded.internalBrl !== 0 ? " · internal transfer" : ""}
-            </p>
+            {recorded.openingBrl !== 0 ? <p className="mt-0.5 text-[10px] text-muted-foreground">Opening Balance {formatSignedBrl(recorded.openingBrl)}</p> : null}
+            {recorded.internalBrl !== 0 ? <p className="mt-0.5 text-[10px] text-muted-foreground">Internal Transfer</p> : null}
           </>
         ) : slot.source === "recorded" ? (
 

@@ -1,3 +1,4 @@
+import { getPortfolioLedger } from "@/modules/portfolio/application/get-portfolio-ledger";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/product/app-shell";
@@ -25,9 +26,11 @@ export default async function PositionsPage({
     getEditingCatalog(),
   ]);
 
+  const ledger = month ? await getPortfolioLedger(months) : null;
+
   return (
     <AppShell active="positions" months={months} selectedMonth={selected?.month ?? null}>
-      <PositionsWorkspace month={month} catalog={catalog} />
+      <PositionsWorkspace month={month} catalog={catalog} ledger={ledger} />
     </AppShell>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 import { SavingsMovementButton } from "./savings-movement-dialog";
+import { PortfolioLedgerPanel } from "./portfolio-ledger";
+import type { PortfolioLedger } from "../application/get-portfolio-ledger";
 import { positionTitle, showPositionTicker } from "../presentation/position-display";
 
 import { nativeUnitPrice } from "../presentation/position-display";
@@ -109,9 +111,11 @@ type FormState = { open: boolean; target: PositionFormTarget | null; key: number
 export function PositionsWorkspace({
   month,
   catalog,
+  ledger,
 }: {
   month: MonthPositions | null;
   catalog: EditingCatalog;
+  ledger?: PortfolioLedger | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -201,6 +205,7 @@ export function PositionsWorkspace({
     return (
       <>
         <EmptyPositions month={month} catalog={catalog} />
+        {ledger && month ? <div className="mx-auto w-full max-w-[1472px] px-5 pb-24 sm:px-7 xl:px-12"><PortfolioLedgerPanel ledger={ledger} selectedMonth={toMonthParam(month.referenceDate)} /></div> : null}
         <EditToast toast={toast} onDismiss={dismissToast} onUndo={undo} undoing={isUndoing} />
       </>
     );
@@ -459,6 +464,8 @@ export function PositionsWorkspace({
           </table>
         </div>
       </section>
+
+      {ledger ? <PortfolioLedgerPanel ledger={ledger} selectedMonth={toMonthParam(month.referenceDate)} /> : null}
 
       <PositionFormDialog
         open={form.open}

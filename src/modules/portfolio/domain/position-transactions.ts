@@ -9,7 +9,7 @@ export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
 export type StoredTransactionKind = TransactionKind | "OPENING";
 
 export const TRANSACTION_LABELS: Record<StoredTransactionKind, string> = {
-  OPENING: "Opening balance",
+  OPENING: "Opening Balance",
   CONTRIBUTION: "Contribution",
   WITHDRAWAL: "Withdrawal",
   INCOME: "Return",
