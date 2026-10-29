@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { MIN_PASSWORD_LENGTH, PASSWORD_REQUIREMENTS, passwordPolicyError } from "../password-policy";
 import { authClient } from "../auth-client";
 import { inputClass, primaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 
@@ -18,6 +19,7 @@ export function AccountPanel({email}:{name:string;email:string}) {
         form.reset();router.replace("/entrar?updated=email");router.refresh();
       }else{
         const newPassword=String(values.get("newPassword")??"");
+        const policyError=passwordPolicyError(newPassword);if(policyError){setMessage({ok:false,text:policyError});return;}
         if(newPassword!==values.get("confirmPassword")){setMessage({ok:false,text:"The new passwords do not match."});return;}
         const result=await authClient.changePassword({currentPassword,newPassword,revokeOtherSessions:true});
         if(result.error){setMessage({ok:false,text:result.error.message??"Could not change password."});return;}
@@ -38,9 +40,9 @@ export function AccountPanel({email}:{name:string;email:string}) {
       </form>
       <form onSubmit={e=>save(e,"password")} className="space-y-3"><h3 className="text-sm font-medium">Change Password</h3>
         <label className="grid gap-1.5 text-xs">Current Password<input className={inputClass} name="currentPassword" type="password" autoComplete="current-password" maxLength={128} required/></label>
-        <label className="grid gap-1.5 text-xs">New Password<input className={inputClass} name="newPassword" type="password" autoComplete="new-password" minLength={10} maxLength={128} required/></label>
-        <label className="grid gap-1.5 text-xs">Confirm New Password<input className={inputClass} name="confirmPassword" type="password" autoComplete="new-password" minLength={10} maxLength={128} required/></label>
-        <p className="text-xs text-muted-foreground">Use at least 10 characters.</p>
+        <label className="grid gap-1.5 text-xs">New Password<input className={inputClass} name="newPassword" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} maxLength={128} required/></label>
+        <label className="grid gap-1.5 text-xs">Confirm New Password<input className={inputClass} name="confirmPassword" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} maxLength={128} required/></label>
+        <p className="text-xs text-muted-foreground">{PASSWORD_REQUIREMENTS}</p>
         <button className={primaryButtonClass} disabled={busy!==null}>{busy==="password"?"Saving…":"Change Password"}</button>
       </form>
     </div>

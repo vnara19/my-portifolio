@@ -4,6 +4,7 @@ import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { MIN_PASSWORD_LENGTH, PASSWORD_REQUIREMENTS, passwordPolicyError } from "../password-policy";
 import { authClient } from "@/modules/auth/auth-client";
 import { Field, inputClass, primaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 
@@ -13,7 +14,7 @@ const MESSAGES: Record<string, string> = {
   INVALID_EMAIL_OR_PASSWORD: "Incorrect email or password.",
   USER_ALREADY_EXISTS: "An account with this email already exists. Sign in instead.",
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "An account with this email already exists. Sign in instead.",
-  PASSWORD_TOO_SHORT: "The password must contain at least 10 characters.",
+  PASSWORD_TOO_SHORT: PASSWORD_REQUIREMENTS,
   INVALID_EMAIL: "Enter a valid email address.",
 };
 
@@ -46,6 +47,7 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
       return;
     }
 
+    if(mode === "sign-up"){const issue=passwordPolicyError(password);if(issue){setError(issue);return;}}
     setPending(true);
     setError(null);
 
@@ -97,11 +99,13 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
           type="password"
           autoComplete={signingUp ? "new-password" : "current-password"}
           required
-          minLength={signingUp ? 10 : undefined}
+          minLength={signingUp ? MIN_PASSWORD_LENGTH : undefined}
+          maxLength={128}
           className={inputClass}
         />
       </Field>
 
+      {signingUp ? <p className="text-xs leading-5 text-muted-foreground">{PASSWORD_REQUIREMENTS}</p> : null}
       {error ? (
         <p role="alert" className="text-xs leading-relaxed text-destructive">
           {error}

@@ -2,8 +2,9 @@ import "dotenv/config";
 
 import { randomBytes } from "node:crypto";
 
+import { passwordPolicyError } from "../src/modules/auth/password-policy";
 import { getPrismaClient } from "../src/lib/prisma";
-import { getAuth, MIN_PASSWORD_LENGTH, withSignUpOverride } from "../src/modules/auth/auth";
+import { getAuth, withSignUpOverride } from "../src/modules/auth/auth";
 
 
 //
@@ -33,11 +34,10 @@ async function main() {
     }
   } else if (command === "create" && email && nameParts.length > 0) {
     const provided = process.env.AUTH_USER_PASSWORD;
-    const password = provided ?? randomBytes(15).toString("base64url");
+    const password = provided ?? "Aa9!" + randomBytes(20).toString("base64url");
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(`The password must contain at least ${MIN_PASSWORD_LENGTH} characters.`);
-    }
+    const issue = passwordPolicyError(password);
+    if (issue) throw new Error(issue);
 
     await withSignUpOverride(() =>
       getAuth().api.signUpEmail({ body: { email, password, name: nameParts.join(" ") } }),

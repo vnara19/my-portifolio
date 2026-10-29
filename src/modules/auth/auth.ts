@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
 import { accountSecurity } from "./account-security";
@@ -12,7 +12,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import { allowedHosts, isSignUpAllowed, originOf } from "@/modules/auth/access";
 
 
-export const MIN_PASSWORD_LENGTH = 10;
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, passwordPolicyError } from "./password-policy";
+export { MIN_PASSWORD_LENGTH } from "./password-policy";
 
 const signUpOverride = new AsyncLocalStorage<true>();
 
@@ -43,7 +44,17 @@ function createAuth() {
     emailAndPassword: {
       enabled: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
       autoSignIn: true,
+    },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        const password = ctx.path === "/sign-up/email" ? ctx.body?.password : ["/change-password", "/reset-password", "/set-password"].includes(ctx.path) ? ctx.body?.newPassword : undefined;
+        if (typeof password === "string") {
+          const error = passwordPolicyError(password);
+          if (error) throw new APIError("BAD_REQUEST", { message: error, code: "PASSWORD_POLICY" });
+        }
+      }),
     },
     user: { modelName: "user" },
     session: {
