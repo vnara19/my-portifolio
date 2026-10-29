@@ -9,7 +9,7 @@ import { DEFAULT_REBALANCE_TOLERANCE } from "@/modules/portfolio/domain/rebalanc
 import { TargetEditor } from "@/modules/portfolio/ui/target-editor";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Portfolio settings" };
+export const metadata: Metadata = { title: "Portfolio Settings" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
   const { mes } = await searchParams;

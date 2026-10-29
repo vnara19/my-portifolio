@@ -36,10 +36,11 @@ export function TargetEditor({ tolerance, children }: { tolerance: number; child
   return <div className="mx-auto w-full max-w-3xl px-5 py-6 sm:px-7">
     <header className="border-b border-border/70 pb-4">
       <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Settings</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Portfolio settings</h1>
+      <h1 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Portfolio Settings</h1>
     </header>
     <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Tolerance">
       <h2 className="text-base font-semibold tracking-[-0.025em]">Tolerance</h2>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">Allowed deviation from allocation targets, in percentage points. This does not change investment returns.</p>
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_84px] items-center gap-3">
         <StepSlider value={invalid ? saved : value!} max={MAX_REBALANCE_TOLERANCE} largeStep={5} label="Tolerance band"
           valueText={(current) => `${format(current)} percentage points`} onChange={(next) => setDraft(format(next))} />

@@ -1,9 +1,11 @@
 
 /** Investment navigation, reporting-month selection and the most recent successful quote update. */
-import { ChartDonutIcon, GearSixIcon } from "@phosphor-icons/react/dist/ssr";
+import { ChartDonutIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
+import { getSessionUser } from "@/modules/auth/session";
+import { ProfileMenu } from "@/modules/auth/ui/profile-menu";
 import { AppFrame } from "@/components/product/app-frame";
 import { MainTabs, NavTrail, type NavContext, type TabKey } from "@/components/product/main-tabs";
 import { MonthTimeline } from "@/components/product/month-timeline";
@@ -22,6 +24,7 @@ type AppShellProps = {
 };
 
 export async function AppShell({ active, months, selectedMonth, context, children }: AppShellProps) {
+  const user = await getSessionUser();
   return (
     <AppFrame
       area="investments"
@@ -63,15 +66,7 @@ export async function AppShell({ active, months, selectedMonth, context, childre
                 </Suspense>
               </span>
 
-              {active === "settings" ? null : (
-                <Link
-                  href="/configuracao"
-                  aria-label="Portfolio settings"
-                  className="grid size-9 shrink-0 place-items-center rounded-xl border border-border text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  <GearSixIcon aria-hidden="true" size={17} weight="duotone" />
-                </Link>
-              )}
+              {user ? <ProfileMenu name={user.name} email={user.email} /> : null}
             </div>
           </div>
 

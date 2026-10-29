@@ -16,8 +16,8 @@ function safeTarget(value: string | undefined) {
   return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/entrar") ? value : "/";
 }
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ para?: string }> }) {
-  const { para } = await searchParams;
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ para?: string; updated?: string }> }) {
+  const { para, updated } = await searchParams;
   const target = safeTarget(para);
 
   if (await getSessionUser()) {
@@ -35,6 +35,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           <p className="mt-1.5 text-sm text-muted-foreground">Sign in to view your portfolio.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card/80 p-6 shadow-2xl backdrop-blur">
+          {updated === "email" ? <p role="status" className="mb-4 text-sm text-primary">Email changed. Sign in with your new email address.</p> : null}
           <SignInForm redirectTo={target} />
         </div>
       </div>

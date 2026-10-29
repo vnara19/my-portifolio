@@ -7,6 +7,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
+import { accountSecurity } from "./account-security";
 import { getPrismaClient } from "@/lib/prisma";
 import { allowedHosts, isSignUpAllowed, originOf } from "@/modules/auth/access";
 
@@ -49,13 +50,13 @@ function createAuth() {
       modelName: "session",
 
 
-      cookieCache: { enabled: true, maxAge: 5 * 60 },
+      cookieCache: { enabled: false },
     },
     account: { modelName: "authAccount" },
     verification: { modelName: "verification" },
 
 
-    rateLimit: { storage: "database", modelName: "rateLimit" },
+    rateLimit: { enabled: true, storage: "database", modelName: "rateLimit" },
     advanced: { database: { generateId: "uuid" } },
     databaseHooks: {
       user: {
@@ -73,7 +74,7 @@ function createAuth() {
     },
     telemetry: { enabled: false },
 
-    plugins: [nextCookies()],
+    plugins: [accountSecurity(), nextCookies()],
   });
 }
 

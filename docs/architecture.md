@@ -536,3 +536,7 @@ rather than substituting another currency or today's rate. EUR is carried with U
 as a reference currency when reporting months are generated.
 
 Current investment lifecycle, optional Brazilian maturity, net-deposit tracking and external withdrawal semantics are documented in [investment lifecycle](investment-lifecycle.md). This supersedes the earlier cash-wallet proposal.
+
+### Account controls
+
+The shared AppShell exposes an accessible profile menu on Overview, Positions, Quotes, asset details and Settings. Account Settings uses Better Auth password changes and a password-confirmed `/api/auth/account-email` endpoint. Email changes keep the user ID and portfolio ownership, clear email verification, revoke all sessions and require a new sign-in; password changes revoke other sessions. Session cookie caching is disabled so revoked sessions cannot retain cached access. The email endpoint is limited to five attempts per minute and uses authoritative sensitive-session middleware plus the existing origin checks. No real credentials are used by `scripts/test-account-settings.ts`; it requires an isolated `english099_*` schema.
