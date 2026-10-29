@@ -7,6 +7,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
+import { consumeRateLimit } from "@/lib/rate-limit";
 import { accountSecurity } from "./account-security";
 import { getPrismaClient } from "@/lib/prisma";
 import { allowedHosts, isSignUpAllowed, originOf } from "@/modules/auth/access";
@@ -29,11 +30,14 @@ function createAuth() {
     throw new Error("DATABASE_URL is not configured.");
   }
 
+  const secret=process.env.BETTER_AUTH_SECRET;
+  if(!secret || Buffer.byteLength(secret,"utf8")<32)throw new Error("Configure a strong authentication secret of at least 32 bytes.");
   const hosts = allowedHosts();
   const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
 
   return betterAuth({
-    appName: "My portfolio",
+    appName: "My Portfolio",
+    secret,
     database: prismaAdapter(prisma, { provider: "postgresql", transaction: true }),
     baseURL: process.env.BETTER_AUTH_URL ?? {
       allowedHosts: hosts,
@@ -49,6 +53,11 @@ function createAuth() {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-up/email" && !signUpOverride.getStore()) throw new APIError("FORBIDDEN", { message: "Account creation is managed by the application owner." });
+        if (ctx.path === "/sign-in/email" && typeof ctx.body?.email === "string") {
+          const limit=await consumeRateLimit(ctx.body.email.trim().toLowerCase(),"account-login",10,60);
+          if(!limit.allowed)throw new APIError("TOO_MANY_REQUESTS",{message:"Too many attempts. Please try again shortly."});
+        }
         const password = ctx.path === "/sign-up/email" ? ctx.body?.password : ["/change-password", "/reset-password", "/set-password"].includes(ctx.path) ? ctx.body?.newPassword : undefined;
         if (typeof password === "string") {
           const error = passwordPolicyError(password);
@@ -59,6 +68,8 @@ function createAuth() {
     user: { modelName: "user" },
     session: {
       modelName: "session",
+      expiresIn: 24 * 60 * 60,
+      updateAge: 60 * 60,
 
 
       cookieCache: { enabled: false },
@@ -68,7 +79,7 @@ function createAuth() {
 
 
     rateLimit: { enabled: true, storage: "database", modelName: "rateLimit" },
-    advanced: { database: { generateId: "uuid" } },
+    advanced: { database: { generateId: "uuid" }, defaultCookieAttributes: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" } },
     databaseHooks: {
       user: {
         create: {

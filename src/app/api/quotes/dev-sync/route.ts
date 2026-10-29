@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!devToolsEnabled()) {
     return Response.json({ message: "Route unavailable." }, { status: 404 });
   }
-  const rejected = rejectForeignRequest(request) ?? await rejectWithoutSession();
+  const rejected = rejectForeignRequest(request) ?? await rejectWithoutSession({bucket:"quote-sync",max:3});
   if (rejected) return rejected;
   try {
     const outcome = await syncQuotes();

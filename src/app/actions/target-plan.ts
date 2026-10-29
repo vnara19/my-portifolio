@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
-import { requireSessionUser } from "@/modules/auth/session";
+import { requireMutationUser } from "@/modules/auth/session";
 import { saveTargetPlan, saveTolerance, TargetPlanError } from "@/modules/portfolio/application/target-plan-editing";
 
 const schema = z.object({
@@ -18,7 +18,7 @@ const schema = z.object({
 export type TargetPlanActionResult = { ok: boolean; message: string };
 
 export async function saveTargetPlanAction(input: unknown): Promise<TargetPlanActionResult> {
-  await requireSessionUser();
+  await requireMutationUser();
   const parsed = schema.safeParse(input);
 
   if (!parsed.success) {
@@ -40,7 +40,7 @@ export async function saveTargetPlanAction(input: unknown): Promise<TargetPlanAc
 }
 
 export async function saveToleranceAction(input: unknown): Promise<TargetPlanActionResult> {
-  await requireSessionUser();
+  await requireMutationUser();
   if (typeof input !== "string" || input.length > 20) return { ok: false, message: "Review the tolerance value." };
   try {
     await saveTolerance(input.trim());

@@ -50,3 +50,7 @@ acquisition cost/face amount and private dated full-value observations. Actual
 coupons and principal receipts remain position transactions. Preserve both to
 restore valuation and realized/unrealized gains. Existing backups without this
 column continue to import. No version bump is required.
+
+## Security boundary for web restores
+
+Web restoration references existing shared market/daily quotes and never inserts client-supplied global prices. A backup with shared history missing from the destination server is rejected atomically; the administrator can first import a trusted archive using the CLI. Version-5 structure is unchanged. Web uploads are bounded to 10 MB (subject to hosting limits) and 100,000 rows per table.

@@ -1,3 +1,4 @@
+import { limitedJson } from "@/lib/request-body";
 
 
 import { z } from "zod";
@@ -26,13 +27,13 @@ export async function POST(request: Request) {
     return rejection;
   }
 
-  const unauthorized = await rejectWithoutSession();
+  const unauthorized = await rejectWithoutSession({bucket:"ticker-lookup",max:40});
 
   if (unauthorized) {
     return unauthorized;
   }
 
-  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
+  const parsed = requestSchema.safeParse(await limitedJson(request).catch(()=>null));
 
   if (!parsed.success) {
     const body: TickerCheckResponse = { status: "invalid", message: "Enter a valid ticker for this asset type." };

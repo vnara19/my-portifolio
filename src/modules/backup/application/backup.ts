@@ -367,6 +367,7 @@ export function parseBackup(input: unknown): {
       throw new BackupValidationError(`The table ${key} in the backup is not a list.`);
     }
 
+    if(list.length>100_000)throw new BackupValidationError("The backup contains too many records. Use the administrator import for large archives.");
     const spec = TABLE_SPECS[key];
     const fields = new Set(fieldsOf(key));
     file[key] = list as BackupRow[];
@@ -491,7 +492,7 @@ async function replaceTakenIds(transaction: Transaction, rows: Record<BackupTabl
 }
 
 
-export async function restoreBackup(input: unknown): Promise<BackupCounts | null> {
+export async function restoreBackup(input: unknown, options: { trustedSharedQuotes?: boolean } = {}): Promise<BackupCounts | null> {
   const prisma = await getUserDb();
 
   if (!prisma) {
@@ -515,11 +516,23 @@ export async function restoreBackup(input: unknown): Promise<BackupCounts | null
         }
       }
 
+      // Web imports may reference global provider quotes, never create them for other users.
+      if (!options.trustedSharedQuotes) {
+        const day=(value:unknown)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
+        for (const key of ["marketQuotes","dailyQuotes"] as const) {
+          const data=rows[key];
+          for(let start=0;start<data.length;start+=INSERT_CHUNK){
+            const chunk=data.slice(start,start+INSERT_CHUNK);
+            const known=key === "marketQuotes" ? await transaction.marketQuote.findMany({where:{OR:chunk.map(q=>({referenceDate:q.referenceDate as Date,symbol:q.symbol as string}))},select:{referenceDate:true,symbol:true}}) : await transaction.dailyQuote.findMany({where:{OR:chunk.map(q=>({quoteDate:q.quoteDate as Date,symbol:q.symbol as string}))},select:{quoteDate:true,symbol:true}});
+            const available=new Set(known.map(q=>`${q.symbol}:${day("referenceDate" in q?q.referenceDate:q.quoteDate)}`));
+            if(chunk.some(q=>!available.has(`${q.symbol}:${day(key === "marketQuotes"?q.referenceDate:q.quoteDate)}`)))throw new BackupValidationError("This backup contains market history not available on this server. Ask the application owner to import the trusted market history first.");
+          }
+        }
+      }
       const prepared = await replaceTakenIds(transaction, rows);
 
       for (const { key, shared } of BACKUP_TABLES) {
-
-
+        if(shared && !options.trustedSharedQuotes)continue;
         const data = shared
           ? prepared[key].map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== "id")))
           : prepared[key].map((row) => ({ ...row, userId: SCOPED_USER }));

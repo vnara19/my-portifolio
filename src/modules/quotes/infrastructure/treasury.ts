@@ -1,10 +1,11 @@
+import { limitedBytes } from "@/lib/request-body";
 
 /** Use the official Tesouro Direto base price, exact security type and maturity. Validate returned dates and reject future or invalid prices. */
 import { calendarDay, toDateKey } from "@/modules/quotes/domain/calendar";
 import type { QuoteRequest, QuoteResult } from "@/modules/quotes/domain/quote-types";
 import { quoteFailure } from "@/modules/quotes/domain/quote-types";
 import { latestTreasuryPoint, parseTreasuryCsv, parseTreasurySnapshot, TREASURY_PROVIDER, treasurySeriesOf, type TreasuryBook } from "@/modules/quotes/domain/treasury";
-import { describeProviderError, ProviderRefusalError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
+import { fetchProvider, describeProviderError, ProviderRefusalError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
 
 
 // The official source publishes this URL; the old treasurybondsinfo.json returned HTTP 410.
@@ -19,9 +20,9 @@ export async function readCurrentTreasuryBook(): Promise<TreasuryBook> {
   if (current && current.until > Date.now()) return current.book;
   if (currentPending) return currentPending;
   currentPending = (async () => {
-    const response = await fetch(TREASURY_CURRENT_URL, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
+    const response = await fetchProvider(TREASURY_CURRENT_URL, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
     if (!response.ok) throw new QuoteHttpError(response.status, `Tesouro listing responded with HTTP ${response.status}.`);
-    const book = parseTreasurySnapshot(await response.json());
+    const book = parseTreasurySnapshot(JSON.parse(new TextDecoder().decode(await limitedBytes(response.body,5_000_000,response.headers.get("content-length")))));
     current = { book, until: Date.now() + 5 * 60_000 };
     return book;
   })().finally(() => { currentPending = null; });
@@ -49,9 +50,9 @@ export function createTreasurySource(loadText: () => Promise<string>, clock = Da
 }
 
 async function loadOfficialText() {
-  const response = await fetch(TREASURY_CSV_URL, { cache: "no-store", signal: AbortSignal.timeout(120_000) });
+  const response = await fetchProvider(TREASURY_CSV_URL, { cache: "no-store", signal: AbortSignal.timeout(120_000) });
   if (!response.ok) throw new QuoteHttpError(response.status, `Tesouro Direto responded with HTTP ${response.status}.`);
-  return response.text();
+  return new TextDecoder().decode(await limitedBytes(response.body,100_000_000,response.headers.get("content-length")));
 }
 
 const globalForTreasury = globalThis as unknown as { treasuryBookLoader?: TreasuryBookLoader };

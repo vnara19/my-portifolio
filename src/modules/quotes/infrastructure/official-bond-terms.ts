@@ -1,6 +1,6 @@
 import { bondLookupFieldsSchema, type BondLookupFields, type BondLookupSource } from "@/modules/portfolio/domain/bond-lookup";
 import { bondDay, scheduledBondCoupons } from "@/modules/portfolio/domain/international-bond";
-import { QuoteHttpError } from "./http";
+import { QuoteHttpError, fetchProvider } from "./http";
 
 const pages = new Map<string, { until: number; promise: Promise<string | null> }>();
 /** Public issuer pages only; bounded reads, shared catalog cache, no browser/session bypass. */
@@ -8,7 +8,7 @@ async function html(url: string): Promise<string | null> {
   const cached = pages.get(url);
   if (cached && cached.until > Date.now()) return cached.promise;
   const promise = (async () => {
-    const response = await fetch(url, { signal: AbortSignal.timeout(6500), cache: "no-store" });
+    const response = await fetchProvider(url, { signal: AbortSignal.timeout(6500), cache: "no-store" });
     if (response.status === 404) return null;
     if (!response.ok) throw new QuoteHttpError(response.status, "Official bond source unavailable.");
     const reader = response.body?.getReader();

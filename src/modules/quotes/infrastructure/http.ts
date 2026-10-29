@@ -1,5 +1,6 @@
 
 /** Bound provider requests by timeout and distinguish region blocks, rate limits, malformed responses and network failures. */
+import { limitedBytes } from "@/lib/request-body";
 import { z } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -13,12 +14,27 @@ export type FetchJsonOptions = {
   attempts?: number;
 };
 
+/** Follow only HTTPS redirects within the already trusted provider origin; never forward credentials to another host. */
+export async function fetchProvider(input:URL|string,init:RequestInit={}){
+ const original=new URL(input);if(original.protocol!=="https:"||original.username||original.password)throw new Error("Untrusted provider URL");
+ let url=original;
+ for(let attempt=0;attempt<4;attempt++){
+  const response=await fetch(url,{...init,redirect:"manual"});
+  if(![301,302,303,307,308].includes(response.status))return response;
+  const location=response.headers.get("location");await response.body?.cancel();
+  if(!location || (init.method??"GET")!=="GET")throw new Error("Unexpected provider redirect");
+  const next=new URL(location,url);if(next.origin!==original.origin||next.protocol!=="https:"||next.username||next.password)throw new Error("Cross-origin provider redirect refused");
+  url=next;
+ }
+ throw new Error("Too many provider redirects");
+}
+
 export async function fetchJson(url: URL, init?: RequestInit, options: FetchJsonOptions = {}) {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, attempts = 1 } = options;
 
   for (let attempt = 1; ; attempt += 1) {
     try {
-      const response = await fetch(url, {
+      const response = await fetchProvider(url, {
         ...init,
         cache: "no-store",
         signal: AbortSignal.timeout(timeoutMs),
@@ -28,7 +44,7 @@ export async function fetchJson(url: URL, init?: RequestInit, options: FetchJson
         throw new QuoteHttpError(response.status, `The provider responded with HTTP ${response.status}.`);
       }
 
-      return (await response.json()) as unknown;
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await limitedBytes(response.body, 5_000_000, response.headers.get("content-length")))) as unknown;
     } catch (error) {
       if (attempt >= attempts || !isTransient(error)) {
         throw error;

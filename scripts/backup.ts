@@ -71,7 +71,7 @@ async function run(command: string | undefined, file: string | undefined, apply:
     if (!apply) {
       console.info("Dry run: nothing was saved. Run with --apply to restore.");
     } else {
-      await restoreBackup(input);
+      await restoreBackup(input, { trustedSharedQuotes: true });
       console.info("Restored.");
     }
   } else {

@@ -53,7 +53,7 @@ const WHERE_OPERATIONS = new Set([
   "deleteMany",
 ]);
 
-type Args = { where?: object; data?: object | object[]; create?: object };
+type Args = { where?: object; data?: object | object[]; create?: object; update?: object };
 
 
 export const SCOPED_USER = "";
@@ -64,6 +64,9 @@ export function isOwnedModel(model: string) {
 
 function scope(operation: string, args: Args, userId: string): Args {
   const scoped: Args = { ...args };
+  const changes = operation === "upsert" ? args.update : ["update", "updateMany", "updateManyAndReturn"].includes(operation) ? args.data : undefined;
+  if(changes && !Array.isArray(changes) && "userId" in changes && changes.userId !== userId)throw new Error("Record ownership cannot be changed.");
+
 
   if (WHERE_OPERATIONS.has(operation)) {
     scoped.where = { ...args.where, userId };

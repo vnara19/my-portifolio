@@ -1,5 +1,7 @@
 # Account security review — 29 October 2026
 
+Superseded by [the completed hardening review](security-hardening-2026-10-29.md). Findings below describe the earlier snapshot, not the current dependency state.
+
 Scope: source review, installed dependency audit, isolated authentication integration tests and Preview browser checks. This is not an independent penetration test or a certification of infrastructure security. No real account password or portfolio was changed.
 
 ## Tolerance finding

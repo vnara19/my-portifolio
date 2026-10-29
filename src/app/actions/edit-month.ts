@@ -23,7 +23,7 @@ import {
   removeTransaction,
   updateTransaction,
 } from "@/modules/portfolio/application/position-transactions";
-import { requireSessionUser } from "@/modules/auth/session";
+import { requireMutationUser } from "@/modules/auth/session";
 import { internationalBondSchema } from "@/modules/portfolio/domain/international-bond";
 import { brazilianFixedIncomeSchema } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { ASSET_KINDS } from "@/modules/portfolio/domain/asset-kinds";
@@ -301,7 +301,7 @@ export async function undoChangeAction(token: unknown): Promise<EditActionResult
 
 async function run(operation: () => Promise<EditActionResult>): Promise<EditActionResult> {
 
-  await requireSessionUser();
+  await requireMutationUser();
 
   try {
     const result = await operation();

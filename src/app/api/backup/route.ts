@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     return Response.json({ message: "Origin not allowed." }, { status: 403 });
   }
 
-  const unauthorized = await rejectWithoutSession();
+  const unauthorized = await rejectWithoutSession({bucket:"backup-export",max:12});
 
   if (unauthorized) {
     return unauthorized;

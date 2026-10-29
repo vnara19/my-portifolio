@@ -1,5 +1,6 @@
 
 /** Two-step restore: check validates without writing; apply replaces only the authenticated user's portfolio. A route avoids the Server Action upload-size limit. */
+import { limitedJson, BodyLimitError } from "@/lib/request-body";
 import { rejectForeignRequest } from "@/lib/same-origin-request";
 import { rejectWithoutSession } from "@/modules/auth/session";
 import { BackupValidationError, previewBackup, restoreBackup } from "@/modules/backup/application/backup";
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
     return rejection;
   }
 
-  const unauthorized = await rejectWithoutSession();
+  const unauthorized = await rejectWithoutSession({bucket:"backup-restore",max:6});
 
   if (unauthorized) {
     return unauthorized;
@@ -24,8 +25,9 @@ export async function POST(request: Request) {
   let body: { mode?: unknown; backup?: unknown };
 
   try {
-    body = (await request.json()) as typeof body;
-  } catch {
+    body = (await limitedJson(request, 10 * 1024 * 1024)) as typeof body;
+  } catch (error) {
+    if(error instanceof BodyLimitError)return respond({state:"invalid",message:"The backup is too large or complex for web import. Use a smaller file or contact the application owner."},413);
     return invalid("The file is not valid JSON.");
   }
 
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
       return invalid(error.message);
     }
 
-    console.error("Backup restoration failed:", error);
+    console.error("Backup restoration failed", { name: error instanceof Error ? error.name : "Unknown" });
     return respond(
       { state: "invalid", message: "Restoration failed and nothing was changed. Check that the file is complete." },
       500,

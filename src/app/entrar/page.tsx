@@ -2,6 +2,7 @@ import { ChartDonutIcon } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { safeSignInTarget } from "@/modules/auth/safe-redirect";
 import { getSessionUser } from "@/modules/auth/session";
 import { SignInForm } from "@/modules/auth/ui/sign-in-form";
 
@@ -12,13 +13,10 @@ export const metadata: Metadata = {
 };
 
 
-function safeTarget(value: string | undefined) {
-  return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/entrar") ? value : "/";
-}
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<{ para?: string; updated?: string }> }) {
   const { para, updated } = await searchParams;
-  const target = safeTarget(para);
+  const target = safeSignInTarget(para);
 
   if (await getSessionUser()) {
     redirect(target);

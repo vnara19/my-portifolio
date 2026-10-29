@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return rejection;
   }
 
-  const unauthorized = await rejectWithoutSession();
+  const unauthorized = await rejectWithoutSession({bucket:"valuation-refresh",max:20});
 
   if (unauthorized) {
     return unauthorized;

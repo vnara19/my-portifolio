@@ -1,3 +1,4 @@
+import { limitedJson } from "@/lib/request-body";
 import { z } from "zod";
 import { rejectForeignRequest } from "@/lib/same-origin-request";
 import { rejectWithoutSession } from "@/modules/auth/session";
@@ -6,9 +7,9 @@ import { validBondIdentifier } from "@/modules/portfolio/domain/international-bo
 export const dynamic = "force-dynamic";
 const schema = z.object({ identifier: z.string().trim().toUpperCase().refine(validBondIdentifier) });
 export async function POST(request: Request) {
-  const denied = rejectForeignRequest(request) ?? await rejectWithoutSession();
+  const denied = rejectForeignRequest(request) ?? await rejectWithoutSession({bucket:"bond-lookup",max:30});
   if (denied) return denied;
-  const parsed = schema.safeParse(await request.json().catch(() => null));
+  const parsed = schema.safeParse(await limitedJson(request).catch(()=>null));
   if (!parsed.success) return Response.json({ message: "Enter a valid ISIN or CUSIP." }, { status: 400 });
   return Response.json(await lookupBond(parsed.data.identifier), { headers: { "Cache-Control": "private, no-store" } });
 }

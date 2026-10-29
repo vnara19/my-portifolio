@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 
 export async function GET() {
-  const unauthorized = await rejectWithoutSession();
+  const unauthorized = await rejectWithoutSession({bucket:"treasury-lookup",max:30});
   if (unauthorized) return unauthorized;
 
   try {
