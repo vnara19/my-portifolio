@@ -101,3 +101,5 @@ product-specific protections on generated/Savings/bond records remain enforced.
 Returns cards and filters are hidden globally, but stored income and automatic
 accruals remain in history and accounting. Opening Balance uses consistent casing.
 The asset monthly flow column no longer repeats a Recorded badge.
+
+New investment registrations always create dated contributions, never opening balances. Savings keeps its explicit existing-balance initialization. Monthly tables omit opening-balance annotations; stored historical opening entries remain available for accounting and recovery. Missing purchase history does not generate an inferred opening adjustment: the affected investment change stays unavailable.

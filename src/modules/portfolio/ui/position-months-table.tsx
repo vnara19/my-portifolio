@@ -237,7 +237,6 @@ function PresentRow({
         {recorded ? (
           <>
             <p>{formatSignedBrl(recorded.netFlowBrl)}</p>
-            {recorded.openingBrl !== 0 ? <p className="mt-0.5 text-[10px] text-muted-foreground">Opening Balance {formatSignedBrl(recorded.openingBrl)}</p> : null}
             {recorded.internalBrl !== 0 ? <p className="mt-0.5 text-[10px] text-muted-foreground">Internal Transfer</p> : null}
           </>
         ) : slot.source === "recorded" ? (

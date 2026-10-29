@@ -454,9 +454,8 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
         );
       }
 
-      const contribution = Boolean(purchase) || addition.initialKind === "CONTRIBUTION";
       const executed = purchase?.cost.unitPriceBrl ?? (
-        contribution && unitPriceBrl
+        unitPriceBrl
           ? addition.executedPriceBrl
             ? parsePositive(addition.executedPriceBrl, 8)
             : unitPriceBrl
@@ -465,7 +464,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
         data: {
           userId: SCOPED_USER,
           positionId: created.id,
-          kind: contribution ? PositionTransactionKind.CONTRIBUTION : PositionTransactionKind.OPENING,
+          kind: PositionTransactionKind.CONTRIBUTION,
           occurredOn: purchase?.date ?? dates?.appliedOn ?? transactionDay(month.referenceDate),
           quantity,
 

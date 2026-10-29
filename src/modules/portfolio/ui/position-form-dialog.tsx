@@ -179,7 +179,7 @@ function PositionForm({
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
 
-  const initialKind = "OPENING" as const;
+  const initialKind = "CONTRIBUTION" as const;
   const [latestPurchaseDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);

@@ -58,7 +58,7 @@ export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise
    if(slot.source==="mixed"){f.flow=null;f.opening=null;continue;}
    if(slot.recorded){const ledger=usdMonths.get(slot.month)??emptyRecordedMonth();if(f.flow!==null)f.flow+=ledger.netFlowBrl;if(f.opening!==null)f.opening+=ledger.openingBrl;
     const source=raw.filter(t=>t.month===slot.month);f.estimated ||= source.some(t=>datedFx(t.occurredOn,t.note,"USD",days.USD,rates.USD)?.estimated);
-    if(slot.month===first && slot.month!==months[0].month && slot.openingQuantity && ledger.openingBrl===0){if(!rate){f.opening=null;continue;}const opening=slot.openingQuantity*(quoted?(slot.priceBrl??0):slot.quantity?slot.valueBrl/slot.quantity:1)/rate;if(f.opening!==null)f.opening+=opening;f.estimated=true;}
+    if(slot.month===first && slot.month!==months[0].month && slot.openingQuantity && ledger.openingBrl===0){f.opening=null;f.estimated=true;}
    }else {const inferred=slot.entryBrl??(slot.month===first&&slot.month!==months[0].month?slot.valueBrl:slot.step?.flowBrl);if(inferred!==null&&inferred!==undefined){if(!rate)f.flow=null;else if(f.flow!==null)f.flow+=inferred/rate;f.estimated=true;}else if(slot.month!==months[0].month){f.flow=null;}}
   }
  }
