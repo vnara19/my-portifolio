@@ -16,6 +16,7 @@ export type GainMovement = {
   usdRate: number | null;
   transferId: string | null;
   costRecoveryUsd?: number;
+  feeBrl?: number;
 };
 export type GainSnapshot = { holding: string; quantity: number; valueUsd: number | null };
 export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, totalUsd: null });
@@ -33,10 +34,14 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
     const state = costs.get(movement.holding) ?? { units: new Prisma.Decimal(0), cost: new Prisma.Decimal(0) };
     const units = new Prisma.Decimal(movement.quantity);
     const amount = new Prisma.Decimal(movement.amountBrl).div(capitalized ? 1 : movement.usdRate!);
+    const fee = new Prisma.Decimal(movement.feeBrl ?? 0).div(movement.usdRate ?? 1);
+    if (!fee.isFinite() || fee.lt(0)) return missing("purchase-history");
     if (movement.kind === "OPENING" || movement.kind === "CONTRIBUTION") {
       if (units.lte(0) || amount.lt(0)) return missing("purchase-history");
       state.units = state.units.plus(units);
-      state.cost = state.cost.plus(amount);
+      if (fee.gt(amount)) return missing("purchase-history");
+      state.cost = state.cost.plus(amount.minus(fee));
+      realized = realized.minus(fee);
     } else if (movement.kind === "WITHDRAWAL") {
       if (units.lte(0) || units.minus(state.units).gt("0.00000001") || state.units.lte(0)) return missing("purchase-history");
       const removed = state.cost.mul(Prisma.Decimal.min(units.div(state.units), 1));

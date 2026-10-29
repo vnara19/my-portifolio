@@ -1,5 +1,5 @@
 /** End-of-day TWR: value is after that day's external cash flows. */
-export type TwrObservation = { day: string; value: number | null; flow: number | null };
+export type TwrObservation = { day: string; value: number | null; flow: number | null; dailyGainUsd?: number | null; dailyGainPercent?: number | null };
 export type TwrPoint = { day: string; percent: number | null };
 export function timeWeightedReturns(observations: TwrObservation[]): TwrPoint[] {
   let previous: number | null = null;

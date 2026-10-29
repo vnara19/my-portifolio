@@ -1,5 +1,5 @@
 import { getMonthPositions } from "./get-month-positions";
-import { valuationCurrency } from "../presentation/position-display";
+import { exposureCurrency } from "../presentation/position-display";
 import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
@@ -44,6 +44,7 @@ export type OverviewData = {
   btcRate: number | null;
   eurRate: number | null;
   gains: PortfolioGains;
+  gainsEur?: PortfolioGains;
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
@@ -113,7 +114,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
 
       for (const position of month.positions) {
         total = total.plus(position.totalBrl);
-        const currency = valuationCurrency(assetTypeOf(position.asset), position.asset.baseCurrency);
+        const currency = exposureCurrency(assetTypeOf(position.asset), position.asset.baseCurrency);
         byCurrency[currency] = (byCurrency[currency] ?? 0) + position.totalBrl.toNumber();
 
         if (position.allocations.length === 0) {
@@ -220,9 +221,10 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
     })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
-    const [allocation, gains] = await Promise.all([
+    const [allocation, gains, gainsEur] = await Promise.all([
       getAllocationOverview(selected.referenceDate),
       getPortfolioGains(selected.referenceDate, usdRate),
+      getPortfolioGains(selected.referenceDate, eurRate, "EUR"),
     ]);
 
     return {
@@ -235,6 +237,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       eurRate,
       reporting,
       gains,
+      gainsEur,
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

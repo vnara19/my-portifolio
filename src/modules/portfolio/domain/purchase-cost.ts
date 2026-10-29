@@ -27,3 +27,9 @@ export function purchaseCost(quantity: string, price: string, commission: string
 export function purchaseNote(input: PurchaseInput, quantity: string, fxBrl: string) {
   return `${input.side === "SELL" ? "Sale" : "Purchase"}: ${quantity} × ${input.currency} ${input.price}; commission ${input.currency} ${input.commission}; FX ${fxBrl} BRL/${input.currency}.${input.amountInvested ? ` Invested ${input.currency} ${input.amountInvested}.` : ""}${input.contractedRate !== undefined ? ` Treasury ${input.contractedIndexer ?? "Fixed"} ${input.contractedRate}% p.a.` : ""}`;
 }
+
+/** Fees already belong to total paid/proceeds. This breakdown only changes P&L presentation. */
+export function recordedTradeFeeBrl(note: string | null): number {
+  const fee = /commission (USD|EUR|BRL) (\d+(?:\.\d+)?); FX (\d+(?:\.\d+)?) BRL\/\1\./.exec(note ?? "");
+  return fee ? new Prisma.Decimal(fee[2]).mul(fee[3]).toNumber() : 0;
+}

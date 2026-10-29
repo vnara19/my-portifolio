@@ -15,7 +15,7 @@ import { useTouchTooltip } from "./use-touch-tooltip";
 
 type Mode = "value" | "performance" | "total" | "class" | "currency";
 const MODES: {key:Mode;label:string}[] = [
-  {key:"value",label:"Value"},{key:"performance",label:"Performance"},{key:"total",label:"Bars"},
+  {key:"value",label:"Value"},{key:"performance",label:"Performance"},{key:"total",label:"Monthly Value"},
   {key:"class",label:"Class"},{key:"currency",label:"Currency"},
 ];
 const PURPLE="#a66bd4";
@@ -74,18 +74,18 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
     </div>
     {isPerformance?<div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
       <span><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
-      <span title={benchmark.source}><span className="mr-2 inline-block size-2 rounded-full bg-neutral-400"/>SPX · S&amp;P 500</span>
+      <span title={benchmark.source}><span className="mr-2 inline-block size-2 rounded-full bg-neutral-400"/>S&amp;P 500 · Total Return</span>
     </div>:null}
     <div className="h-[310px] w-full sm:h-[360px]" {...touch.containerProps}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{top:12,right:6,bottom:0,left:0}} onClick={state=>{
           if(isLine||touch.isTouch())return;
-          const row=data.find(p=>p.label===String(state?.activeLabel??""));
+          const row=data.find(p=>p.day===String(state?.activeLabel??""));
           if(row)void setMonth(row.month);
         }}>
           <defs><linearGradient id="portfolio-value-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.25}/><stop offset="100%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.01}/></linearGradient></defs>
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 4"/>
-          <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={28} tick={{fill:"var(--muted-foreground)",fontSize:10}}/>
+          <XAxis dataKey="day" tickFormatter={day=>new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(day))} axisLine={false} tickLine={false} minTickGap={28} tick={{fill:"var(--muted-foreground)",fontSize:10}}/>
           <YAxis orientation="right" width={70} axisLine={false} tickLine={false} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickFormatter={v=>isPerformance?`${v}%`:new Intl.NumberFormat("en-GB",{style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:0}).format(v)}/>
           <Tooltip cursor={{stroke:"var(--muted-foreground)",strokeDasharray:"3 3"}} content={({active,payload})=>{
             if(!active||!payload?.length)return null;
@@ -94,11 +94,10 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
           }}/>
           {isLine?<Area type="linear" dataKey={isPerformance?"portfolio":"total"} name="Portfolio" stroke={isPerformance?TEAL:PURPLE} fill="url(#portfolio-value-fill)" strokeWidth={2.2} dot={false} activeDot={{r:4}} connectNulls={false} isAnimationActive={false}/>:series.map(key=><Bar key={key} dataKey={key} name={key==="total"?"Portfolio":englishLabel(key)} stackId="portfolio" maxBarSize={65} isAnimationActive={false}>{data.map(row=><Cell key={row.month} fill={key==="total"?"var(--primary)":categoryColor(key)} fillOpacity={row.month===selectedMonth?1:0.5}/>)}</Bar>)}
           {!isLine?<Brush key={`${mode}:${period}`} dataKey="label" height={26} fill="oklch(1 0 0 / 0.02)" stroke="var(--border)" travellerWidth={8}/>:null}
-          {isPerformance?<Line type="linear" dataKey="spx" name="SPX" stroke="#9ca3af" strokeDasharray="3 3" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false}/>:null}
+          {isPerformance?<Line type="linear" dataKey="spx" name="S&P 500 TR" stroke="#9ca3af" strokeDasharray="3 3" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false}/>:null}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
-    <p className="mt-3 text-[11px] text-muted-foreground">{isPerformance?"Time-weighted return · cash flows excluded · SPX price index, without dividends.":"Recorded portfolio valuations · USD."}</p>
     {unavailable?<p role="status" className="mt-2 text-xs text-muted-foreground">Portfolio TWR requires complete valuations on transaction dates. Missing periods are not estimated.</p>:null}
     {isPerformance&&!benchmark.available?<p role="status" className="mt-2 text-xs text-muted-foreground">S&amp;P 500 history is temporarily unavailable.</p>:null}
   </div>;

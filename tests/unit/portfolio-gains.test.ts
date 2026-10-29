@@ -31,3 +31,14 @@ test("missing gain reasons distinguish absent FX from inconsistent holdings", ()
   portfolioGains([movement("CONTRIBUTION", 9, 500)], snapshot(10, 120), reason => reasons.push(reason));
   assert.deepEqual(reasons, ["historical-fx", "ledger-mismatch"]);
 });
+
+test("commissions on open purchases are realized expenses without changing total P&L", () => {
+ const buy={...movement("CONTRIBUTION",1,525),feeBrl:25};
+ const result=portfolioGains([buy],snapshot(1,110));
+ assert.equal(result.unrealizedUsd,10);assert.equal(result.realizedUsd,-5);assert.equal(result.totalUsd,5);
+ assert.equal(result.totalUsd,portfolioGains([{...buy,feeBrl:0}],snapshot(1,110)).totalUsd);
+});
+test("sale proceeds already include fees, so commissions are never deducted twice",()=>{
+ const result=portfolioGains([{...movement("CONTRIBUTION",1,525),feeBrl:25},{...movement("WITHDRAWAL",1,620),feeBrl:30}],[]);
+ assert.equal(result.realizedUsd,19);assert.equal(result.totalUsd,19);
+});

@@ -1,3 +1,4 @@
+import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import type { TwrObservation } from "../domain/time-weighted-return";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import type { OverviewData } from "@/modules/portfolio/application/get-overview-data";
@@ -33,7 +34,7 @@ export function OverviewDashboard({ overview, selic, performance, benchmark }: {
       </header>
 
       <div className="mt-4">
-        <OverviewKpis overview={overview} />
+        <OverviewKpis overview={overview} metrics={overviewPerformanceMetrics(performance, overview.history.find(p=>p.month===monthParam)?.day??`${monthParam}-31`)} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>

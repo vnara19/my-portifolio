@@ -1,5 +1,5 @@
 import { assetTypeOf } from "../domain/classification";
-import { valuationCurrency } from "../presentation/position-display";
+import { exposureCurrency } from "../presentation/position-display";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { withDerivedCurrency } from "@/modules/portfolio/domain/currency-targets";
@@ -140,7 +140,7 @@ function aggregatePositions(positions: PositionForAllocation[]): AllocationAggre
 
   for (const position of positions) {
     total = total.plus(position.totalBrl);
-    const reportingCurrency = valuationCurrency(assetTypeOf({ ...position.asset, assetType: position.asset.assetType ?? null, name: "", quoteSymbol: null }), position.asset.baseCurrency);
+    const reportingCurrency = exposureCurrency(assetTypeOf({ ...position.asset, assetType: position.asset.assetType ?? null, name: "", quoteSymbol: null }), position.asset.baseCurrency);
     add(currency, reportingCurrency, position.totalBrl);
     add(strategy, position.strategy ?? UNCLASSIFIED_LABEL, position.totalBrl);
 
