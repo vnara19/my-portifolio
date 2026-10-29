@@ -3,6 +3,7 @@ import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
+import { CHART_PERIODS } from "../domain/chart-period";
 import { useMemo, useState } from "react";
 import { Area, AreaChart, Brush, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -20,12 +21,7 @@ type EvolutionRow = {
   applied: number | null;
 } & Record<string, number | null | string | HistorySlot>;
 
-const PRESETS: { key: string; label: string; months: number | "ytd" | "all" }[] = [
-  { key: "6m", label: "6M", months: 6 },
-  { key: "12m", label: "12M", months: 12 },
-  { key: "ytd", label: "YTD", months: "ytd" },
-  { key: "all", label: "All", months: "all" },
-];
+const PRESETS = CHART_PERIODS;
 
 const GAP_FILL = "oklch(1 0 0 / 0.035)";
 
@@ -51,10 +47,11 @@ export function PositionEvolutionChart({
   const touch = useTouchTooltip();
 
   const { rows, bridges, missingRuns, defaultEnd } = useMemo(() => buildRows(slots, selectedMonth), [slots, selectedMonth]);
+  const [selectedPeriod, setSelectedPeriod] = useState("all");
   const [rangeState, setRange] = useState<{ key: string; range: [number, number] } | null>(null);
   const rangeKey = `${rows.length}:${rows[0]?.month ?? ""}`;
   const range: [number, number] =
-    rangeState && rangeState.key === rangeKey ? rangeState.range : [0, Math.max(defaultEnd, 0)];
+    rangeState && rangeState.key === rangeKey ? rangeState.range : [0, Math.max(rows.length - 1, 0)];
 
   if (rows.length === 0) {
     return null;
@@ -111,8 +108,9 @@ export function PositionEvolutionChart({
             <button
               key={preset.key}
               type="button"
-              onClick={() => applyPreset(preset.months)}
-              className="rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              aria-pressed={selectedPeriod === preset.key}
+              onClick={() => { setSelectedPeriod(preset.key); applyPreset(preset.months); }}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 ${selectedPeriod === preset.key ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
             >
               {englishLabel(preset.label)}
             </button>

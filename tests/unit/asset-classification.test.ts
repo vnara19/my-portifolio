@@ -9,7 +9,7 @@ test("product types and reporting geography follow the chosen convention", () =>
   assert.equal(productType("fixed-income", "", "LCI"), "LCI");
   assert.equal(productType("international-bond", "", null, "Corporate"), "Bonds");
   assert.equal(listingMarket("international-bond"), "Other Markets");
-  assert.equal(productType("eu-market", "EU_ETC"), "");
+  assert.equal(productType("eu-market", "EU_ETC"), "ETF");
   assert.equal(productType("eu-market", "EU_ETF"), "ETF");
   assert.equal(productType("crypto", "", null, null, "BTC"), "Cryptocurrency");
   assert.equal(productType("crypto", "", null, null, "Stablecoin"), "Cryptocurrency");
@@ -34,7 +34,7 @@ test("product and market facets cascade without mixing geographic exposure or ca
 });
 
 test("the filter has exactly the user-approved registration products", () => {
-  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "Savings", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Cryptocurrency"]));
+  assert.deepEqual(new Set(filterOptions([]).types), new Set(["Stock", "REIT/FII", "ETF", "Savings", "CDB", "LCI", "LCA", "Bonds", "Tesouro Direto", "Cryptocurrency"]));
   assert.equal(productType("fixed-income", "", "CRI"), "");
   assert.equal(productType("fixed-income"), "");
   assert.equal(PRODUCT_TYPES.length, 12);

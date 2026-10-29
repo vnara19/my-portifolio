@@ -5,6 +5,7 @@ import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
+import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
 import { useState } from "react";
 import { Line, LineChart, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -18,7 +19,7 @@ import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 type Currency = "BRL" | "USD";
 
 export type PriceMarker = { day: string; kind: "CONTRIBUTION" | "WITHDRAWAL"; unitPriceBrl: number };
-type RangeKey = "6m" | "12m" | "36m" | "all";
+type RangeKey = ChartPeriod;
 
 type PriceRow = {
   t: number;
@@ -56,14 +57,7 @@ export function AssetPriceChart({
 
   const points = prices.points;
   const lastT = points.at(-1)?.t ?? 0;
-  const startT =
-    activeRange === "6m"
-      ? lastT - 183 * DAY_MS
-      : activeRange === "12m"
-        ? lastT - 366 * DAY_MS
-        : activeRange === "36m"
-          ? lastT - 3 * 366 * DAY_MS
-          : (points[0]?.t ?? 0);
+  const startT = activeRange === "all" ? (points[0]?.t ?? 0) : periodStart(lastT, activeRange);
 
   const rows: PriceRow[] = points
     .filter((point) => point.t >= startT)
@@ -96,12 +90,7 @@ export function AssetPriceChart({
           .filter((marker) => marker.t >= domain[0] && marker.t <= domain[1] + DAY_MS * 31)
       : [];
 
-  const ranges: { key: RangeKey; label: string }[] = [
-    { key: "6m", label: "6M" },
-    { key: "12m", label: "12M" },
-    { key: "36m", label: "3A" },
-    { key: "all", label: "All" },
-  ];
+  const ranges = [...CHART_PERIODS];
 
   return (
     <div>

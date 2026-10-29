@@ -25,6 +25,7 @@ export const PERIOD_START = new Date(Date.UTC(2023, 9, 1));
 
 export type OverviewHistoryPoint = {
   month: string;
+  day?: string;
   date: Date;
   totalBrl: number;
   totalUsd?: number | null;
@@ -198,6 +199,9 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     };
 
     for (const point of history) {
+      const monthEnd = new Date(Date.UTC(point.date.getUTCFullYear(),point.date.getUTCMonth()+1,0)).toISOString().slice(0,10);
+      const today = new Date().toISOString().slice(0,10);
+      point.day = monthEnd < today ? monthEnd : fxSeries.find(q=>q.symbol==="USD"&&toMonthParam(q.referenceDate)===point.month)?.quoteDate?.toISOString().slice(0,10) ?? today;
       const rate = point.month === selectedHistory.month ? usdRate : fxByMonth.get(point.month)?.get("USD");
       point.totalUsd = rate && rate > 0 ? point.totalBrl / rate : null;
       point.byClassUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byClass).map(([key,value])=>[key,value/rate])) : {};

@@ -3,6 +3,7 @@ import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
+import { CHART_PERIODS, type ChartPeriod } from "../domain/chart-period";
 import { useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -25,15 +26,8 @@ type ChangeRow = {
   mixed: number | null;
 };
 
-type Period = "6m" | "12m" | "ytd" | "all";
-
-const PERIODS: { key: Period; label: string }[] = [
-  { key: "6m", label: "6M" },
-  { key: "12m", label: "12M" },
-  { key: "ytd", label: "YTD" },
-  { key: "all", label: "All" },
-];
-
+type Period = ChartPeriod;
+const PERIODS = CHART_PERIODS;
 
 export function BalanceChangeChart({
   slots,
@@ -47,7 +41,7 @@ export function BalanceChangeChart({
  const { formatBrl, formatSignedBrl } = usePositionMoney();
 
   const touch = useTouchTooltip();
-  const [period, setPeriod] = useState<Period>("12m");
+  const [period, setPeriod] = useState<Period>("all");
   const firstIndex = slots.findIndex((slot) => slot.kind === "present");
   const allRows: ChangeRow[] =
     firstIndex === -1
@@ -224,7 +218,7 @@ function periodRows(rows: ChangeRow[], selectedMonth: string, period: Period) {
     return rows.slice(0, end + 1).filter((row) => row.month.startsWith(`${year}-`));
   }
 
-  const size = period === "6m" ? 6 : 12;
+  const size = CHART_PERIODS.find(p=>p.key===period)?.months as number;
   return rows.slice(Math.max(end - size + 1, 0), end + 1);
 }
 

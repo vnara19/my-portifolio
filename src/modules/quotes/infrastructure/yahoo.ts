@@ -14,6 +14,7 @@ const chartSchema = z.object({
             shortName: z.string().nullable().optional(),
             instrumentType: z.string().nullable().optional(),
             fullExchangeName: z.string().nullable().optional(),
+            exchangeTimezoneName: z.string().nullable().optional(),
             regularMarketTime: z.number().nullable().optional(),
             regularMarketPrice: z.number().nullable().optional(),
           }),
@@ -29,7 +30,9 @@ const chartSchema = z.object({
 });
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; meu-portfolio/1.0)" };
-const saoPauloDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+export function yahooQuoteDay(timestamp: number, exchangeTimezone: string | null | undefined) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: exchangeTimezone || "UTC" }).format(new Date(timestamp * 1000));
+}
 
 
 export function toYahooSymbol(symbol: string) {
@@ -87,7 +90,7 @@ export async function fetchYahooDailyHistory(symbol: string, years = 3) {
     currency: result.meta.currency ?? null,
     points: (result.timestamp ?? []).flatMap((time, index) => {
       const value = closes[index];
-      return value && value > 0 ? [{ day: saoPauloDay.format(new Date(time * 1000)), value }] : [];
+      return value && value > 0 ? [{ day: yahooQuoteDay(time, result.meta.exchangeTimezoneName), value }] : [];
     }),
   };
 }

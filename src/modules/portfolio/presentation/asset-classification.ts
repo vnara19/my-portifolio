@@ -20,6 +20,7 @@ export function productType(type: AssetType, instrument = "", product?: string |
   if (type === "treasury") return "Tesouro Direto";
   if (type === "fixed-income") return product && (BRAZILIAN_DEBT_PRODUCTS as readonly string[]).includes(product) ? product : "";
   if (type === "international-bond") return "Bonds";
+  if (instrument === "EU_ETC" || instrument === "ETC") return "ETF";
   if (["REIT", "EU_REIT", "FII"].includes(instrument)) return "REIT/FII";
   if (type.endsWith("-etf") || /ETF/.test(instrument)) return "ETF";
   if (type.endsWith("-stock") || /^(EU_STOCK|ACAO|EQUITY|STOCK)$/.test(instrument)) return "Stock";

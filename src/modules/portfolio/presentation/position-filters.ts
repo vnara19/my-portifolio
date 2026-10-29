@@ -169,6 +169,8 @@ export function filterOptions(
   filters: PositionFilters = EMPTY_FILTERS,
 ): Record<FilterDimension, string[]> {
   const options = {} as Record<FilterDimension, string[]>;
+  // Retired registration flows remain filterable only while their legacy holdings exist.
+  const products = PRODUCT_TYPES.filter(product => !["Cash Account", "Pension Plan"].includes(product) || positions.some(position => typeOf(position) === product));
 
   for (const [index, dimension] of FILTER_DIMENSIONS.entries()) {
     const before = FILTER_DIMENSIONS.slice(0, index).filter((other) => (filters[other]?.length ?? 0) > 0);
@@ -179,8 +181,8 @@ export function filterOptions(
     }
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
-    const supported = dimension === "types" ? [...PRODUCT_TYPES] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
-    options[dimension] = [...new Set(dimension === "types" ? [...PRODUCT_TYPES] : [...supported, ...values.filter(Boolean), ...(dimension === "liquidities" ? (filters.liquidities ?? []).map(liquidityLabel) : filters[dimension] ?? [])])].sort((left, right) =>
+    const supported = dimension === "types" ? [...products] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
+    options[dimension] = [...new Set(dimension === "types" ? [...products] : [...supported, ...values.filter(Boolean), ...(dimension === "liquidities" ? (filters.liquidities ?? []).map(liquidityLabel) : filters[dimension] ?? [])])].sort((left, right) =>
       dimension === "liquidities" ? compareLiquidityLabels(left, right) : left.localeCompare(right, "en-GB"),
     );
   }

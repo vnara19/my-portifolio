@@ -1,3 +1,5 @@
+import type { TwrObservation } from "../domain/time-weighted-return";
+import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import type { OverviewData } from "@/modules/portfolio/application/get-overview-data";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { AllocationExplorer } from "@/modules/portfolio/ui/allocation-explorer";
@@ -9,7 +11,7 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic }: { overview: OverviewData | null; selic: SelicMonthView | null }) {
+export function OverviewDashboard({ overview, selic, performance, benchmark }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; benchmark: Sp500Benchmark }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -42,13 +44,14 @@ export function OverviewDashboard({ overview, selic }: { overview: OverviewData 
         aria-labelledby="evolution-title"
       >
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio Value Over Time
+          <h2 id="evolution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio Change
           </h2>
         </div>
 
-        <p className="mt-2 text-xs text-muted-foreground">Investment balance, not investment return. Deposits increase this balance; withdrawals and matured investments reduce it. Gain metrics account for recorded money in and out.</p>
         <div className="mt-5">
           <PortfolioEvolutionChart
+            observations={performance}
+            benchmark={benchmark}
             history={overview.history}
             selectedMonth={monthParam}
             classLabels={overview.classLabels}
