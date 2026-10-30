@@ -1,4 +1,5 @@
 import { getMonthPositions } from "./get-month-positions";
+import { eurToUsdRate, expressEurGainsInUsd } from "../domain/overview-reporting";
 import { exposureCurrency } from "../presentation/position-display";
 import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
@@ -46,6 +47,7 @@ export type OverviewData = {
   eurRate: number | null;
   gains: PortfolioGains;
   gainsEur?: PortfolioGains;
+  accountingCurrency: "EUR";
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
@@ -225,11 +227,11 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
     })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
-    const [allocation, gains, gainsEur] = await Promise.all([
+    const [allocation, gainsEur] = await Promise.all([
       getAllocationOverview(selected.referenceDate),
-      getPortfolioGains(selected.referenceDate, usdRate),
       getPortfolioGains(selected.referenceDate, eurRate, "EUR"),
     ]);
+    const gains = expressEurGainsInUsd(gainsEur, eurToUsdRate(eurRate, usdRate));
 
     return {
       referenceDate: selected.referenceDate,
@@ -242,6 +244,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       reporting,
       gains,
       gainsEur,
+      accountingCurrency: "EUR",
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

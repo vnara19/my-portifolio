@@ -1,4 +1,5 @@
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
+import { eurToUsdRate, expressEurMetricsInUsd } from "../domain/overview-reporting";
 import type { TwrObservation } from "../domain/time-weighted-return";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import type { OverviewData } from "@/modules/portfolio/application/get-overview-data";
@@ -19,6 +20,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
 
   const monthParam = toMonthParam(overview.referenceDate);
   const asOf = overview.history.find(p=>p.month===monthParam)?.day??`${monthParam}-31`;
+  const referenceMetrics = overviewPerformanceMetrics(performanceEur, asOf);
 
   return (
     <div className="relative mx-auto w-full max-w-[1472px] px-5 py-5 sm:px-7 sm:py-6 xl:px-12">
@@ -35,7 +37,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </header>
 
       <div className="mt-4">
-        <OverviewKpis overview={overview} metrics={overviewPerformanceMetrics(performance, asOf)} metricsEur={overviewPerformanceMetrics(performanceEur, asOf)} />
+        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} metricsEur={referenceMetrics} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>
@@ -53,6 +55,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
         <div className="mt-5">
           <PortfolioEvolutionChart
             observations={performance}
+            returnObservations={performanceEur}
             benchmark={benchmark}
             history={overview.history}
             selectedMonth={monthParam}

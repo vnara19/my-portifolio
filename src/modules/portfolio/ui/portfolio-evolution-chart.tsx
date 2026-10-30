@@ -22,9 +22,9 @@ const PURPLE="#a66bd4";
 const TEAL="#12b5a5";
 const dateLabel=(day:string)=>new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(day));
 
-export function PortfolioEvolutionChart({history,selectedMonth,classLabels,currencyLabels,observations=[],benchmark={points:[],source:"S&P 500",available:false}}:{
+export function PortfolioEvolutionChart({history,selectedMonth,classLabels,currencyLabels,observations=[],returnObservations=observations,benchmark={points:[],source:"S&P 500",available:false}}:{
   history:OverviewHistoryPoint[];selectedMonth:string;classLabels:string[];currencyLabels:string[];
-  observations?:TwrObservation[];benchmark?:Sp500Benchmark;
+  observations?:TwrObservation[];returnObservations?:TwrObservation[];benchmark?:Sp500Benchmark;
 }) {
   const [, startTransition] = useTransition();
   const [, setMonth] = useQueryState("mes", { shallow: false, startTransition });
@@ -36,7 +36,7 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
   const visible=history.filter(p=>Date.parse(p.day??`${p.month}-01`)>=start);
   const lineRows = observations.filter(p=>Date.parse(p.day)>=start&&p.day<=history.at(-1)!.day!);
   const firstDay=lineRows[0]?.day??visible[0]?.day??`${visible[0]?.month}-01`;
-  const performance=new Map(timeWeightedReturns(observations).map(p=>[p.day,p.percent]));
+  const performance=new Map(timeWeightedReturns(returnObservations).map(p=>[p.day,p.percent]));
   const indexAt=(day:string)=>{
     let lo=0,hi=benchmark.points.length-1,index=-1;
     while(lo<=hi){const mid=Math.floor((lo+hi)/2);if(benchmark.points[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}
@@ -73,7 +73,7 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
       </div>
     </div>
     {isPerformance?<div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-      <span><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
+      <span title="Portfolio TWR is measured in EUR, the common reference currency. Monetary values are displayed in USD."><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
       <span title={benchmark.source}><span className="mr-2 inline-block size-2 rounded-full bg-neutral-400"/>S&amp;P 500 · Total Return</span>
     </div>:null}
     <div className="h-[310px] w-full sm:h-[360px]" {...touch.containerProps}>

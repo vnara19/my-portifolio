@@ -4,7 +4,7 @@ import { KpiCard } from "@/components/product/kpi-card";
 import type { OverviewData } from "../application/get-overview-data";
 import type { OverviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import { formatCurrency } from "../presentation/portfolio-format";
-const percent=(value:number|null)=>value===null?"—":new Intl.NumberFormat("en-GB",{style:"percent",maximumFractionDigits:2,signDisplay:"exceptZero"}).format(value/100);
+const percent=(value:number|null)=>value===null?"—":new Intl.NumberFormat("en-GB",{style:"percent",minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:"exceptZero"}).format(value/100);
 const money=(value:number|null,currency:"USD"|"EUR"="USD",signed=true)=>value===null?"—":formatCurrency(value,currency,signed);
 export function OverviewKpis({overview,metrics,metricsEur}:{overview:OverviewData;metrics:OverviewPerformanceMetrics;metricsEur:OverviewPerformanceMetrics}){
  const total=overview.reporting.total,gains=overview.gains,eur=overview.gainsEur;
@@ -13,16 +13,16 @@ export function OverviewKpis({overview,metrics,metricsEur}:{overview:OverviewDat
  return <section aria-label="Portfolio summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
   <KpiCard compact label="Portfolio Value" testId="portfolio-total" valueText={money(total.USD,"USD",false)} value={total.USD===null?"—":<NumberFlow value={total.USD} format={{style:"currency",currency:"USD",currencyDisplay:"code",maximumFractionDigits:2}} locales="en-GB"/>} detail={<span className="flex flex-wrap gap-x-3 gap-y-1 font-mono"><span data-currency="EUR">{money(total.EUR,"EUR",false)}</span><span data-currency="BRL">{formatCurrency(total.BRL,"BRL")}</span></span>}/>
   <GainCard label="Unrealized Gain" testId="unrealized-gain" value={gains.unrealizedUsd} percentage={gains.unrealizedPercent}
-   percentageTitle="USD gain divided by remaining USD purchase principal, using acquisition-date exchange rates."
-   detail={gains.unrealizedUsd===null?reason:<>{secondary(eur?.unrealizedUsd,eur?.unrealizedPercent,"EUR gain divided by remaining EUR purchase principal. This is an independently measured EUR return using acquisition-date exchange rates.")}<span className="mt-1 block" title={metrics.asOf?`Open positions · ${metrics.asOf}`:undefined}>Last Day (USD) <span className="font-mono">{money(metrics.dailyUsd)} · {percent(metrics.dailyPercent)}</span></span></>}/>
+   percentageTitle="Whole-portfolio gain divided by remaining purchase principal in the EUR reference currency. The amount is displayed as its current USD equivalent."
+   detail={gains.unrealizedUsd===null?reason:<>{secondary(eur?.unrealizedUsd,eur?.unrealizedPercent,"The same whole-portfolio gain in EUR. The USD line is its current-rate equivalent; the percentage is shared.")}<span className="mt-1 block" title={metrics.asOf?`Whole portfolio · ${metrics.asOf} · EUR-reference daily result expressed in USD` :undefined}>Last Day (USD) <span className="font-mono">{money(metrics.dailyUsd)} · {percent(metrics.dailyPercent)}</span></span></>}/>
   <GainCard label="Realized Gain" testId="realized-gain" value={gains.realizedUsd} percentage={gains.realizedPercent}
-   percentageTitle="Realized result including commissions, divided by all recorded purchase amounts including fees, measured in USD. This ratio is not TWR."
-   detail={gains.realizedUsd===null?reason:secondary(eur?.realizedUsd,eur?.realizedPercent,"Realized result divided by all recorded purchase amounts including fees, measured in EUR. This ratio is not TWR.")}/>
+   percentageTitle="Whole-portfolio realized result including commissions divided by cumulative purchase payments, in EUR. The amount is displayed as its current USD equivalent. This ratio is not TWR."
+   detail={gains.realizedUsd===null?reason:secondary(eur?.realizedUsd,eur?.realizedPercent,"The same whole-portfolio realized result in EUR. Both displayed currencies share one return percentage.")}/>
   <GainCard label="Total Gain" testId="total-gain" value={gains.totalUsd} percentage={metrics.totalPercent}
-   percentageTitle="USD time-weighted return (TWR): purchases and redemptions are external cash flows, not investment gains or losses."
-   detail={gains.totalUsd===null?reason:<>{secondary(eur?.totalUsd,metricsEur.totalPercent,"EUR time-weighted return (TWR), using EUR values and dated EUR cash flows.")}<span className="mt-1 block" title="XIRR based on dated investment funding and current value, independently measured in each currency.">Annualized Yield <span className="block font-mono">USD {percent(metrics.annualizedPercent)} · EUR {percent(metricsEur.annualizedPercent)}</span></span></>}/>
+   percentageTitle="Portfolio time-weighted return (TWR) in the common EUR reference currency. USD is the display equivalent; purchases and redemptions are not gains or losses."
+   detail={gains.totalUsd===null?reason:<>{secondary(eur?.totalUsd,metricsEur.totalPercent,"The same total portfolio gain in EUR. TWR is measured once in the EUR reference and is shared by both displayed currencies.")}<span className="mt-1 block" title="XIRR from dated whole-portfolio funding and value in the common EUR reference currency.">Annualized Yield <span className="font-mono">{percent(metrics.annualizedPercent)}</span></span></>}/>
  </section>;
 }
 function GainCard({label,testId,value,percentage,percentageTitle,detail}:{label:string;testId:string;value:number|null;percentage?:number|null;percentageTitle:string;detail:React.ReactNode}){
- return <KpiCard compact label={label} testId={testId} tone={value===null||value===0?"neutral":value>0?"up":"down"} valueText={money(value)} valueClassName="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xl" value={<><span>{money(value)}</span>{percentage!=null?<span className="text-sm" title={percentageTitle} aria-label={`USD return ${percent(percentage)}`}>{percent(percentage)}</span>:null}</>} detail={detail}/>;
+ return <KpiCard compact label={label} testId={testId} tone={value===null||value===0?"neutral":value>0?"up":"down"} valueText={money(value)} valueClassName="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xl" value={<><span>{money(value)}</span>{percentage!=null?<span className="text-sm" title={percentageTitle} aria-label={`Portfolio return ${percent(percentage)}`}>{percent(percentage)}</span>:null}</>} detail={detail}/>;
 }
