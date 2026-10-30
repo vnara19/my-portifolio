@@ -84,6 +84,15 @@ export async function fetchYahooPrice(symbol: string, timeoutMs?: number) {
 
 export async function fetchYahooDailyHistory(symbol: string, years = 3) {
   const result = await fetchChart(symbol, `${years}y`);
+  return dailyHistory(result);
+}
+
+/** Only completed sessions are accepted by the recent-closing reconciliation. */
+export async function fetchYahooRecentDailyHistory(symbol: string) {
+  return dailyHistory(await fetchChart(symbol, "5d"));
+}
+
+function dailyHistory(result: Awaited<ReturnType<typeof fetchChart>>) {
   const closes = result.indicators.quote[0]?.close ?? [];
 
   return {

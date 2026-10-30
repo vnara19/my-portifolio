@@ -33,6 +33,7 @@ import { isTreasuryDay } from "@/modules/quotes/domain/treasury";
 import { syncCdi, type CdiRatesFetcher, type CdiReport } from "@/modules/portfolio/application/cdi-positions";
 import { syncSelicReference, type SelicSyncReport } from "@/modules/quotes/application/selic-reference";
 import type { SelicFetcher } from "@/modules/quotes/infrastructure/bcb-selic";
+import { refreshRecentDailyCloses } from "./recent-daily-closes";
 
 
 export type QuoteFetcher = (requests: QuoteRequest[]) => Promise<QuoteResult[]>;
@@ -56,6 +57,7 @@ export type QuoteSyncOutcome =
       succeeded: string[];
       failed: { symbol: string; errorCode: string; errorMessage: string }[];
       histories: HistoryReport[];
+      closes?: { updated: number; failed: string[] };
 
       selic?: SelicSyncReport;
 
@@ -220,6 +222,9 @@ export async function syncQuotes({
     configuration,
     loadHistory,
   });
+
+  // An intraday observation saved yesterday is not yesterday's final close.
+  outcome.closes = await refreshRecentDailyCloses(prisma, claim.quoteSymbols, clock()).catch(() => ({ updated: 0, failed: claim.quoteSymbols.map(s => s.symbol) }));
 
   if (!currentOnly) {
     outcome.selic = await runSelic();
