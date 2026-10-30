@@ -13,5 +13,5 @@ export async function refreshUserQuotes(now = new Date()): Promise<boolean> {
   const heldSymbols = positions.flatMap(p => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []);
   if (!positions.length) return false;
   const outcome = await syncQuotes({ now, symbols: [...new Set(["USD", "EUR", ...heldSymbols])], currentOnly: true });
-  return outcome.state === "done" && outcome.succeeded.length > 0;
+  return outcome.state === "done" && (outcome.succeeded.length > 0 || (outcome.closes?.updated ?? 0) > 0);
 }
