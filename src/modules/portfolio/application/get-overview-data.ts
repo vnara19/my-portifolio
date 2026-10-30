@@ -29,6 +29,7 @@ export type OverviewHistoryPoint = {
   date: Date;
   totalBrl: number;
   totalUsd?: number | null;
+  totalEur?: number | null;
   byClassUsd?: Record<string, number>;
   byCurrencyUsd?: Record<string, number>;
   byClass: Record<string, number>;
@@ -202,9 +203,12 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     for (const point of history) {
       const monthEnd = new Date(Date.UTC(point.date.getUTCFullYear(),point.date.getUTCMonth()+1,0)).toISOString().slice(0,10);
       const today = new Date().toISOString().slice(0,10);
-      point.day = monthEnd < today ? monthEnd : fxSeries.find(q=>q.symbol==="USD"&&toMonthParam(q.referenceDate)===point.month)?.quoteDate?.toISOString().slice(0,10) ?? today;
+      // A carried reference FX observation does not move today's valuation back a day.
+      point.day = monthEnd < today ? monthEnd : today;
       const rate = point.month === selectedHistory.month ? usdRate : fxByMonth.get(point.month)?.get("USD");
       point.totalUsd = rate && rate > 0 ? point.totalBrl / rate : null;
+      const euroRate = point.month === selectedHistory.month ? eurRate : fxByMonth.get(point.month)?.get("EUR");
+      point.totalEur = euroRate && euroRate > 0 ? point.totalBrl / euroRate : null;
       point.byClassUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byClass).map(([key,value])=>[key,value/rate])) : {};
       point.byCurrencyUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byCurrency).map(([key,value])=>[key,value/rate])) : {};
     }

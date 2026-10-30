@@ -33,3 +33,23 @@ export function recordedTradeFeeBrl(note: string | null): number {
   const fee = /commission (USD|EUR|BRL) (\d+(?:\.\d+)?); FX (\d+(?:\.\d+)?) BRL\/\1\./.exec(note ?? "");
   return fee ? new Prisma.Decimal(fee[2]).mul(fee[3]).toNumber() : 0;
 }
+
+/** Recover source precision only when the canonical note still reconciles with the ledger. */
+export function recordedTradeAmounts(input: {
+  kind: string; quantity: Prisma.Decimal; unitPriceBrl: Prisma.Decimal | null;
+  amountBrl: Prisma.Decimal; note: string | null;
+}): { amountBrl: Prisma.Decimal; feeBrl: Prisma.Decimal } | null {
+  const match = /^(Purchase|Sale): (\d+(?:\.\d+)?) × (USD|EUR|BRL) (\d+(?:\.\d+)?); commission (USD|EUR|BRL) (\d+(?:\.\d+)?); FX (\d+(?:\.\d+)?) BRL\/(USD|EUR|BRL)\./.exec(input.note ?? "");
+  if (!match || match[3] !== match[5] || match[3] !== match[8] ||
+    input.kind !== (match[1] === "Sale" ? "WITHDRAWAL" : "CONTRIBUTION") ||
+    !input.quantity.eq(match[2]) || !input.unitPriceBrl) return null;
+  const price = new Prisma.Decimal(match[4]);
+  const fee = new Prisma.Decimal(match[6]);
+  const fx = new Prisma.Decimal(match[7]);
+  if (fx.lte(0)) return null;
+  const invested = new RegExp(` Invested ${match[3]} (\\d+(?:\\.\\d+)?)\\.`).exec(input.note ?? "");
+  const principal = invested ? new Prisma.Decimal(invested[1]) : input.quantity.mul(price);
+  const amount = (match[1] === "Sale" ? principal.minus(fee) : principal.plus(fee)).mul(fx);
+  if (!price.mul(fx).toDecimalPlaces(8).eq(input.unitPriceBrl) || !amount.toDecimalPlaces(2).eq(input.amountBrl)) return null;
+  return { amountBrl: amount, feeBrl: fee.mul(fx) };
+}

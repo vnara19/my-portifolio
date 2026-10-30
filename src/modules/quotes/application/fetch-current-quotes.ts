@@ -1,5 +1,5 @@
 
-/** Fallback chains: FX uses AwesomeAPI, PTAX and Yahoo; crypto uses CoinGecko, Coinbase, Yahoo and Binance; US assets use Finnhub, Yahoo and Alpha Vantage; B3 uses Yahoo, brapi and Alpha Vantage. */
+/** FX prioritizes consistent ECB reference observations; crypto preserves USD quotes before BRL storage conversion. */
 import type {
   QuoteProviderConfiguration,
   QuoteRequest,
@@ -108,12 +108,13 @@ export async function fetchCurrentQuotes(
         provider: "coingecko",
         enabled: true,
         fetch: (pending) =>
-          fetchCryptoQuotes(
+          usdBrl === null ? Promise.resolve(usdMissing(pending, "coingecko")) : fetchCryptoQuotes(
             pending.map((request) => ({ symbol: request.symbol, coinId: request.providerId })),
             configuration.coinGeckoApiKey,
+            usdBrl,
           ),
       },
-      { provider: "coinbase", enabled: true, fetch: (pending) => perSymbol(pending, "coinbase", fetchCoinbasePriceBrl) },
+      { provider: "coinbase", enabled: true, fetch: async (pending) => usdBrl === null ? usdMissing(pending, "coinbase") : perSymbol(pending, "coinbase", symbol => fetchCoinbasePriceBrl(symbol, usdBrl)) },
       {
         provider: "yahoo",
         enabled: true,
@@ -181,12 +182,12 @@ async function fetchUsdChain(configuration: QuoteProviderConfiguration, today: s
   const [result] = await runChain(
     [{ symbol: "USD", instrumentType: "FIAT", baseCurrency: "USD" }],
     [
-      { provider: "awesome-api", enabled: true, fetch: (pending) => perSymbol(pending, "awesome-api", () => fetchUsdBrl(configuration.awesomeApiKey)) },
-      { provider: "bcb", enabled: true, fetch: (pending) => perSymbol(pending, "bcb", () => fetchPtaxUsdLatest(today)) },
       { provider: "frankfurter-ecb", enabled: true, fetch: async () => {
         const point = await fetchReferenceFxLatest("USD", today);
         return [{ symbol: "USD", provider: "frankfurter-ecb", status: "SUCCESS", valueBrl: point.value, quoteDate: point.day }];
       } },
+      { provider: "awesome-api", enabled: true, fetch: (pending) => perSymbol(pending, "awesome-api", () => fetchUsdBrl(configuration.awesomeApiKey)) },
+      { provider: "bcb", enabled: true, fetch: (pending) => perSymbol(pending, "bcb", () => fetchPtaxUsdLatest(today)) },
       { provider: "yahoo", enabled: true, fetch: (pending) => perSymbol(pending, "yahoo", async () => (await fetchYahooPrice("USD")).price) },
     ],
   );

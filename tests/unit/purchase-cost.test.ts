@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { purchaseCost } from "@/modules/portfolio/domain/purchase-cost";
+import { purchaseCost, purchaseNote, recordedTradeAmounts } from "@/modules/portfolio/domain/purchase-cost";
+import { Prisma } from "@/generated/prisma/client";
 import { portfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { automaticLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { preparePurchase } from "@/modules/portfolio/application/prepare-purchase";
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
+
+test("validated native fills retain precision before BRL ledger rounding", () => {
+  const input={price:"40.200151",commission:"3",currency:"EUR" as const,occurredOn:"2026-09-28"};
+  const cost=purchaseCost("15.7959",input.price,input.commission,"5.9563");
+  const stored={kind:"CONTRIBUTION",quantity:cost.quantity,unitPriceBrl:cost.unitPriceBrl,amountBrl:cost.amountBrl,note:purchaseNote(input,"15.7959","5.9563")};
+  const exact=recordedTradeAmounts(stored)!;
+  assert.ok(exact);
+  assert.equal(exact.amountBrl.div("5.9563").toString(),cost.nativeCost.toString());
+  assert.equal(exact.feeBrl.div("5.9563").toString(),"3");
+  assert.equal(recordedTradeAmounts({...stored,amountBrl:stored.amountBrl.plus(1)}),null);
+  assert.equal(recordedTradeAmounts({...stored,quantity:new Prisma.Decimal(1)}),null);
+  assert.equal(recordedTradeAmounts({...stored,note:null}),null);
+});
 
 test("10.60 units retain fractional precision and EUR commission reduces USD unrealized gain", () => {
   const cost = purchaseCost("10.60", "100", "3", 6);

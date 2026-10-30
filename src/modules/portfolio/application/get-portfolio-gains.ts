@@ -1,4 +1,4 @@
-import { recordedTradeFeeBrl } from "../domain/purchase-cost";
+import { recordedTradeAmounts, recordedTradeFeeBrl } from "../domain/purchase-cost";
 import { datedFx } from "../domain/position-money";
 import type { GainIssue } from "../domain/portfolio-gains";
 import { Prisma } from "@/generated/prisma/client";
@@ -17,7 +17,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     db.positionTransaction.findMany({
       where: { occurredOn: { lt: end }, position: { portfolioMonth: { referenceDate: { lte: referenceDate } } } },
       orderBy: [{ occurredOn: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-      select: { kind: true, createdAt: true, occurredOn: true, quantity: true, amountBrl: true, transferId: true, note: true, position: { select: { accountId: true, assetId: true } } },
+      select: { kind: true, createdAt: true, occurredOn: true, quantity: true, unitPriceBrl: true, amountBrl: true, transferId: true, note: true, position: { select: { accountId: true, assetId: true } } },
     }),
     db.position.findMany({ where: { portfolioMonth: { referenceDate }, quantity: { gt: 0 } }, select: { accountId: true, assetId: true, quantity: true, totalBrl: true, asset: { select: { fixedIncomeContract: true, quoteSymbol: true } } } }),
     db.dailyQuote.findMany({ where: { symbol: currency, quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
@@ -31,8 +31,9 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   transactions.sort((a,b) => +a.occurredOn - +b.occurredOn || Number(b.note === "Savings automatic return") - Number(a.note === "Savings automatic return") || +a.createdAt - +b.createdAt);
   const movements = transactions.map((row) => {
     const key = holding(row.position);
+    const exact = recordedTradeAmounts(row);
     const usdRate = datedFx(row.occurredOn.toISOString().slice(0,10),row.note,currency,dailyRates,new Map())?.rate ?? null;
-    const movement = { holding: key, kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(), usdRate, transferId: row.transferId, feeBrl: recordedTradeFeeBrl(row.note), costRecoveryUsd: 0 };
+    const movement = { holding: key, kind: row.kind, quantity: row.quantity.toNumber(), amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : (exact?.amountBrl ?? row.amountBrl).toNumber(), usdRate, transferId: row.transferId, feeBrl: exact?.feeBrl.toNumber() ?? recordedTradeFeeBrl(row.note), costRecoveryUsd: 0 };
     const bond = bonds.get(row.position.assetId);
     if (!bond || !usdRate) return movement;
     let state = interest.get(key);

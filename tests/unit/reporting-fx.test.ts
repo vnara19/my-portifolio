@@ -43,3 +43,37 @@ test("EUR falls back to Yahoo when the reference-rate source is unavailable", as
   assert.equal(quote.status, "SUCCESS");
   if (quote.status === "SUCCESS") { assert.equal(quote.valueBrl, 6.3); assert.equal(quote.provider, "yahoo"); }
 });
+
+test("USD and EUR prioritize the same reference source and crypto retains its native USD price", async()=>{
+  const requests:string[]=[];
+  globalThis.fetch=(async raw=>{
+    const url=new URL(String(raw));requests.push(url.toString());
+    if(url.pathname.includes('/rate/USD/BRL'))return Response.json({date:'2026-10-09',base:'USD',quote:'BRL',rate:5});
+    if(url.pathname.includes('/rate/EUR/BRL'))return Response.json({...eur,rate:6});
+    if(url.hostname.includes('coingecko')){
+      assert.equal(url.searchParams.get('vs_currencies'),'usd');
+      return Response.json({bitcoin:{usd:80000}});
+    }
+    throw new Error('Unexpected quote source');
+  }) as typeof fetch;
+  const results=await fetchCurrentQuotes([{symbol:'USD',instrumentType:'FIAT',baseCurrency:'USD'},{symbol:'EUR',instrumentType:'FIAT',baseCurrency:'EUR'},{symbol:'BTC',instrumentType:'CRIPTO',baseCurrency:'BTC'}],{},'2026-10-11');
+  const usd=results.find(q=>q.symbol==='USD')!,btc=results.find(q=>q.symbol==='BTC')!;
+  assert.equal(usd.provider,'frankfurter-ecb');
+  assert.equal(usd.status,'SUCCESS');assert.equal(btc.status,'SUCCESS');
+  if(usd.status==='SUCCESS'&&btc.status==='SUCCESS')assert.equal(btc.valueBrl/usd.valueBrl,80000);
+  assert.ok(!requests.some(u=>u.includes('awesomeapi')));
+});
+
+test("Coinbase fallback also converts the native USD price using the stored FX reference",async()=>{
+  globalThis.fetch=(async raw=>{
+    const url=new URL(String(raw));
+    if(url.hostname.includes('frankfurter'))return Response.json({date:'2026-10-09',base:'USD',quote:'BRL',rate:5});
+    if(url.hostname.includes('coingecko'))return new Response('{}',{status:404});
+    assert.ok(url.pathname.endsWith('/BTC-USD/spot'));
+    return Response.json({data:{amount:'81000'}});
+  }) as typeof fetch;
+  const results=await fetchCurrentQuotes([{symbol:'BTC',instrumentType:'CRIPTO',baseCurrency:'BTC'}],{},'2026-10-11');
+  assert.equal(results[0].provider,'coinbase');
+  assert.equal(results[0].status,'SUCCESS');
+  if(results[0].status==='SUCCESS')assert.equal(results[0].valueBrl,405000);
+});

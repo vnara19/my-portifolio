@@ -6,6 +6,7 @@ export type PortfolioGains = {
   unrealizedUsd: number | null;
   unrealizedPercent: number | null;
   realizedUsd: number | null;
+  realizedPercent: number | null;
   totalUsd: number | null;
 };
 export type GainMovement = {
@@ -19,13 +20,14 @@ export type GainMovement = {
   feeBrl?: number;
 };
 export type GainSnapshot = { holding: string; quantity: number; valueUsd: number | null };
-export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, totalUsd: null });
+export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, realizedPercent: null, totalUsd: null });
 
 /** USD average cost uses FX at acquisition, not today's FX. Incomplete ledgers are not estimates. */
 export function portfolioGains(movements: GainMovement[], snapshots: GainSnapshot[], onIssue?: (issue: GainIssue) => void): PortfolioGains {
   const missing=(issue:GainIssue)=>{onIssue?.(issue);return unavailableGains();};
   const costs = new Map<string, { units: Prisma.Decimal; cost: Prisma.Decimal }>();
   let realized = new Prisma.Decimal(0);
+  let funded = new Prisma.Decimal(0);
   for (const movement of movements) {
     // Transfers need carried acquisition cost across accounts; do not treat them as sales.
     const capitalized = movement.kind === "INCOME" && movement.quantity > 0;
@@ -41,6 +43,7 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
       state.units = state.units.plus(units);
       if (fee.gt(amount)) return missing("purchase-history");
       state.cost = state.cost.plus(amount.minus(fee));
+      funded = funded.plus(amount);
       realized = realized.minus(fee);
     } else if (movement.kind === "WITHDRAWAL") {
       if (units.lte(0) || units.minus(state.units).gt("0.00000001") || state.units.lte(0)) return missing("purchase-history");
@@ -79,6 +82,8 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
     unrealizedUsd: unrealized.toDecimalPlaces(2).toNumber(),
     unrealizedPercent: invested.gt(0) ? unrealized.div(invested).mul(100).toNumber() : null,
     realizedUsd: realized.toDecimalPlaces(2).toNumber(),
+    // A contribution-based ratio, explicitly distinct from time-weighted total return.
+    realizedPercent: funded.gt(0) ? realized.div(funded).mul(100).toNumber() : null,
     totalUsd: unrealized.plus(realized).toDecimalPlaces(2).toNumber(),
   };
 }

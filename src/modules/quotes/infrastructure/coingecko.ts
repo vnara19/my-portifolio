@@ -11,11 +11,6 @@ const KNOWN_COINS: Record<string, CoinGeckoCoin> = {
   SOL: { id: "solana", name: "Solana" },
 };
 
-const coinGeckoSchema = z.record(
-  z.string(),
-  z.object({ brl: z.number().positive() }),
-);
-
 const coinGeckoSearchSchema = z.object({
   coins: z.array(
     z.object({
@@ -51,21 +46,22 @@ export async function resolveCoinGeckoCoin(symbol: string, apiKey?: string): Pro
 }
 
 
-export async function fetchCoinGeckoPrices(ids: string[], apiKey?: string) {
+export async function fetchCoinGeckoPrices(ids: string[], apiKey?: string, currency: "brl" | "usd" = "brl") {
   const url = new URL("https://api.coingecko.com/api/v3/simple/price");
   url.searchParams.set("ids", ids.join(","));
-  url.searchParams.set("vs_currencies", "brl");
-  const payload = coinGeckoSchema.parse(
+  url.searchParams.set("vs_currencies", currency);
+  const payload = z.record(z.string(), z.record(z.string(), z.number().positive())).parse(
     await fetchJson(url, { headers: headersFor(apiKey) }, { timeoutMs: 6_000, attempts: 2 }),
   );
 
-  return new Map(Object.entries(payload).map(([id, quote]) => [id, quote.brl]));
+  return new Map(Object.entries(payload).flatMap(([id, quote]) => quote[currency] ? [[id, quote[currency]] as const] : []));
 }
 
 
 export async function fetchCryptoQuotes(
   requests: { symbol: string; coinId?: string }[],
   apiKey?: string,
+  usdBrl?: number,
 ): Promise<QuoteResult[]> {
   const results: QuoteResult[] = [];
   const supported: { symbol: string; id: string }[] = [];
@@ -95,6 +91,7 @@ export async function fetchCryptoQuotes(
     const prices = await fetchCoinGeckoPrices(
       [...new Set(supported.map((item) => item.id))],
       apiKey,
+      usdBrl ? "usd" : "brl",
     );
 
     for (const item of supported) {
@@ -105,7 +102,7 @@ export async function fetchCryptoQuotes(
               symbol: item.symbol,
               provider: "coingecko",
               status: "SUCCESS",
-              valueBrl: price,
+              valueBrl: price * (usdBrl ?? 1),
             }
           : quoteFailure(
               item.symbol,

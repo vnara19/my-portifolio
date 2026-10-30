@@ -12,12 +12,13 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic, performance, benchmark }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; benchmark: Sp500Benchmark }) {
+export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
 
   const monthParam = toMonthParam(overview.referenceDate);
+  const asOf = overview.history.find(p=>p.month===monthParam)?.day??`${monthParam}-31`;
 
   return (
     <div className="relative mx-auto w-full max-w-[1472px] px-5 py-5 sm:px-7 sm:py-6 xl:px-12">
@@ -34,7 +35,7 @@ export function OverviewDashboard({ overview, selic, performance, benchmark }: {
       </header>
 
       <div className="mt-4">
-        <OverviewKpis overview={overview} metrics={overviewPerformanceMetrics(performance, overview.history.find(p=>p.month===monthParam)?.day??`${monthParam}-31`)} />
+        <OverviewKpis overview={overview} metrics={overviewPerformanceMetrics(performance, asOf)} metricsEur={overviewPerformanceMetrics(performanceEur, asOf)} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>

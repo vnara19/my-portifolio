@@ -6,7 +6,7 @@ import { datedFx } from "../domain/position-money";
 import type { TwrObservation } from "../domain/time-weighted-return";
 
 /** Values at every external-flow boundary are mandatory; absent coverage is never interpolated. */
-export async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null):Promise<TwrObservation[]> {
+export async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null,currency:"USD"|"EUR"="USD"):Promise<TwrObservation[]> {
   const db=await getUserDb();
   if (!db || !overview || !ledger) return [];
   const tx=[...ledger.originals].sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn)||a.id.localeCompare(b.id));
@@ -25,25 +25,26 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true}});
   const usd=quotes.filter(q=>q.symbol==="USD").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
-  const snapshots=new Map(overview.history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),h.totalUsd??null]));
+  const snapshots=new Map(overview.history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
   const flowDays=tx.filter(t=>t.occurredOn<=end&&!t.transferId).map(t=>t.occurredOn);
   const firstDay=tx[0]?.occurredOn??[...snapshots.keys()].sort()[0];
   const days=[...new Set([...snapshots.keys(),...flowDays,...quotes.map(q=>q.quoteDate.toISOString().slice(0,10)).filter(day=>day>=firstDay&&day<=end)])].sort();
   const assetMap=new Map(assets.map(a=>[a.id,a]));
   const eur=quotes.filter(q=>q.symbol==="EUR").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
-  const unitUsd=(id:string,on:string)=>{
+  const reportingRates=currency==="EUR"?eur:usd;
+  const unitReporting=(id:string,on:string)=>{
     const asset=assetMap.get(id),symbol=asset?.quoteSymbol;
     const price=symbol?[...(prices.get(symbol)??[])].reverse().find(p=>p.day<=on&&Date.parse(on)-Date.parse(p.day)<=7*86400000):null;
     if(!price)return null;
-    const currency=asset?.assetType==="crypto"?"USD":price.currency;
-    if(!["USD","EUR","BRL"].includes(currency))return null;
-    const native=currency as "USD"|"EUR"|"BRL";
+    const nativeCurrency=asset?.assetType==="crypto"?"USD":price.currency;
+    if(!["USD","EUR","BRL"].includes(nativeCurrency))return null;
+    const native=nativeCurrency as "USD"|"EUR"|"BRL";
     const rates=native==="EUR"?eur:usd;
     const observed=datedFx(price.day,null,native,rates,new Map());
     const current=datedFx(on,null,native,rates,new Map());
-    const dollar=datedFx(on,null,"USD",usd,new Map());
-    return observed&&current&&dollar?price.rate/observed.rate*current.rate/dollar.rate:null;
+    const reporting=datedFx(on,null,currency,reportingRates,new Map());
+    return observed&&current&&reporting?price.rate/observed.rate*current.rate/reporting.rate:null;
   };
   const holdings=new Map<string,number>();
   const observations:TwrObservation[]=[];
@@ -61,12 +62,12 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
       if(id && entry.kind==="WITHDRAWAL")sold.set(id,(sold.get(id)??0)+entry.quantity);
       if(id && (entry.kind==="CONTRIBUTION"||entry.kind==="OPENING")){
         const previous=bought.get(id)??{units:0,principal:0};
-        const fx=datedFx(day,entry.note,"USD",usd,new Map());
+        const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
         bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&entry.unitPriceBrl!==null&&fx?previous.principal+entry.unitPriceBrl*entry.quantity/fx.rate:null});
       }
       const paidIncome=entry.kind==="INCOME"&&entry.quantity===0;
       if(entry.kind==="INCOME"&&!paidIncome)continue;
-      const fx=datedFx(day,entry.note,"USD",usd,new Map());
+      const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
       if(!fx){flow=null;continue;}
       if(flow!==null)flow+=(entry.kind==="WITHDRAWAL"||paidIncome?-1:1)*entry.amountBrl/fx.rate;
     }
@@ -75,14 +76,14 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
       value=0;
       for(const [id,units] of holdings){
         if(Math.abs(units)<1e-8)continue;
-        const price=unitUsd(id,day);
+        const price=unitReporting(id,day);
         if(price===null||units<0){value=null;break;}
         if(value!==null)value+=units*price;
       }
     }
     if(invalidMonths.has(day.slice(0,7)))value=null;
     const previousDay=new Date(Date.parse(day)-86400000).toISOString().slice(0,10);
-    const daily=dailyOpenGain([...holdings].map(([id,units])=>({units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitUsd(id,day),previousPrice:unitUsd(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null})));
+    const daily=dailyOpenGain([...holdings].map(([id,units])=>({units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitReporting(id,day),previousPrice:unitReporting(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null})));
     observations.push({day,value,flow,dailyGainUsd:invalidMonths.has(day.slice(0,7))?null:daily.amount,dailyGainPercent:invalidMonths.has(day.slice(0,7))?null:daily.percent});
   }
   return observations;

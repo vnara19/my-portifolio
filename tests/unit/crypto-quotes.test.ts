@@ -43,7 +43,7 @@ test("CoinGecko succeeds on retry without falling back", async () => {
     ...dollar,
     "api.coingecko.com/api/v3/simple/price": [
       "timeout",
-      { status: 200, body: { bitcoin: { brl: 415000 } } },
+      { status: 200, body: { bitcoin: { usd: 83000 } } },
     ],
   });
   const [btc] = await run();
@@ -53,11 +53,11 @@ test("CoinGecko succeeds on retry without falling back", async () => {
   assert.equal(calls.some((url) => url.includes("coinbase") || url.includes("binance")), false);
 });
 
-test("two failed CoinGecko attempts fall back to Coinbase in BRL", async () => {
+test("two failed CoinGecko attempts fall back to Coinbase in USD before storage conversion", async () => {
   const calls = stubNetwork({
     ...dollar,
     "api.coingecko.com": "timeout",
-    "api.coinbase.com/v2/prices/BTC-BRL": { status: 200, body: { data: { amount: "416000.5", base: "BTC", currency: "BRL" } } },
+    "api.coinbase.com/v2/prices/BTC-USD": { status: 200, body: { data: { amount: "83200.1", base: "BTC", currency: "USD" } } },
   });
   const [btc] = await run();
 
@@ -111,7 +111,7 @@ test("when every provider fails, the error identifies each provider and explains
   assert.equal(btc.status, "FAILED");
   if (btc.status === "FAILED") {
     assert.match(btc.errorMessage, /CoinGecko: The provider timed out\./);
-    assert.match(btc.errorMessage, /Coinbase: Coinbase does not trade BTC in BRL\./);
+    assert.match(btc.errorMessage, /Coinbase: Coinbase does not trade BTC in USD\./);
     assert.match(btc.errorMessage, /Binance: The provider blocks the server region \(HTTP 451\)\./);
     assert.equal(btc.errorCode, "REGION_BLOCKED");
   }
