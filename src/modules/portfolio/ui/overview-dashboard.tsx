@@ -37,7 +37,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </header>
 
       <div className="mt-4">
-        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} metricsEur={referenceMetrics} />
+        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>
