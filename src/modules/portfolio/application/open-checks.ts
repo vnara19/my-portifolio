@@ -3,6 +3,7 @@ import { refreshFixedIncomeForUser } from "@/modules/portfolio/application/cdi-p
 import { checkMonthsUpToDate } from "@/modules/portfolio/application/month-rollover";
 import type { MonthRolloverOutcome, OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
 import { getQuoteRefreshSummary } from "@/modules/quotes/application/quote-refresh-summary";
+import { refreshUserQuotes } from "@/modules/quotes/application/refresh-user-quotes";
 
 
 export async function runOpenChecks({ now = new Date() }: { now?: Date } = {}): Promise<OpenCheckResponse> {
@@ -13,8 +14,12 @@ export async function runOpenChecks({ now = new Date() }: { now?: Date } = {}): 
     }),
   );
 
-  const fixedIncomeChanged = (await Promise.all([refreshFixedIncomeForUser(now).catch(() => false), refreshBondsForUser().catch(() => false)])).some(Boolean);
-  return { fixedIncomeChanged, rollover, targetPlan: "disabled", summary: await getQuoteRefreshSummary(now) };
+  const [quotesChanged, ...incomeChanges] = await Promise.all([
+    refreshUserQuotes(now).catch(() => false),
+    refreshFixedIncomeForUser(now).catch(() => false),
+    refreshBondsForUser().catch(() => false),
+  ]);
+  return { quotesChanged, fixedIncomeChanged: incomeChanges.some(Boolean), rollover, targetPlan: "disabled", summary: await getQuoteRefreshSummary(now) };
 }
 
 function describeUnexpected(error: unknown, fallback: string) {

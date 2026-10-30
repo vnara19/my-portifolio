@@ -89,6 +89,8 @@ export async function syncQuotes({
   prisma = getPrismaClient(),
   fetchSelicRate,
   fetchCdiRates,
+  symbols,
+  currentOnly = false,
 }: {
   now?: Date;
   fetchQuotes?: QuoteFetcher;
@@ -97,6 +99,9 @@ export async function syncQuotes({
   prisma?: PrismaClient | null;
   fetchSelicRate?: SelicFetcher;
   fetchCdiRates?: CdiRatesFetcher;
+  /** Trusted server-side scope. Browser requests cannot supply arbitrary provider symbols. */
+  symbols?: string[];
+  currentOnly?: boolean;
 } = {}): Promise<QuoteSyncOutcome> {
   if (!prisma) {
     return { state: "unavailable", message: "The database is not configured." };
@@ -106,7 +111,7 @@ export async function syncQuotes({
   const clock = () => new Date(now.getTime() + (Date.now() - startedClock));
   const today = calendarDay(now);
   const currentMonth = monthOf(today);
-  const claim = await claimRun(prisma, now, today, currentMonth);
+  const claim = await claimRun(prisma, now, today, currentMonth, symbols, currentOnly);
 
 
   const runSelic = () =>
@@ -125,7 +130,7 @@ export async function syncQuotes({
     );
 
   if (claim.state === "idle") {
-    return { state: "idle", selic: await runSelic(), cdi: await runCdi() };
+    return currentOnly ? { state: "idle" } : { state: "idle", selic: await runSelic(), cdi: await runCdi() };
   }
 
   if (claim.state !== "claimed") {
@@ -209,15 +214,17 @@ export async function syncQuotes({
     }
   }
 
-  outcome.histories = await syncHistories(prisma, claim.historySymbols, {
+  outcome.histories = currentOnly ? [] : await syncHistories(prisma, claim.historySymbols, {
     currentMonth,
     now: clock(),
     configuration,
     loadHistory,
   });
 
-  outcome.selic = await runSelic();
-  outcome.cdi = await runCdi();
+  if (!currentOnly) {
+    outcome.selic = await runSelic();
+    outcome.cdi = await runCdi();
+  }
 
 
   if (claim.quoteSymbols.length === 0 && claim.unregistered.length === 0) {
@@ -231,7 +238,7 @@ export async function syncQuotes({
 }
 
 
-async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMonth: Date): Promise<Claim> {
+async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMonth: Date, symbols?: string[], currentOnly = false): Promise<Claim> {
   return prisma.$transaction(
     async (transaction) => {
       await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${QUOTE_REFRESH_LOCK_KEY})`;
@@ -258,17 +265,20 @@ async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMon
         orderBy: [{ userId: "asc" }, { referenceDate: "desc" }],
         select: { id: true, referenceDate: true },
       });
-      const inUse = await symbolsInUse(
+      const allInUse = await symbolsInUse(
         transaction,
         latestMonths.map((month) => month.id),
       );
+      const allowed = symbols ? new Set(symbols) : null;
+      const inUse = allowed ? allInUse.filter(symbol => allowed.has(symbol)) : allInUse;
       const unregistered = await registerMissingSymbols(transaction, inUse);
       const registry = await transaction.quoteSymbol.findMany({
         where: { symbol: { in: inUse } },
         orderBy: [{ lastSuccessAt: { sort: "asc", nulls: "first" } }, { symbol: "asc" }],
       });
-      const quoteSymbols = registry.filter((symbol) => isQuoteDue(symbol, now)).slice(0, MAX_QUOTES_PER_RUN);
-      const historySymbols = registry
+      const scopedRegistry = registry.filter(symbol => !allowed || allowed.has(symbol.symbol));
+      const quoteSymbols = scopedRegistry.filter((symbol) => isQuoteDue(symbol, now)).slice(0, MAX_QUOTES_PER_RUN);
+      const historySymbols = currentOnly ? [] : scopedRegistry
         .filter((symbol) => (symbol.symbol === "USD" || symbol.symbol === "EUR")
           ? !symbol.historyAttemptedAt || now.getTime() - symbol.historyAttemptedAt.getTime() >= HISTORY_RETRY_AFTER_MS
           : isHistoryDue(symbol, currentMonth, now))

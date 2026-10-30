@@ -1,5 +1,5 @@
 
-/** Opening the application reads persisted refresh state. Scheduled jobs own provider updates; navigation does not trigger a full sync. */
+/** Opening checks due quotes for current holdings; scheduled jobs remain responsible for unattended updates and history. */
 import { showAppToast } from "@/components/product/app-toaster";
 import { hasPendingChanges } from "@/components/product/unsaved-changes";
 import type { MonthRolloverOutcome, OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
@@ -110,7 +110,7 @@ async function execute(onDataChanged: () => void) {
     }
 
     const payload = (await response.json()) as OpenCheckResponse;
-    const quotesChanged = (payload.summary ? noteSummary(payload.summary) : false) || payload.fixedIncomeChanged === true;
+    const quotesChanged = (payload.summary ? noteSummary(payload.summary) : false) || payload.quotesChanged === true || payload.fixedIncomeChanged === true;
 
     if (payload.summary) {
       setState({ summary: payload.summary });

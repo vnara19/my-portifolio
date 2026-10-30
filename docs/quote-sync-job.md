@@ -1,9 +1,9 @@
 # Quote synchronization
 
-`syncQuotes` is exposed by `pnpm quotes:sync` and the GitHub Actions workflow
-`.github/workflows/quote-sync.yml`. Current production scheduling is hourly at
-minute 17, with `workflow_dispatch` for manual runs. GitHub may delay scheduled runs
-and disables schedules in inactive public repositories; inspect Actions regularly.
+`syncQuotes` is exposed by `pnpm quotes:sync` and the manual GitHub Actions workflow
+`.github/workflows/quote-sync.yml`. Its schedule is currently commented out.
+The Neon job is an optional deployment configuration, not proof of an active scheduler.
+Do not promise unattended hourly updates until the deployed scheduler has been verified.
 
 Set the repository secret `PORTFOLIO_DATABASE_URL` to the pooled Neon **production**
 connection with `sslmode=verify-full`. Optional provider secrets are
@@ -19,7 +19,7 @@ History failures retry after 24 hours. Selic checks occur at most once daily.
 
 Provider chains:
 
-- FX: AwesomeAPI → Banco Central PTAX → Yahoo Finance.
+- FX: ECB reference → AwesomeAPI → Banco Central PTAX → Yahoo Finance (EUR uses ECB → Yahoo).
 - Crypto: CoinGecko → Coinbase → Yahoo Finance → Binance.
 - US assets: Finnhub → Yahoo Finance → Alpha Vantage.
 - B3: Yahoo Finance → brapi → Alpha Vantage.
@@ -40,7 +40,7 @@ positions. EUR/BRL uses the daily ECB reference feed through Frankfurter, with
 Yahoo fallback. This public source needs no API key. It is also a USD fallback.
 The daily quote retains the source date. Historical month-end FX fills reporting
 comparisons without overwriting existing genuine or user-specific monthly prices.
-FX history coverage is checked daily, including holes before the last sync marker.
+FX history coverage is checked by scheduled/manual maintenance, including holes before the last sync marker.
 
 The EUR screen displays the reciprocal explicitly (`1 BRL = … EUR`). The stored
 quote and manual input remain BRL per EUR. BTC's primary display is USD; its BRL
@@ -50,4 +50,6 @@ quote remains the valuation and editing contract.
 
 Quotes is scoped to registered portfolio symbols (including retained history), manual quotes and USD/EUR reporting conversions, not the whole market. The selected month controls the displayed monthly quote snapshot and update history. BRL is the valuation reference, so no BRL/BRL provider quote is required.
 
-The development Preview has no scheduled GitHub quote job. Its retained last-success date must not be presented as proof of hourly automatic updates. Production has the separate main-branch schedule described above; the Preview screen explicitly identifies its lack of scheduling. Update History reports recorded update attempts/results for the selected month. Header portfolio totals and Selic are intentionally absent from this screen.
+Authenticated opening/visibility checks refresh due quotes for the user's current holdings plus USD/EUR reporting rates. The existing five-minute check throttle, 50-minute quote freshness threshold, PostgreSQL execution lock and provider failure backoff are retained. This mode skips full history, Selic and global CDI maintenance. Symbols are selected server-side through user-scoped access, never accepted from the browser. Public quote updates reprice current holdings through the established job; purchases and historical transaction values are untouched. A `quotesChanged` response refreshes the page even on its first check, except while the user is editing.
+
+Opening checks work in Preview and Production while the application is open. They do not run with the site closed. Unattended refresh still requires a separately configured scheduler. Update History reports recorded attempts/results, not an inferred schedule. Header portfolio totals and Selic are intentionally absent from Quotes.

@@ -3,6 +3,8 @@ import { rejectWithoutSession } from "@/modules/auth/session";
 import { runOpenChecks } from "@/modules/portfolio/application/open-checks";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 
 export async function POST(request: Request) {

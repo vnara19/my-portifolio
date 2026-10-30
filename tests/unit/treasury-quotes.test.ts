@@ -133,21 +133,57 @@ function syncFixture() {
     failureCount: 0,
     historySyncedUntil: new Date("2026-09-01T00:00:00Z"),
   };
+  const registry = [symbol, ...["USD", "EUR"].map((currency) => ({
+    ...symbol, symbol: currency, instrumentType: "FIAT", baseCurrency: currency,
+    lastSuccessAt: new Date("2026-10-04T15:00:00Z"), historyAttemptedAt: new Date("2026-10-04T15:00:00Z"),
+  }))];
   const client = {
     $executeRaw: async (parts: TemplateStringsArray, ...values: unknown[]) => { raw.push({ sql: parts.join("?"), values }); return 0; },
     portfolioMonth: { findMany: async () => [{ id: "month", referenceDate: new Date("2026-10-01T00:00:00Z") }] },
     position: { findMany: async () => [{ asset: { quoteSymbol: identity.symbol } }] },
-    quoteSymbol: { findMany: async () => [symbol, ...["USD", "EUR"].map((currency) => ({
-      ...symbol, symbol: currency, instrumentType: "FIAT", baseCurrency: currency,
-      lastSuccessAt: new Date("2026-10-04T15:00:00Z"), historyAttemptedAt: new Date("2026-10-04T15:00:00Z"),
-    }))], updateMany: async () => ({}), update: async () => ({}) },
+    quoteSymbol: { findMany: async () => registry, updateMany: async () => ({}), update: async () => ({}) },
     quoteRefreshRun: { updateMany: async () => ({}), findFirst: async () => null, create: async () => ({ id: "run" }), update: async () => ({}) },
     quoteRefreshResult: { createMany: async ({ data }: { data: typeof results }) => { results.push(...data); return { count: data.length }; } },
     manualQuote: { deleteMany: async () => ({}) },
   };
   const prisma = { ...client, $transaction: async (run: (transaction: typeof client) => Promise<unknown>) => run(client) } as unknown as PrismaClient;
-  return { prisma, raw, results };
+  return { prisma, raw, results, registry };
 }
+
+test("navigation refresh only fetches due owned symbols and skips maintenance", async () => {
+  const fixture = syncFixture();
+  fixture.registry.push({ ...fixture.registry[0], symbol: "UNRELATED" });
+  const requested: string[] = [];
+  const forbidden = async () => { throw new Error("Maintenance must not run on opening"); };
+  const result = await syncQuotes({
+    prisma: fixture.prisma, now: new Date("2026-10-04T15:00:00Z"), symbols: [identity.symbol], currentOnly: true,
+    fetchQuotes: async requests => { requested.push(...requests.map(r => r.symbol)); return [{ symbol: identity.symbol, provider: "tesouro", status: "SUCCESS", valueBrl: 1479.25, quoteDate: "2026-10-02" }]; },
+    loadHistory: forbidden, fetchSelicRate: forbidden, fetchCdiRates: forbidden,
+  });
+  assert.equal(result.state, "done");
+  assert.deepEqual(requested, [identity.symbol]);
+  if (result.state === "done") {
+    assert.deepEqual(result.histories, []);
+    assert.equal(result.selic, undefined);
+    assert.equal(result.cdi, undefined);
+  }
+});
+
+test("navigation respects recent quotes, retry backoff and an empty scope", async () => {
+  for (const mode of ["recent", "backoff", "empty"]) {
+    const fixture = syncFixture();
+    if (mode === "recent") Object.assign(fixture.registry[0], { lastSuccessAt: new Date("2026-10-04T14:55:00Z") });
+    if (mode === "backoff") Object.assign(fixture.registry[0], { nextAttemptAt: new Date("2026-10-04T16:00:00Z") });
+    let called = false;
+    const result = await syncQuotes({
+      prisma: fixture.prisma, now: new Date("2026-10-04T15:00:00Z"), symbols: mode === "empty" ? [] : [identity.symbol], currentOnly: true,
+      fetchQuotes: async () => { called = true; return []; },
+    });
+    assert.equal(result.state, "idle");
+    assert.equal(called, false);
+    assert.equal(fixture.raw.some(q => q.sql.includes('UPDATE "positions"')), false);
+  }
+});
 
 test("the job persists official dates per symbol and reprices accepted monthly quotes", async () => {
   const fixture = syncFixture();

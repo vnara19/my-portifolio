@@ -9,7 +9,8 @@ allowlist. The interface is English and dark-only.
 
 Vercel hosts the application. GitHub stores source and triggers deployments:
 `dev` → Preview → Neon `development`; `main` → Production → Neon `production`.
-Production releases require user approval. Provider jobs run in GitHub Actions.
+Production releases require user approval. Provider jobs have manual GitHub Actions
+and an optional Neon entry point; an active unattended schedule must be verified separately.
 No credential or service owned by the original collaborator is required.
 
 Functions deploy to `gru1` (São Paulo), alongside the current Neon database in
@@ -60,7 +61,10 @@ rates are incomplete. English formatting does not change currency or market rule
 
 ## Updates
 
-Navigation reads database prices; it does not fetch every provider. The job uses a
+Navigation reads database prices; the authenticated opening check refreshes due
+public quotes used by the user's current holdings and the reporting FX rates. It
+skips historical backfills and global rate maintenance and signals the client to
+refresh only when quotes changed. The job uses a
 PostgreSQL execution lock, fetches due symbols and retries failures with backoff.
 Current quotes become due after 50 minutes. Historical failures retry after one day.
 Selic is informational and does not directly reprice positions. CDI data feeds

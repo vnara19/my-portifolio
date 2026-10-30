@@ -27,6 +27,7 @@ export type MonthRolloverOutcome =
 export type TargetPlanCheck = "disabled" | "created" | "existing" | "no-positions" | "unavailable";
 
 export type OpenCheckResponse = {
+  quotesChanged?: boolean;
   fixedIncomeChanged?: boolean;
   rollover: MonthRolloverOutcome;
   targetPlan: TargetPlanCheck;
