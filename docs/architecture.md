@@ -587,8 +587,10 @@ boundary, clearing an obsolete month query once the server has generated the new
 month. An explicitly chosen historical month remains available within that
 calendar session. Unsaved edits defer automatic navigation without prompting.
 
-The existing four Overview cards remain in their desktop row. Monthly Change and
-12-Month Change occupy two wider cards below. Monetary period results subtract
+All six Overview cards share equal-height grid rows. Wide desktops (1440px and
+above) show six columns, intermediate widths (900px and above) show three, and
+smaller widths show two or one. Only the summary can expand beyond the existing
+page width, leaving chart and distribution dimensions unchanged. Monetary period results subtract
 net external funding from the change in EUR portfolio valuation and display its
 current USD equivalent; percentages link daily TWR within the same window. A
 12-month result requires a recorded baseline, and absent coverage is not zero.
