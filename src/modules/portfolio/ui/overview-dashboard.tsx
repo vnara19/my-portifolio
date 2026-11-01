@@ -1,3 +1,4 @@
+import { OverviewAnalytics } from "./overview-analytics";
 import { overviewPeriodChanges } from "../domain/period-performance";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import { eurToUsdRate, expressEurMetricsInUsd } from "../domain/overview-reporting";
@@ -13,7 +14,7 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark }) {
+export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark, riskFreeRate, assetLabels, fxHistory }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string>;fxHistory:{day:string;value:number}[] }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -67,6 +68,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
 
 
       <PortfolioDistributionPanel data={overview.distribution} />
+      <OverviewAnalytics overview={overview} observations={performanceEur.filter(p=>p.day<=asOf)} usd={performance.filter(p=>p.day<=asOf)} benchmark={benchmark} rate={riskFreeRate} currentFx={eurToUsdRate(overview.eurRate,overview.usdRate)} fxHistory={fxHistory} labels={assetLabels} asOf={asOf}/>
     </div>
   );
 }

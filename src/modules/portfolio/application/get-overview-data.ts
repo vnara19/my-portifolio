@@ -9,16 +9,7 @@ import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio
 import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
-import { getAllocationOverview } from "@/modules/portfolio/application/get-allocation-overview";
 import { assetTypeOf } from "@/modules/portfolio/domain/classification";
-import {
-  buildFixedIncomeDuration,
-  type FixedIncomeDuration,
-} from "@/modules/portfolio/domain/fixed-income-duration";
-import {
-  DEFAULT_REBALANCE_TOLERANCE,
-  type AllocationGroup,
-} from "@/modules/portfolio/domain/rebalance";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { readMonthQuoteValues, readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
 import { addMonths, currentReferenceMonth } from "@/modules/quotes/domain/calendar";
@@ -51,6 +42,8 @@ export type OverviewData = {
   eurRate: number | null;
   gains: PortfolioGains;
   gainsEur?: PortfolioGains;
+  realizedHistory: {day:string;value:number}[];
+  holdingResults: {assetId:string;sold:boolean;principal:number;totalUsd:number|null}[];
   accountingCurrency: "EUR";
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
@@ -69,13 +62,10 @@ export type OverviewData = {
   changeSinceStartPercent: number | null;
   positionCount: number;
   institutionCount: number;
-  offTargetTolerance: number;
   history: OverviewHistoryPoint[];
 
   distribution: PortfolioDistribution;
   byType: { label: string; valueBrl: number; valueUsd?: number | null; share: number }[];
-  rebalanceGroups: AllocationGroup[];
-  fixedIncomeDuration: FixedIncomeDuration;
   classLabels: string[];
   currencyLabels: string[];
 };
@@ -238,11 +228,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
     })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
-    const [allocation, gainsEur] = await Promise.all([
-      getAllocationOverview(selected.referenceDate),
-      getPortfolioGains(selected.referenceDate, eurRate, "EUR"),
-    ]);
-    const {byAsset:assetGains,...referenceGains}=gainsEur;
+    const gainsEur = await getPortfolioGains(selected.referenceDate, eurRate, "EUR");
+    const {byAsset:assetGains,realizedHistory,...referenceGains}=gainsEur;
     const gainByAsset = new Map(assetGains.map(row=>[row.assetId,row.unrealizedUsd]));
     const uniqueHoldings = new Map<string,{assetId:string;label:string;assetClass:string;currency:string;valueUsd:number;unrealizedGainUsd:number|null}>();
     for (const position of positionsView?.positions ?? []) {
@@ -268,6 +255,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       gains,
       gainsEur: referenceGains,
       accountingCurrency: "EUR",
+      realizedHistory,
+      holdingResults: assetGains,
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0
@@ -293,15 +282,9 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       institutionCount: new Set(
         selected.positions.map((position) => position.account.institutionId),
       ).size,
-      offTargetTolerance: allocation?.tolerance ?? DEFAULT_REBALANCE_TOLERANCE,
       history,
       byType,
       distribution,
-      rebalanceGroups: allocation?.groups ?? [],
-      fixedIncomeDuration: buildFixedIncomeDuration(
-        allocation?.aggregates.fixedIncome ?? [],
-        allocation?.targets ?? [],
-      ),
       classLabels: collectLabels(history, "byClass"),
       currencyLabels: collectLabels(history, "byCurrency"),
     };

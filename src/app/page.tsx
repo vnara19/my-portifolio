@@ -1,3 +1,5 @@
+import { getOverviewFx } from "@/modules/portfolio/application/get-overview-fx";
+import { getRiskFreeRate } from "@/modules/portfolio/application/risk-free-rate";
 import { getPortfolioLedger } from "@/modules/portfolio/application/get-portfolio-ledger";
 import { getOverviewPerformance } from "@/modules/portfolio/application/get-overview-performance";
 import { getSp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
@@ -19,15 +21,17 @@ export default async function Home({
   const { mes } = await searchParams;
   const { months, selected } = await getMonthContext(mes);
   const [overview, selic, ledger, benchmark] = await Promise.all([getOverviewData(selected?.referenceDate), getSelicForMonth(selected?.referenceDate), getPortfolioLedger(months), getSp500Benchmark()]);
-  const [performance, performanceEur] = await Promise.all([
+  const [performance, performanceEur, riskFreeRate, fxHistory] = await Promise.all([
     getOverviewPerformance(overview, ledger),
     getOverviewPerformance(overview, ledger, "EUR"),
+    getRiskFreeRate(),
+    getOverviewFx(),
   ]);
   const reportingBenchmark = await getOverviewBenchmark(benchmark, returnBaselineDay(performanceEur), performanceEur.at(-1)?.day);
 
   return (
     <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null}>
-      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} benchmark={reportingBenchmark} />
+      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} fxHistory={fxHistory} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,t.ticker??t.assetName??"Asset"]))} />
     </AppShell>
   );
 }

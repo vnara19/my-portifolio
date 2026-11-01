@@ -16,12 +16,12 @@ export function OverviewKpis({overview,metrics,changes}:{overview:OverviewData;m
   <GainCard label="Unrealized Gain" testId="unrealized-gain" value={gains.unrealizedUsd} percentage={gains.unrealizedPercent}
    percentageTitle="Whole-portfolio gain divided by remaining purchase principal in the EUR reference currency. The amount is displayed as its current USD equivalent."
    detail={gains.unrealizedUsd===null?reason:<>{secondary(eur?.unrealizedUsd,"The same whole-portfolio gain in EUR. The USD line is its current-rate equivalent; the percentage is shared.")}<span className="mt-1 block" title={metrics.asOf?`Whole portfolio · ${metrics.asOf} · EUR-reference daily result expressed in USD` :undefined}>Last Day <span className="font-mono">{money(metrics.dailyUsd)} · {percent(metrics.dailyPercent)}</span></span></>}/>
-  <GainCard label="Realized Gain" testId="realized-gain" value={gains.realizedUsd} percentage={gains.realizedPercent}
-   percentageTitle="Whole-portfolio realized result including commissions divided by cumulative purchase payments, in EUR. The amount is displayed as its current USD equivalent. This ratio is not TWR."
-   detail={gains.realizedUsd===null?reason:secondary(eur?.realizedUsd,"The same whole-portfolio realized result in EUR. Both displayed currencies share one return percentage.")}/>
   <GainCard label="Total Gain" testId="total-gain" value={gains.totalUsd} percentage={metrics.totalPercent}
    percentageTitle="Portfolio time-weighted return (TWR) in the common EUR reference currency. USD is the display equivalent; purchases and redemptions are not gains or losses."
    detail={gains.totalUsd===null?reason:<>{secondary(eur?.totalUsd,"The same total portfolio gain in EUR. TWR is measured once in the EUR reference and is shared by both displayed currencies.")}<span className="mt-1 block" title="XIRR from dated whole-portfolio funding and value in the common EUR reference currency.">Annualized Yield <span className="font-mono">{percent(metrics.annualizedPercent)}</span></span></>}/>
+  <GainCard label="Realized Gain" testId="realized-gain" value={gains.realizedUsd} percentage={gains.realizedPercent}
+   percentageTitle="Whole-portfolio realized result including commissions divided by cumulative purchase payments, in EUR. The amount is displayed as its current USD equivalent. This ratio is not TWR."
+   detail={gains.realizedUsd===null?reason:secondary(eur?.realizedUsd,"The same whole-portfolio realized result in EUR. Both displayed currencies share one return percentage.")}/>
   {([{key:"month",label:"Monthly Change"},{key:"year",label:"12-Month Change"}] as const).map(item=><GainCard key={item.key} label={item.label} testId={`${item.key}-change`} value={changes[item.key].usd} percentage={changes[item.key].percent} percentageTitle="Time-weighted investment return in the common EUR reference; contributions and withdrawals are excluded." detail={changes[item.key].eur===null?"—":secondary(changes[item.key].eur,"The same investment result expressed in EUR.")} />)}
  </section>;
 }

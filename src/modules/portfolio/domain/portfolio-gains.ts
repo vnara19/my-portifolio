@@ -23,12 +23,12 @@ export type GainSnapshot = { holding: string; quantity: number; valueUsd: number
 export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, realizedPercent: null, totalUsd: null });
 
 /** USD average cost uses FX at acquisition, not today's FX. Incomplete ledgers are not estimates. */
-export function portfolioGains(movements: GainMovement[], snapshots: GainSnapshot[], onIssue?: (issue: GainIssue) => void): PortfolioGains {
+export function portfolioGains(movements: GainMovement[], snapshots: GainSnapshot[], onIssue?: (issue: GainIssue) => void, onStep?: (index: number, realized: number) => void): PortfolioGains {
   const missing=(issue:GainIssue)=>{onIssue?.(issue);return unavailableGains();};
   const costs = new Map<string, { units: Prisma.Decimal; cost: Prisma.Decimal }>();
   let realized = new Prisma.Decimal(0);
   let funded = new Prisma.Decimal(0);
-  for (const movement of movements) {
+  for (const [index, movement] of movements.entries()) {
     // Transfers need carried acquisition cost across accounts; do not treat them as sales.
     const capitalized = movement.kind === "INCOME" && movement.quantity > 0;
     if (movement.transferId) return missing("transfer-cost");
@@ -63,6 +63,7 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
       if (state.units.eq(0) && amount.lt(0)) { realized = realized.minus(state.cost); state.cost = new Prisma.Decimal(0); }
     }
     costs.set(movement.holding, state);
+    onStep?.(index, realized.toNumber());
   }
   let value = new Prisma.Decimal(0);
   let invested = new Prisma.Decimal(0);

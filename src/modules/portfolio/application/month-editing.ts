@@ -200,7 +200,6 @@ type UndoEntry = { userId: string } & (
 type NewUndoEntry = UndoEntry extends infer Entry ? (Entry extends unknown ? Omit<Entry, "userId"> : never) : never;
 
 const UNDO_TTL_MS = 10 * 60 * 1000;
-const MAX_STRATEGY_LENGTH = 60;
 const MAX_LABEL_LENGTH = 80;
 const MAX_ENTITY_NAME_LENGTH = 60;
 const MAX_ASSET_NAME_LENGTH = 80;
@@ -386,7 +385,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       const storedUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: new Date(bond.settlementDate), gte: new Date(bondFx.usd.day) } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
       const acquisitionFx = bond.currency === "USD" && storedUsd ? storedUsd.valueBrl : new Prisma.Decimal(bondFx.acquisition.value);
       const valuation = bondValue(bond, asOf, currentFx.toString());
-      const created = await transaction.position.create({ data: { userId: SCOPED_USER, portfolioMonthId: month.id, accountId: account.id, assetId: asset.id, quantity: bond.faceAmount, unitPriceBrl: valuation.unitPriceBrl, totalBrl: valuation.totalBrl, exchangeRateBrl: currentFx, strategy: normalizeStrategy(addition.strategy) } });
+      const created = await transaction.position.create({ data: { userId: SCOPED_USER, portfolioMonthId: month.id, accountId: account.id, assetId: asset.id, quantity: bond.faceAmount, unitPriceBrl: valuation.unitPriceBrl, totalBrl: valuation.totalBrl, exchangeRateBrl: currentFx, strategy: null } });
       await transaction.positionAllocation.createMany({ data: allocations.map((allocation) => ({ ...allocation, userId: SCOPED_USER, positionId: created.id })) });
       await transaction.positionTransaction.create({ data: { userId: SCOPED_USER, positionId: created.id, kind: PositionTransactionKind.CONTRIBUTION, occurredOn: new Date(bond.settlementDate), quantity: bond.faceAmount, amountBrl: new Prisma.Decimal(bond.totalPaid).mul(acquisitionFx).toDecimalPlaces(2), note: `Bond acquisition: ${bond.currency} ${bond.totalPaid} total paid including accrued interest and fees; FX ${acquisitionFx.toString()} BRL/${bond.currency}.` } });
       return { created: batch.created };
@@ -428,7 +427,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
         unitPriceBrl,
         exchangeRateBrl: asset.quoteSymbol ? (quoteBySymbol.get(USD_SYMBOL) ?? null) : null,
         totalBrl,
-        strategy: normalizeStrategy(addition.strategy),
+        strategy: null,
       },
       select: { id: true },
     });
@@ -514,7 +513,7 @@ export async function editPosition(input: { monthId: string; edit: PositionEdit 
     // (spec 057).
     await transaction.position.update({
       where: { id: position.id },
-      data: { strategy: normalizeStrategy(input.edit.strategy) },
+      data: { strategy: null },
     });
 
 
@@ -1754,15 +1753,6 @@ function nextMonth(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
 }
 
-function normalizeStrategy(value: string | null) {
-  const trimmed = value?.trim() ?? "";
-
-  if (trimmed.length > MAX_STRATEGY_LENGTH) {
-    throw new MonthEditError("The strategy is too long.");
-  }
-
-  return trimmed === "" ? null : trimmed;
-}
 
 function requireName(value: string, maxLength: number, field: string) {
   const name = cleanName(value);

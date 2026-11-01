@@ -37,7 +37,8 @@ export type EditActionResult =
   | { ok: false; message: string };
 
 const value = z.string().trim().min(1).max(40);
-const strategy = z.string().trim().max(60).nullable();
+// Legacy wire key remains null; strategy editing has been retired.
+const strategy = z.null();
 const monthScope = { monthId: z.string().uuid() };
 const label = (max: number) => z.string().trim().min(1).max(max);
 const day = z

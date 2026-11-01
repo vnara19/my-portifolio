@@ -187,7 +187,7 @@ function PositionForm({
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
   const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
-  const strategy = editing?.strategy ?? "";
+  const strategy = "";
   // Asset details.
   const [tickerText, setTickerText] = useState("");
   const [coinChoice, setCoinChoice] = useState<{ symbol: string; id: string } | null>(null);

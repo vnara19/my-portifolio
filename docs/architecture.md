@@ -594,3 +594,24 @@ page width, leaving chart and distribution dimensions unchanged. Monetary period
 net external funding from the change in EUR portfolio valuation and display its
 current USD equivalent; percentages link daily TWR within the same window. A
 12-month result requires a recorded baseline, and absent coverage is not zero.
+
+## Overview analysis and reference settings
+
+Risk-Free Rate is a per-user annual percentage (initially 2%) saved independently
+of authentication credentials. Settings mutations authenticate and rate-limit the
+user, validate 0–100% with two decimals, and invalidate Overview and Settings.
+Sharpe and Sortino use completed monthly TWR observations, annual reference / 12,
+population volatility and downside deviation respectively; these are monthly
+ratios, not annualized ratios. Beta uses aligned monthly covariance / benchmark
+variance. Missing observations and zero denominators remain unavailable.
+
+Portfolio Profitability compares monthly EUR-reference TWR with S&P 500 Total
+Return in the same reference currency. TTM means trailing twelve months. Profit
+subtracts net dated funding from NAV and converts monetary profit using dated FX;
+realized history reuses the existing fee/average-cost engine. Holdings Performance
+shows total result including commissions and optionally fully sold holdings.
+
+The strategy, target-allocation, tolerance and rebalancing application paths are
+retired. Legacy database fields and backup tables remain for restore compatibility;
+no default target plans are generated and new strategy input is rejected. Actual
+asset classification and portfolio distribution remain independent of targets.

@@ -15,7 +15,6 @@ import {
   type BackupRow,
   type BackupTableKey,
 } from "@/modules/backup/domain/backup-format";
-import { ensureDefaultTargetPlan } from "@/modules/portfolio/application/target-plan-editing";
 
 
 // Roll back the entire restore if any row fails.
@@ -564,11 +563,6 @@ export async function restoreBackup(input: unknown, options: { trustedSharedQuot
     { maxWait: 15_000, timeout: 120_000 },
   );
 
-
-  // Insert a new record only when it is missing.
-  if (counts.targetPlans === 0 && (await ensureDefaultTargetPlan().catch(() => null)) === "created") {
-    return currentCounts(prisma as unknown as Transaction);
-  }
 
   return counts;
 }
