@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { PortfolioDistribution, DistributionRow } from "../domain/portfolio-distribution";
-import { formatCurrency, formatSharePercent } from "../presentation/portfolio-format";
+import { formatCurrency } from "../presentation/portfolio-format";
 import { cn } from "@/lib/utils";
 
 const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"types",label:"Asset Types",column:"Asset Type"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
+const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
 export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) {
@@ -22,16 +23,16 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     </div>
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
       <div className="relative mx-auto w-full max-w-[520px]" onMouseLeave={()=>setHover(null)}>
-        <svg viewBox="0 0 520 520" className="block h-auto w-full overflow-visible" role="group" aria-label={`${selected.label} distribution`}>
+        <svg viewBox="-40 0 600 520" className="block h-auto w-full overflow-visible" role="group" aria-label={`${selected.label} distribution`}>
           <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="29" fontWeight="600">{data.assetCount}</text>
           <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="16" fontWeight="500">Total Assets</text>
           {slices.map(({row,start,middle})=>{
             const circumference=2*Math.PI*174, length=row.share/100*circumference;
-            const label=point(middle,224),percentage=point(middle,174);
+            const label=point(middle,229),percentage=point(middle,174);
             return <g key={row.key}>
               {hover===row.key?<circle cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="86" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
               <circle data-distribution-slice={row.key} cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="60" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
-              {row.share>=4?<text x={Math.max(70,Math.min(450,label.x))} y={label.y} dy="0.35em" textAnchor="middle" fill="var(--muted-foreground)" fontSize="12" pointerEvents="none">{row.label.length>20?`${row.label.slice(0,19)}…`:row.label}</text>:null}
+              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="12" pointerEvents="none">{row.label.length>20?`${row.label.slice(0,19)}…`:row.label}</text>:null}
               {row.share>=6?<text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500" pointerEvents="none">{Math.round(row.share)}%</text>:null}
             </g>;
           })}
