@@ -58,7 +58,9 @@ valuations, only complete funding and ending value.
 The benchmark is S&P 500 Total Return with reinvested distributions, converted
 to EUR at each observation date before return calculation. Its initial quote is
 the closing observation before the first funded day's return, matching the
-portfolio boundary. Calendar windows default to All; a selected chart range
+portfolio boundary. If this boundary precedes stored acquisition FX, the missing
+reference observations are fetched from the ECB source without replacing stored
+transaction rates. Calendar windows default to All; a selected chart range
 windows the cumulative series without changing its accounting reference.
 
 Monthly asset returns use Modified Dietz with dated flow weights, not the
