@@ -1,3 +1,4 @@
+import { overviewPeriodChanges } from "../domain/period-performance";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import { eurToUsdRate, expressEurMetricsInUsd } from "../domain/overview-reporting";
 import type { TwrObservation } from "../domain/time-weighted-return";
@@ -36,7 +37,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </header>
 
       <div className="mt-4">
-        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
+        <OverviewKpis overview={overview} changes={overviewPeriodChanges(performanceEur,asOf,eurToUsdRate(overview.eurRate,overview.usdRate))} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>

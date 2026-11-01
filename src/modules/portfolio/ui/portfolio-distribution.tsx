@@ -32,7 +32,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
             return <g key={row.key}>
               {hover===row.key?<circle cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="86" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
               <circle data-distribution-slice={row.key} cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="60" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
-              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="12" pointerEvents="none">{row.label.length>20?`${row.label.slice(0,19)}…`:row.label}</text>:null}
+              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="15" fontWeight="600" pointerEvents="none">{row.label.length>20?`${row.label.slice(0,19)}…`:row.label}</text>:null}
               {row.share>=6?<text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500" pointerEvents="none">{Math.round(row.share)}%</text>:null}
             </g>;
           })}

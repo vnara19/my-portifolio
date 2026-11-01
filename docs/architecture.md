@@ -577,3 +577,18 @@ in the common EUR accounting reference, then convert to USD consistently with
 the summary. Missing acquisition data remains unavailable, not zero. Hover or
 keyboard focus highlights the same row and slice and shows value and allocation
 in a neutral callout. The section is based on the selected reporting month.
+
+## Calendar rollover and period cards
+
+Reporting months continue to be generated automatically on server entry; no
+successful rollover notification or confirmation is shown. The month timeline
+follows the current calendar on a new browser-tab session and across a calendar
+boundary, clearing an obsolete month query once the server has generated the new
+month. An explicitly chosen historical month remains available within that
+calendar session. Unsaved edits defer automatic navigation without prompting.
+
+The existing four Overview cards remain in their desktop row. Monthly Change and
+12-Month Change occupy two wider cards below. Monetary period results subtract
+net external funding from the change in EUR portfolio valuation and display its
+current USD equivalent; percentages link daily TWR within the same window. A
+12-month result requires a recorded baseline, and absent coverage is not zero.

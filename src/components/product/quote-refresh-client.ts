@@ -3,8 +3,6 @@
 import { showAppToast } from "@/components/product/app-toaster";
 import { hasPendingChanges } from "@/components/product/unsaved-changes";
 import type { MonthRolloverOutcome, OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
-import { formatMonth, formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
-import { parseMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { providerLabel, type QuoteRefreshRunView, type QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 
 
@@ -167,52 +165,11 @@ function noteSummary(summary: QuoteRefreshSummary) {
   return summary.lastUpdatedAt !== previous.lastUpdatedAt;
 }
 
-const listFormat = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
-
-function monthCompact(month: string) {
-  const date = parseMonthParam(month);
-  return date ? formatMonthCompact(date) : month;
-}
-
+/** Month creation is automatic and silent; only an actual failure needs attention. */
 function announceRollover(outcome: MonthRolloverOutcome) {
   if (outcome.state === "unavailable") {
-    showAppToast({ tone: "error", title: "Could not create the reporting month", description: outcome.message });
-    return;
+    showAppToast({ tone: "error", title: "Could not update the reporting month", description: outcome.message });
   }
-
-  if (outcome.state !== "created" || outcome.months.length === 0) {
-    return;
-  }
-
-  const [first] = outcome.months;
-  const firstDate = parseMonthParam(first.month);
-
-
-  const carried = outcome.months.filter((month) => !month.isCurrent && month.carriedQuotes.length > 0);
-
-  showAppToast({
-    id: `rollover-${outcome.months.map((month) => month.month).join("-")}`,
-    tone: carried.length > 0 ? "warning" : "info",
-    title:
-      outcome.months.length === 1 && firstDate
-        ? `Reporting month for ${formatMonth(firstDate).toLocaleLowerCase("en-GB")} criada`
-        : `${outcome.months.length} reporting months created: ${listFormat.format(outcome.months.map((month) => monthCompact(month.month)))}`,
-    description:
-      outcome.months.length === 1
-        ? `Positions and allocations copied from ${monthCompact(first.sourceMonth)}.`
-        : `Each month copied the previous month's positions and allocations, starting from ${monthCompact(first.sourceMonth)}.`,
-    data:
-      carried.length > 0
-        ? {
-            items: carried.map((month) => ({
-              label: monthCompact(month.month),
-              detail: "without a daily quote this month",
-              reason: `Uses the quote from ${monthCompact(month.sourceMonth)} for ${month.carriedQuotes.join(", ")}.`,
-            })),
-            footnote: "If needed, adjust these prices under Positions → Quotes.",
-          }
-        : undefined,
-  });
 }
 
 

@@ -3,11 +3,11 @@
 /** The global reporting-month selector preserves navigation context and offers a compact mobile picker. */
 
 import { useQueryState } from "nuqs";
-import { useMemo, useTransition } from "react";
+import { useEffect, useMemo, useRef, useTransition } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
 import { MonthStrip, type MonthStripItem } from "@/components/product/month-strip";
-import { confirmDiscardChanges } from "@/components/product/unsaved-changes";
+import { confirmDiscardChanges, hasPendingChanges } from "@/components/product/unsaved-changes";
 import type { PortfolioMonthSummary } from "@/modules/portfolio/application/get-portfolio-months";
 import { formatMonth, formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
 
@@ -23,6 +23,24 @@ type MonthTimelineProps = {
 export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTimelineProps) {
   const [isPending, startTransition] = useTransition();
   const [monthParam, setMonth] = useQueryState("mes", { shallow: false, startTransition });
+  const calendarSeen=useRef<string|null>(null);
+  useEffect(() => {
+    const followCalendar = () => {
+      if (document.visibilityState !== "visible" || hasPendingChanges()) return;
+      const current = new Date().toISOString().slice(0,7);
+      if (months.at(-1)?.month !== current) return;
+      let previous = calendarSeen.current;
+      try { previous ??= sessionStorage.getItem("portfolio:calendar-month"); } catch {}
+      if (previous === current) return;
+      calendarSeen.current=current;
+      try { sessionStorage.setItem("portfolio:calendar-month",current); } catch {}
+      if (monthParam && monthParam !== current) void setMonth(null,{history:"replace"});
+    };
+    followCalendar();
+    const timer=window.setInterval(followCalendar,60_000);
+    document.addEventListener("visibilitychange",followCalendar);
+    return ()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",followCalendar);};
+  }, [months,monthParam,setMonth]);
   const items = useMemo(() => months.map(toItem), [months]);
 
 
