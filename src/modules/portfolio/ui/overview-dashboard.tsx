@@ -4,8 +4,7 @@ import type { TwrObservation } from "../domain/time-weighted-return";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import type { OverviewData } from "@/modules/portfolio/application/get-overview-data";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
-import { AllocationExplorer } from "@/modules/portfolio/ui/allocation-explorer";
-import { AssetTypeBreakdown } from "@/modules/portfolio/ui/asset-type-breakdown";
+import { PortfolioDistributionPanel } from "./portfolio-distribution";
 import { EmptyPortfolio } from "@/modules/portfolio/ui/empty-portfolio";
 import { OverviewQuotes } from "@/modules/portfolio/ui/overview-quotes";
 import { OverviewKpis } from "@/modules/portfolio/ui/overview-kpis";
@@ -66,11 +65,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </section>
 
 
-      <div className="mt-6">
-        <AssetTypeBreakdown rows={overview.byType} />
-      </div>
-
-      <AllocationExplorer groups={overview.rebalanceGroups} fixedIncomeDuration={overview.fixedIncomeDuration} />
+      <PortfolioDistributionPanel data={overview.distribution} />
     </div>
   );
 }

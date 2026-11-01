@@ -2,7 +2,7 @@ import type { AssetType } from "../domain/classification";
 
 /** Listing/contract currency is distinct from crypto units (BTC, Altcoins). */
 export function valuationCurrency(assetType: AssetType, baseCurrency: string): "BRL" | "USD" | "EUR" {
-  if (assetType === "crypto") return "USD";
+  if (assetType === "crypto") return baseCurrency === "EUR" || baseCurrency === "BRL" ? baseCurrency : "USD";
   return baseCurrency === "USD" || baseCurrency === "EUR" ? baseCurrency : "BRL";
 }
 
@@ -38,5 +38,5 @@ export function showPositionTicker(name: string, ticker: string | null) {
 
 /** Exposure grouping is distinct from the currency used to value an asset. */
 export function exposureCurrency(assetType: AssetType, baseCurrency: string): string {
-  return assetType === "crypto" || ["BTC", "Altcoins"].includes(baseCurrency) ? "Cryptocurrency" : valuationCurrency(assetType, baseCurrency);
+  return valuationCurrency(assetType, baseCurrency);
 }

@@ -560,3 +560,20 @@ Current investment lifecycle, optional Brazilian maturity, net-deposit tracking 
 ### Account controls
 
 The shared AppShell exposes an accessible profile menu on Overview, Positions, Quotes, asset details and Settings. Account Settings uses Better Auth password changes and a password-confirmed `/api/auth/account-email` endpoint. Email changes keep the user ID and portfolio ownership, clear email verification, revoke all sessions and require a new sign-in; password changes revoke other sessions. Session cookie caching is disabled so revoked sessions cannot retain cached access. The email endpoint is limited to five attempts per minute and uses authoritative sensitive-session middleware plus the existing origin checks. No real credentials are used by `scripts/test-account-settings.ts`; it requires an isolated `english099_*` schema.
+
+## Portfolio Distribution
+
+The Overview replaces its separate asset-type strip and allocation bars with a
+single Assets / Asset Types / Currency distribution panel. Assets aggregate the
+same security across positions; Asset Types use the dominant saved exposure
+class (Equities, Fixed Income, Commodities, Cryptocurrency), not an ETF wrapper
+label such as Fund. Currency uses the holding denomination (USD/EUR/BRL); crypto
+is no longer a separate currency bucket. Legacy BTC/Altcoins denominations retain
+their established USD valuation. No sectors or inferred fund look-through is added.
+
+The donut and adjacent table share rows, colors, shares and USD holding values.
+Grouped unrealized gains reuse the existing acquisition-FX / average-cost engine
+in the common EUR accounting reference, then convert to USD consistently with
+the summary. Missing acquisition data remains unavailable, not zero. Hover or
+keyboard focus highlights the same row and slice and shows value and allocation
+in a neutral callout. The section is based on the selected reporting month.

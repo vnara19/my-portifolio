@@ -20,7 +20,7 @@ test("recorded commission breakdown preserves the stored cash total",()=>{
  assert.equal(recordedTradeFeeBrl(null),0);
 });
 test("crypto is grouped as exposure without changing its USD valuation currency",()=>{
- assert.equal(exposureCurrency("crypto","BTC"),"Cryptocurrency");assert.equal(valuationCurrency("crypto","BTC"),"USD");assert.equal(exposureCurrency("br-stock","BRL"),"BRL");
+ assert.equal(exposureCurrency("crypto","BTC"),"USD");assert.equal(valuationCurrency("crypto","BTC"),"USD");assert.equal(exposureCurrency("br-stock","BRL"),"BRL");
 });
 test("summary cutoffs cannot include future months and do not guess missing cash flows",()=>{
  const points=[{day:"2023-01-01",value:100,flow:100},{day:"2024-01-01",value:110,flow:0,dailyGainUsd:2,dailyGainPercent:2}];

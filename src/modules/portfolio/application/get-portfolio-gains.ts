@@ -12,7 +12,7 @@ import { convertBrl } from "@/modules/portfolio/domain/reporting-currency";
 /** Read only the selected user's ledger, including closed holdings, through the selected month. */
 export async function getPortfolioGains(referenceDate: Date, currentUsdRate: number | null, currency: "USD" | "EUR" = "USD") {
   const db = await getUserDb();
-  if (!db) return unavailableGains();
+  if (!db) return { ...unavailableGains(), byAsset: [] };
   const end = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 1));
   const [transactions, positions, rates, bondAssets] = await Promise.all([
     db.positionTransaction.findMany({
@@ -62,6 +62,11 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     return movement;
   });
   let issue:GainIssue|undefined;
-  const gains=portfolioGains(movements, positions.map((row) => ({ holding: holding(row), quantity: readFixedIncomeContract(row.asset?.fixedIncomeContract) && !row.asset.quoteSymbol ? transactions.filter((entry) => holding(entry.position) === holding(row)).reduce((sum, entry) => sum + (entry.kind === "WITHDRAWAL" ? -1 : 1) * entry.quantity.toNumber(), 0) : row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) })),reason=>{issue=reason;});
-  return {...gains,...(issue?{issue}: {})};
+  const snapshots=positions.map((row) => ({ holding: holding(row), quantity: readFixedIncomeContract(row.asset?.fixedIncomeContract) && !row.asset.quoteSymbol ? transactions.filter((entry) => holding(entry.position) === holding(row)).reduce((sum, entry) => sum + (entry.kind === "WITHDRAWAL" ? -1 : 1) * entry.quantity.toNumber(), 0) : row.quantity.toNumber(), valueUsd: convertBrl(row.totalBrl.toNumber(), currentUsdRate) }));
+  const gains=portfolioGains(movements, snapshots,reason=>{issue=reason;});
+  const byAsset=[...new Set(positions.map(p=>p.assetId))].map(assetId=>{
+    const keys=new Set(positions.filter(p=>p.assetId===assetId).map(holding));
+    return {assetId, ...portfolioGains(movements.filter(m=>keys.has(m.holding)),snapshots.filter(p=>keys.has(p.holding)))};
+  });
+  return {...gains,...(issue?{issue}: {}),byAsset};
 }
