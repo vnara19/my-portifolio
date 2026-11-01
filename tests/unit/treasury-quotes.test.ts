@@ -172,7 +172,7 @@ test("navigation refresh only fetches due owned symbols and skips maintenance", 
 test("navigation respects recent quotes, retry backoff and an empty scope", async () => {
   for (const mode of ["recent", "backoff", "empty"]) {
     const fixture = syncFixture();
-    if (mode === "recent") Object.assign(fixture.registry[0], { lastSuccessAt: new Date("2026-10-04T14:55:00Z") });
+    if (mode === "recent") Object.assign(fixture.registry[0], { lastSuccessAt: new Date("2026-10-04T14:56:00Z") });
     if (mode === "backoff") Object.assign(fixture.registry[0], { nextAttemptAt: new Date("2026-10-04T16:00:00Z") });
     let called = false;
     const result = await syncQuotes({

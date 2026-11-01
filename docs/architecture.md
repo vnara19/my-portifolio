@@ -66,7 +66,15 @@ public quotes used by the user's current holdings and the reporting FX rates. It
 skips historical backfills and global rate maintenance and signals the client to
 refresh only when quotes changed. The job uses a
 PostgreSQL execution lock, fetches due symbols and retries failures with backoff.
-Current quotes become due after 50 minutes. Historical failures retry after one day.
+Market quotes become due after five minutes; daily reference FX is checked every
+50 minutes. The authenticated visible-page check runs every five minutes and on
+return to the tab, with the shared database lock preventing duplicate provider
+requests across users/tabs. A five-minute batched crypto price request is about
+8,928 calls in a 31-day month before retries and separate search/history requests,
+within the cited CoinGecko Demo 10,000-call allowance for the price request alone.
+This is a sustainable polling target, not a guaranteed maximum or real-time feed.
+No active unattended Preview scheduler is configured: Vercel configuration has no
+cron, and the repository workflow is manual-only. Historical failures retry after one day.
 Selic is informational and does not directly reprice positions. CDI data feeds
 eligible automatic-accrual positions. UI update age refers to a successful quote
 write relevant to that user's symbols.

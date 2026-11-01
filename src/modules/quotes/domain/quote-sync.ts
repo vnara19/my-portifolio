@@ -1,5 +1,5 @@
 
-/** Current prices become due after 50 minutes. History failures retry after 24 hours; repeated quote failures back off for 1, 2, 4 and at most 6 hours. */
+/** Market prices become due after five minutes; daily reference FX is rechecked after 50 minutes. History failures retry after 24 hours; repeated quote failures back off for 1, 2, 4 and at most 6 hours. */
 
 // Apply retry backoff after network failures.
 
@@ -7,7 +7,8 @@ import { addMonths, lastDayOf, toDateKey } from "@/modules/quotes/domain/calenda
 import { HISTORY_BACKFILL_MONTHS } from "@/modules/quotes/domain/history-backfill";
 
 
-export const QUOTE_DUE_AFTER_MS = 50 * 60 * 1000;
+export const QUOTE_DUE_AFTER_MS = 5 * 60 * 1000;
+export const REFERENCE_QUOTE_DUE_AFTER_MS = 50 * 60 * 1000;
 
 export const HISTORY_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 export const MAX_QUOTES_PER_RUN = 150;
@@ -24,14 +25,15 @@ export function backoffUntil(now: Date, failures: number) {
 }
 
 export function isQuoteDue(
-  symbol: { lastSuccessAt: Date | null; nextAttemptAt: Date | null },
+  symbol: { lastSuccessAt: Date | null; nextAttemptAt: Date | null; instrumentType?: string },
   now: Date,
 ) {
   if (symbol.nextAttemptAt && symbol.nextAttemptAt > now) {
     return false;
   }
 
-  return !symbol.lastSuccessAt || now.getTime() - symbol.lastSuccessAt.getTime() >= QUOTE_DUE_AFTER_MS;
+  const interval = symbol.instrumentType === "FIAT" ? REFERENCE_QUOTE_DUE_AFTER_MS : QUOTE_DUE_AFTER_MS;
+  return !symbol.lastSuccessAt || now.getTime() - symbol.lastSuccessAt.getTime() >= interval;
 }
 
 
