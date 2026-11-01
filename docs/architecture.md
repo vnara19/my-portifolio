@@ -80,20 +80,28 @@ production data changes.
 
 ## Reporting currencies
 
-Overview reports USD as the primary currency with EUR and BRL equivalents only
-in the portfolio-value card. The other cards show unrealized gain, realized gain
-and total gain in USD. Gains use average acquisition cost converted at each
-transaction's historical USD rate, including FX effects. Opening balances define
-the recorded cost baseline, not an inferred original purchase price. Contributions
-increase cost rather than profit; partial sales remove proportional average cost.
-Paid generic income is realized; capitalized income remains in holding value.
+Overview reports USD as the primary currency, with EUR/BRL equivalents for total
+value. Gain cards use one EUR accounting reference, display its current USD
+equivalent first and its EUR amount second, and share a return percentage. This
+is the explicitly selected reporting convention, not an independent USD inception
+return. Acquisition cost uses each transaction's historical reference-currency
+rate. Contributions increase cost rather than profit; partial sales remove
+proportional average cost. Purchase commissions are realized expenses, removed
+from open principal once; sale proceeds already include their fees. Paid generic
+income is realized; capitalized income remains in holding value.
 
 Incomplete transaction quantities, missing historical FX and transfers without
 carried acquisition cost make gain metrics unavailable rather than estimated.
-Last-day gain, separately identified dividends, TWR and XIRR currently display
-an unavailable indicator with an explanation. Balance changes remain available
-internally and must not be mislabeled as investment performance. The month selector
-and existing charts are unchanged. Storage and existing position valuation remain BRL.
+Daily gain uses current open quantities and prior prices, separating new purchase
+principal from fees. Recent completed closing sessions replace stale intraday
+observations. Portfolio TWR links daily returns with gross inflows at day start
+and gross outflows at day end, including the first funded day. Annualized return
+is calendar-day XIRR on dated funding and ending value. See
+[performance methodology](performance-methodology.md) for boundaries, validation
+and the independent CSV replay. The S&P 500 total-return comparison uses the same
+EUR reference and start boundary. Storage remains BRL. Native asset returns and
+USD monthly balance changes retain their own reporting-currency meaning; they
+must not be confused with the Overview's common EUR-reference TWR.
 
 The quote job always includes USD/EUR when a reporting month exists. EUR uses daily
 ECB reference data via Frankfurter (no API key), with Yahoo fallback. Missing

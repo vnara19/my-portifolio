@@ -3,17 +3,21 @@ import { getUserDb } from "@/lib/user-db";
 import type { PortfolioLedger } from "./get-portfolio-ledger";
 import type { OverviewData } from "./get-overview-data";
 import { datedFx } from "../domain/position-money";
-import type { TwrObservation } from "../domain/time-weighted-return";
+import { historyThroughMonth, type TwrObservation } from "../domain/time-weighted-return";
+import { Prisma } from "@/generated/prisma/client";
+import { recordedTradeAmounts } from "../domain/purchase-cost";
 
 /** Values at every external-flow boundary are mandatory; absent coverage is never interpolated. */
 export async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null,currency:"USD"|"EUR"="USD"):Promise<TwrObservation[]> {
   const db=await getUserDb();
   if (!db || !overview || !ledger) return [];
+  const history=historyThroughMonth(overview.history,overview.referenceDate);
+  if (!history.length) return [];
   const tx=[...ledger.originals].sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn)||a.id.localeCompare(b.id));
   const assets=await db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true}});
   const monthlyPositions=await db.position.findMany({select:{assetId:true,quantity:true,portfolioMonth:{select:{referenceDate:true}}}});
   const invalidMonths=new Set<string>();
-  for(const h of overview.history){
+  for(const h of history){
     const end=h.day??`${h.month}-31`;
     const units=new Map<string,number>();
     for(const entry of tx.filter(t=>t.occurredOn<=end))if(entry.assetId)units.set(entry.assetId,(units.get(entry.assetId)??0)+(entry.kind==="WITHDRAWAL"||(entry.kind==="INCOME"&&entry.amountBrl<0)?-1:1)*entry.quantity);
@@ -25,7 +29,7 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true}});
   const usd=quotes.filter(q=>q.symbol==="USD").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
-  const snapshots=new Map(overview.history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
+  const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
   const flowDays=tx.filter(t=>t.occurredOn<=end&&!t.transferId).map(t=>t.occurredOn);
   const firstDay=tx[0]?.occurredOn??[...snapshots.keys()].sort()[0];
@@ -54,26 +58,36 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     const bought=new Map<string,{units:number;principal:number|null}>();
     const sold=new Map<string,number>();
     let flow:number|null=0;
+    let inflow:number|null=0;
+    let outflow:number|null=0;
     while(cursor<tx.length && tx[cursor].occurredOn<=day){
       const entry=tx[cursor++];
       const id=entry.assetId;
+      const exact=recordedTradeAmounts({ ...entry, quantity:new Prisma.Decimal(entry.quantity), amountBrl:new Prisma.Decimal(entry.amountBrl), unitPriceBrl:entry.unitPriceBrl===null?null:new Prisma.Decimal(entry.unitPriceBrl) });
+      const paid=exact?.amountBrl.toNumber()??entry.amountBrl;
       if (id) holdings.set(id,(holdings.get(id)??0)+(entry.kind==="WITHDRAWAL"||(entry.kind==="INCOME"&&entry.amountBrl<0)?-1:1)*entry.quantity);
       if(entry.occurredOn!==day || entry.transferId)continue;
       if(id && entry.kind==="WITHDRAWAL")sold.set(id,(sold.get(id)??0)+entry.quantity);
       if(id && (entry.kind==="CONTRIBUTION"||entry.kind==="OPENING")){
         const previous=bought.get(id)??{units:0,principal:0};
         const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
-        bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&entry.unitPriceBrl!==null&&fx?previous.principal+entry.unitPriceBrl*entry.quantity/fx.rate:null});
+        const principal=exact?exact.amountBrl.minus(exact.feeBrl).toNumber():entry.unitPriceBrl===null?null:entry.unitPriceBrl*entry.quantity;
+        bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&principal!==null&&fx?previous.principal+principal/fx.rate:null});
       }
       const paidIncome=entry.kind==="INCOME"&&entry.quantity===0;
       if(entry.kind==="INCOME"&&!paidIncome)continue;
       const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
-      if(!fx){flow=null;continue;}
-      if(flow!==null)flow+=(entry.kind==="WITHDRAWAL"||paidIncome?-1:1)*entry.amountBrl/fx.rate;
+      if(!fx){flow=null;inflow=null;outflow=null;continue;}
+      if(flow!==null && inflow!==null && outflow!==null){
+        const outward=entry.kind==="WITHDRAWAL"||paidIncome;
+        const signed=(outward?-1:1)*paid/fx.rate;
+        flow+=signed;
+        inflow+=Math.max(signed,0);outflow+=Math.max(-signed,0);
+      }
     }
-    let value:number|null=snapshots.get(day)??null;
-    if (!snapshots.has(day)) {
-      value=0;
+    // Reconciled daily closes take precedence over older monthly valuation snapshots.
+    let value:number|null=0;
+    {
       for(const [id,units] of holdings){
         if(Math.abs(units)<1e-8)continue;
         const price=unitReporting(id,day);
@@ -81,10 +95,11 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
         if(value!==null)value+=units*price;
       }
     }
+    if(value===null && snapshots.has(day))value=snapshots.get(day)??null;
     if(invalidMonths.has(day.slice(0,7)))value=null;
     const previousDay=new Date(Date.parse(day)-86400000).toISOString().slice(0,10);
     const daily=dailyOpenGain([...holdings].map(([id,units])=>({units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitReporting(id,day),previousPrice:unitReporting(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null})));
-    observations.push({day,value,flow,dailyGainUsd:invalidMonths.has(day.slice(0,7))?null:daily.amount,dailyGainPercent:invalidMonths.has(day.slice(0,7))?null:daily.percent});
+    observations.push({day,value,flow,inflow,outflow,dailyGainUsd:invalidMonths.has(day.slice(0,7))?null:daily.amount,dailyGainPercent:invalidMonths.has(day.slice(0,7))?null:daily.percent});
   }
   return observations;
 }

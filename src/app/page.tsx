@@ -7,6 +7,7 @@ import { getMonthContext } from "@/modules/portfolio/application/get-month-conte
 import { getOverviewData } from "@/modules/portfolio/application/get-overview-data";
 import { OverviewDashboard } from "@/modules/portfolio/ui/overview-dashboard";
 import { getSelicForMonth } from "@/modules/quotes/application/selic-reference";
+import { returnBaselineDay } from "@/modules/portfolio/domain/time-weighted-return";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function Home({
     getOverviewPerformance(overview, ledger),
     getOverviewPerformance(overview, ledger, "EUR"),
   ]);
-  const reportingBenchmark = await getOverviewBenchmark(benchmark, performanceEur[0]?.day, performanceEur.at(-1)?.day);
+  const reportingBenchmark = await getOverviewBenchmark(benchmark, returnBaselineDay(performanceEur), performanceEur.at(-1)?.day);
 
   return (
     <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null}>

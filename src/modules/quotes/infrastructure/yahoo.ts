@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { fetchJson, ProviderRefusalError, QuoteHttpError } from "@/modules/quotes/infrastructure/http";
+import { usableHistoricalClose } from "../domain/history-errata";
 
 
 const chartSchema = z.object({
@@ -84,22 +85,23 @@ export async function fetchYahooPrice(symbol: string, timeoutMs?: number) {
 
 export async function fetchYahooDailyHistory(symbol: string, years = 3) {
   const result = await fetchChart(symbol, `${years}y`);
-  return dailyHistory(result);
+  return dailyHistory(result, symbol);
 }
 
 /** Only completed sessions are accepted by the recent-closing reconciliation. */
 export async function fetchYahooRecentDailyHistory(symbol: string) {
-  return dailyHistory(await fetchChart(symbol, "5d"));
+  return dailyHistory(await fetchChart(symbol, "5d"), symbol);
 }
 
-function dailyHistory(result: Awaited<ReturnType<typeof fetchChart>>) {
+function dailyHistory(result: Awaited<ReturnType<typeof fetchChart>>, symbol: string) {
   const closes = result.indicators.quote[0]?.close ?? [];
 
   return {
     currency: result.meta.currency ?? null,
     points: (result.timestamp ?? []).flatMap((time, index) => {
       const value = closes[index];
-      return value && value > 0 ? [{ day: yahooQuoteDay(time, result.meta.exchangeTimezoneName), value }] : [];
+      const day = yahooQuoteDay(time, result.meta.exchangeTimezoneName);
+      return value && value > 0 && usableHistoricalClose(symbol, day, value) ? [{ day, value }] : [];
     }),
   };
 }

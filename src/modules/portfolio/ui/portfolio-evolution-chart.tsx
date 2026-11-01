@@ -7,7 +7,7 @@ import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import type { OverviewHistoryPoint } from "../application/get-overview-data";
 import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
-import { timeWeightedReturns, type TwrObservation } from "../domain/time-weighted-return";
+import { returnBaselineDay, timeWeightedReturns, type TwrObservation } from "../domain/time-weighted-return";
 import { categoryColor } from "../presentation/category-colors";
 import { formatCurrency, formatMonthCompact } from "../presentation/portfolio-format";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
@@ -42,7 +42,7 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
     while(lo<=hi){const mid=Math.floor((lo+hi)/2);if(benchmark.points[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}
     const point=benchmark.points[index];return point && Date.parse(day)-Date.parse(point.day)<=7*86400000?point.value:null;
   };
-  const initialIndex=indexAt(observations[0]?.day??history[0]?.day??firstDay);
+  const initialIndex=indexAt(returnBaselineDay(returnObservations)??history[0]?.day??firstDay);
   const monthlyData=visible.map(p=>{
     const day=p.day??`${p.month}-01`;
     const index=indexAt(day);
