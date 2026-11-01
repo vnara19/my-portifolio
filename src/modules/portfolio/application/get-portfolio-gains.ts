@@ -1,3 +1,4 @@
+import { historicalClosingValues } from "./historical-closing-values";
 import { recordedTradeAmounts, recordedTradeFeeBrl } from "../domain/purchase-cost";
 import { datedFx } from "../domain/position-money";
 import type { GainIssue } from "../domain/portfolio-gains";
@@ -23,6 +24,11 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     db.dailyQuote.findMany({ where: { symbol: currency, quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
     db.asset.findMany({ where: { assetType: "international-bond" }, select: { id: true, fixedIncomeContract: true } }),
   ]);
+  const closingValues = await historicalClosingValues(referenceDate, positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
+  for (const position of positions) {
+    const close = position.asset.quoteSymbol ? closingValues.get(position.asset.quoteSymbol) : undefined;
+    if (close !== undefined) position.totalBrl = position.quantity.mul(close);
+  }
   const dailyRates=rates.map(r=>({day:r.quoteDate.toISOString().slice(0,10),rate:r.valueBrl.toNumber()}));
   const holding = (row: { accountId: string; assetId: string }) => `${row.accountId}:${row.assetId}`;
   const bonds = new Map(bondAssets.map((asset) => [asset.id, readInternationalBond(asset.fixedIncomeContract)]));

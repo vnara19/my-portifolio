@@ -1,3 +1,4 @@
+import { historicalClosingValues } from "./historical-closing-values";
 import { getMonthPositions } from "./get-month-positions";
 import { eurToUsdRate, expressEurGainsInUsd } from "../domain/overview-reporting";
 import { exposureCurrency } from "../presentation/position-display";
@@ -92,6 +93,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
         positions: {
           where: { quantity: { gt: 0 } },
           select: {
+            quantity: true,
             totalBrl: true,
             asset: { select: { baseCurrency: true, assetType: true, quoteSymbol: true, name: true, cashAccount: true } },
             account: { select: { institutionId: true } },
@@ -110,6 +112,11 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     if (!selected) return null;
     if (!months.some((month) => month.positions.length > 0) && !(await prisma.positionTransaction.findFirst({ select: { id: true } }))) return null;
 
+    const closingValues = await historicalClosingValues(selected.referenceDate, selected.positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
+    for (const position of selected.positions) {
+      const close = position.asset.quoteSymbol ? closingValues.get(position.asset.quoteSymbol) : undefined;
+      if (close !== undefined) position.totalBrl = position.quantity.mul(close);
+    }
     const history: OverviewHistoryPoint[] = months.map((month) => {
       const byClass: Record<string, number> = {};
       const byCurrency: Record<string, number> = {};

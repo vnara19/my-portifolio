@@ -77,7 +77,9 @@ less than EUR 0.000001. The replay changed no financial records.
 
 Historical selection excludes subsequent reporting months. Reconstructed daily
 valuations take precedence over older stored monthly snapshots when complete;
-monthly snapshots remain a fallback for holdings without daily coverage.
+monthly snapshots remain a fallback for holdings without daily coverage. Completed-month
+Overview totals, gains and Positions use the same confirmed closing prices in a
+read-only valuation projection; stored transactions and snapshots are not rewritten.
 
 Two ambiguous Yahoo EUR closes on 2025-10-24 are excluded by exact fingerprint
 (UETW.DE and EGLN.L). Their original records were preserved privately before

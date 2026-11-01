@@ -1,3 +1,4 @@
+import { historicalClosingValues } from "./historical-closing-values";
 import { readSavings } from "../domain/savings";
 import { productType, listingMarket, reviewedDebtProduct } from "../presentation/asset-classification";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
@@ -163,6 +164,11 @@ export async function getMonthPositions(
     const instruments = new Map(listingQuotes.map((q) => [q.symbol, q.instrumentType]));
     const quoteBySymbol = new Map([...storedQuotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
     const usdRate = quoteBySymbol.get("USD")?.toNumber() ?? null;
+    const closingValues = await historicalClosingValues(month.referenceDate, month.positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
+    for (const position of month.positions) {
+      const close = position.asset.quoteSymbol ? closingValues.get(position.asset.quoteSymbol) : undefined;
+      if (close !== undefined) { position.unitPriceBrl = new Prisma.Decimal(close); position.totalBrl = position.quantity.mul(close); }
+    }
     const totalBrl = month.positions
       .reduce((total, position) => total.plus(position.totalBrl), new Prisma.Decimal(0))
       .toNumber();
