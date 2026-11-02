@@ -31,6 +31,8 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  for(const p of positions){
   const source=p.quoteSymbol?results.get(symbolFor(p)!):null;
   const history=source?.currency===p.valueCurrency?source.points.filter(point=>point.day<=asOf):[];
+  // Reuse the app's current native quote, so price changes and held value share one terminal price.
+  if(!p.liquidated&&p.unitPriceNative!=null&&history.length){const index=history.length-1;history[index]={...history[index],value:p.unitPriceNative};}
   const nativeBenchmark=(benchmark?.points??[]).flatMap(point=>{const u=rateAt(usdBrl?.points??[],point.day),e=rateAt(eurUsd?.points??[],point.day);const factor=p.valueCurrency==='USD'?1:p.valueCurrency==='BRL'?u:e?1/e:null;return factor?[{day:point.day,value:point.value*factor}]:[];});
   const market=holdingMarketMetrics(history,asOf,nativeBenchmark);
   if(!source?.allTimeAvailable)market.performance.all=null;
