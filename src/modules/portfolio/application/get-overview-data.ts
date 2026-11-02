@@ -43,7 +43,7 @@ export type OverviewData = {
   gains: PortfolioGains;
   gainsEur?: PortfolioGains;
   realizedHistory: {day:string;value:number}[];
-  holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
+  holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;quoteSymbol:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
   accountingCurrency: "EUR";
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
