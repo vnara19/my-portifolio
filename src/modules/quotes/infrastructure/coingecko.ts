@@ -156,3 +156,11 @@ export async function fetchCoinGeckoPricePair(id: string, apiKey?: string) {
   );
   return payload[id] ?? null;
 }
+
+/** Live capitalization is supplied by the provider; it is not inferred from a fixed coin supply. */
+export async function fetchCoinGeckoMarketCap(id:string,currency:'USD'|'EUR'|'BRL'){
+ const url=new URL('https://api.coingecko.com/api/v3/simple/price');
+ url.searchParams.set('ids',id);url.searchParams.set('vs_currencies',currency.toLowerCase());url.searchParams.set('include_market_cap','true');
+ const data=z.record(z.string(),z.record(z.string(),z.number().nullable())).parse(await fetchJson(url,{headers:headersFor()},{timeoutMs:6000,attempts:1}));
+ const value=data[id]?.[`${currency.toLowerCase()}_market_cap`];return value!=null&&Number.isFinite(value)&&value>0?value:null;
+}

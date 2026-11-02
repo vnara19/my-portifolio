@@ -1,3 +1,4 @@
+import { fetchCoinGeckoMarketCap, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
 import { fetchYahooHoldingHistory } from '@/modules/quotes/infrastructure/yahoo';
 import { portfolioGains } from '../domain/portfolio-gains';
 import { timeWeightedReturns, type TwrObservation } from '../domain/time-weighted-return';
@@ -6,6 +7,8 @@ import { holdingMarketMetrics, type HoldingMarketMetrics, type MarketPoint } fro
 import { getMonthPositions, type MonthPositions } from './get-month-positions';
 import type { PortfolioLedger } from './get-portfolio-ledger';
 export type HoldingAnalytics=HoldingMarketMetrics&{invested:number|null;average:number|null;unrealized:number|null;unrealizedPercent:number|null;daily:number|null;dailyPercent:number|null;totalGain:number|null;totalPercent:number|null;annualized:number|null};
+const capCache=new Map<string,{until:number;value:Promise<number|null>}>();
+function cryptoCap(symbol:string,currency:"USD"|"EUR"|"BRL"){const key=`${symbol}:${currency}`,cached=capCache.get(key);if(cached&&cached.until>Date.now())return cached.value;const value=resolveCoinGeckoCoin(symbol).then(coin=>coin?fetchCoinGeckoMarketCap(coin.id,currency):null).catch(()=>null);if(capCache.size>100)capCache.delete(capCache.keys().next().value!);capCache.set(key,{until:Date.now()+300000,value});return value;}
 type Listing=Awaited<ReturnType<typeof fetchYahooHoldingHistory>>;
 const cache=new Map<string,{until:number;value:Promise<Listing|null>}>();
 function listing(symbol:string){const cached=cache.get(symbol);if(cached&&cached.until>Date.now())return cached.value;const value=fetchYahooHoldingHistory(symbol).catch(()=>null);if(cache.size>100)cache.delete(cache.keys().next().value!);cache.set(symbol,{until:Date.now()+300000,value});return value;}
@@ -38,6 +41,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   if(!source?.allTimeAvailable)market.performance.all=null;
   market.exchange=source?.exchange??null;
   market.marketCap=month.isCurrent&&source?.currency===p.valueCurrency?source.marketCap??null:null;
+  if(month.isCurrent&&p.assetType==='crypto'&&market.marketCap===null&&p.ticker)market.marketCap=await cryptoCap(p.ticker,p.valueCurrency);
   // Native cost and income use the same recorded transaction amounts as the existing asset pages.
   const entries=(ledger?.editEntries??[]).filter(t=>t.accountId===p.accountId&&t.assetId===p.assetId&&t.occurredOn<=asOf).sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn));
   const valid=entries.length>0&&entries.every(t=>!t.moneyUnavailable&&!t.transferId);

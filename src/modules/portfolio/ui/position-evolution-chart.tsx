@@ -393,10 +393,10 @@ function EvolutionTooltip({
             {slot.appliedBrl !== null ? (
               <>
                 <TooltipRow label="Invested amount" value={formatBrl(slot.appliedBrl)} />
-                <TooltipRow label="Return" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
+                <TooltipRow label="Total Gain" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
               </>
             ) : null}
-            <TooltipRow label="Portfolio share" value={formatSharePercent(slot.share)} />
+            <TooltipRow label="Allocation" value={formatSharePercent(slot.share)} />
           </div>
           {scopeLabel === "all" ? (
             <p className="mt-1.5 text-[10px] text-muted-foreground">In {slot.accounts.join(", ")}</p>

@@ -397,7 +397,7 @@ export function PositionsWorkspace({
                     <FooterValue label="Total USD" value={portfolioEquivalent(filteredTotal, "USD", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
                     <FooterValue label="Total EUR" value={portfolioEquivalent(filteredTotal, "EUR", month.usdRate, month.eurRate ?? null)} />
-                    <FooterValue label="Portfolio Share" value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)} />
+                    <FooterValue label="Allocation" value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)} />
                   </div>
                 </td>
               </tr>
@@ -536,7 +536,7 @@ function PositionRow({
           </p>
           {position.maturityDate ? <p className="mt-1.5 font-mono text-[10px] text-muted-foreground xl:hidden">{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
-        {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={column.description} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
+        {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={column.description??(["volume","averageVolume","marketCap"].includes(column.id)&&typeof value==='number'?value.toLocaleString("en-GB",{maximumFractionDigits:2}):undefined)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>
       {expanded ? (
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">

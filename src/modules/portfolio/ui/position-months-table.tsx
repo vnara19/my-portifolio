@@ -60,7 +60,7 @@ export function PositionMonthsTable({
               <th className="px-4 py-3 text-right">Change</th>
               {quoted ? <th className="hidden px-4 py-3 text-right lg:table-cell">Price</th> : null}
               <th className="hidden px-4 py-3 text-right whitespace-nowrap lg:table-cell">Contributions and redemptions</th>
-              <th className="hidden px-4 py-3 pr-5 text-right sm:table-cell sm:pr-6">Portfolio share</th>
+              <th className="hidden px-4 py-3 pr-5 text-right sm:table-cell sm:pr-6">Allocation</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/55">

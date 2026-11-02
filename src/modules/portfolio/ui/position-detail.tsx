@@ -543,7 +543,7 @@ function PositionKpis({
   return (
     <section aria-label="Position metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
-        label={atCost ? "Carrying Value at Cost" : "Position Value"}
+        label={atCost ? "Carrying Value at Cost" : "Value"}
         testId="position-value"
         valueText={current ? formatBrl(current.valueBrl) : "—"}
         icon={<CoinsIcon aria-hidden="true" size={18} weight="duotone" />}
@@ -582,7 +582,7 @@ function PositionKpis({
           absent ??
           (quoted && average !== null ? (
             <span data-testid="position-average-price" title={approximateCost ? "Converted using monthly exchange rates where dated execution FX is unavailable." : averagePriceLabel(summary.costSource, dollarBalance)}>
-              {dollarBalance ? "Average Exchange Rate" : "Average Purchase Price"} {formatEstimatedPrice(average)}
+              {dollarBalance ? "Average Exchange Rate" : "Average Price"} {formatEstimatedPrice(average)}
             </span>
           ) : firstEver ? (
             `Since ${monthLabel(firstEver)}`
@@ -593,7 +593,7 @@ function PositionKpis({
       />
 
       <KpiCard
-        label="Return"
+        label="Total Gain"
         testId="position-gain"
         valueText={current && gain !== null ? formatSignedBrl(gain) : "—"}
         icon={
@@ -616,7 +616,7 @@ function PositionKpis({
       />
 
       <ChangeKpiCard
-        label="Monthly Return"
+        label="Monthly Change"
         testId="position-month-change"
         changeBrl={step?.changeBrl ?? null}
         changePercent={step?.changePercent ?? null}
@@ -626,7 +626,7 @@ function PositionKpis({
       />
 
       <KpiCard
-        label="Portfolio Weight"
+        label="Allocation"
         testId="position-share"
         valueText={current ? sharePercent.format(current.share / 100) : "—"}
         icon={<ChartPieSliceIcon aria-hidden="true" size={18} weight="duotone" />}
@@ -655,7 +655,7 @@ function PositionKpis({
 
 
 function averagePriceLabel(costSource: PositionSummary["costSource"], dollarBalance: boolean) {
-  const subject = dollarBalance ? "Average Exchange Rate" : "Average Purchase Price";
+  const subject = dollarBalance ? "Average Exchange Rate" : "Average Price";
   return costSource === "known" ? `${subject} at purchase` : costSource === "opening" ? `${subject} with opening balance` : `${subject} (estimated)`;
 }
 
