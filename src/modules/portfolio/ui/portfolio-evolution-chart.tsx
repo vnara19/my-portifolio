@@ -2,20 +2,21 @@
 
 import { useQueryState } from "nuqs";
 import { useState, useTransition } from "react";
-import { Area, Bar, Brush, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import type { OverviewHistoryPoint } from "../application/get-overview-data";
 import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
 import { returnBaselineDay, timeWeightedReturns, type TwrObservation } from "../domain/time-weighted-return";
+import { chartPeriodReturn } from "../domain/period-performance";
 import { categoryColor } from "../presentation/category-colors";
 import { formatCurrency, formatMonthCompact } from "../presentation/portfolio-format";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import { useTouchTooltip } from "./use-touch-tooltip";
 
-type Mode = "value" | "performance" | "total" | "class" | "currency";
+type Mode = "value" | "performance" | "class" | "currency";
 const MODES: {key:Mode;label:string}[] = [
-  {key:"value",label:"Value"},{key:"performance",label:"Performance"},{key:"total",label:"Monthly Value"},
+  {key:"value",label:"Value"},{key:"performance",label:"Performance"},
   {key:"class",label:"Class"},{key:"currency",label:"Currency"},
 ];
 const PURPLE="#a66bd4";
@@ -68,9 +69,7 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
       <div role="group" aria-label="Portfolio chart view" className="flex max-w-full flex-wrap gap-1 rounded-xl border border-border bg-card/60 p-1">
         {MODES.map(m=><button key={m.key} type="button" aria-pressed={mode===m.key} onClick={()=>setMode(m.key)} className={cn("rounded-lg px-3 py-1.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",mode===m.key?"bg-primary text-primary-foreground":"text-muted-foreground hover:text-foreground")}>{m.label}</button>)}
       </div>
-      <div role="group" aria-label="Chart period" className="flex flex-wrap gap-1 rounded-xl border border-border p-1">
-        {CHART_PERIODS.map(p=><button key={p.key} type="button" aria-pressed={period===p.key} onClick={()=>setPeriod(p.key)} className={cn("rounded-lg px-2.5 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",period===p.key?"bg-white/10 text-foreground":"text-muted-foreground hover:text-foreground")}>{p.label}</button>)}
-      </div>
+
     </div>
     {isPerformance?<div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
       <span title="Portfolio TWR is measured in EUR, the common reference currency. Monetary values are displayed in USD."><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
@@ -93,10 +92,16 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
             return <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"><p className="mb-2 text-xs text-muted-foreground">{dateLabel(point.day)}</p>{payload.filter(p=>typeof p.value==="number").map(p=><p key={String(p.dataKey)} className="flex gap-4 text-xs"><span style={{color:p.color}}>{englishLabel(String(p.name))}</span><span className="ml-auto font-mono">{format(Number(p.value))}</span></p>)}</div>;
           }}/>
           {isLine?<Area type="linear" dataKey={isPerformance?"portfolio":"total"} name="Portfolio" stroke={isPerformance?TEAL:PURPLE} fill="url(#portfolio-value-fill)" strokeWidth={2.2} dot={false} activeDot={{r:4}} connectNulls={false} isAnimationActive={false}/>:series.map(key=><Bar key={key} dataKey={key} name={key==="total"?"Portfolio":englishLabel(key)} stackId="portfolio" maxBarSize={65} isAnimationActive={false}>{data.map(row=><Cell key={row.month} fill={key==="total"?"var(--primary)":categoryColor(key)} fillOpacity={row.month===selectedMonth?1:0.5}/>)}</Bar>)}
-          {!isLine?<Brush key={`${mode}:${period}`} dataKey="label" height={26} fill="oklch(1 0 0 / 0.02)" stroke="var(--border)" travellerWidth={8}/>:null}
           {isPerformance?<Line type="linear" dataKey="spx" name="S&P 500 TR" stroke="#9ca3af" strokeDasharray="3 3" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false}/>:null}
         </ComposedChart>
       </ResponsiveContainer>
+    </div>
+    <div role="group" aria-label="Chart period" className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
+      {CHART_PERIODS.map(p=>{
+        const through=new Date(end).toISOString().slice(0,10);
+        const result=chartPeriodReturn(returnObservations,through,p.key);
+        return <button key={p.key} type="button" aria-pressed={period===p.key} onClick={()=>setPeriod(p.key)} className={cn("rounded-xl px-2 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",period===p.key?"bg-white/10 text-foreground":"text-muted-foreground hover:bg-white/5 hover:text-foreground")}><span>{p.label}</span>{isLine?<span className={cn("mt-1 block font-mono",result===null?"text-muted-foreground":result<0?"text-destructive":"text-primary")}>{result===null?"—":`${result>0?"+":""}${result.toFixed(2)}%`}</span>:null}</button>;
+      })}
     </div>
     {unavailable?<p role="status" className="mt-2 text-xs text-muted-foreground">Portfolio TWR requires complete valuations on transaction dates. Missing periods are not estimated.</p>:null}
     {isPerformance&&!benchmark.available?<p role="status" className="mt-2 text-xs text-muted-foreground">S&amp;P 500 history is temporarily unavailable.</p>:null}

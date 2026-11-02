@@ -62,9 +62,9 @@ const PANEL_MOTION: Record<"full" | "reduced", { enter: Transition; exit: Transi
 
 const strip = tv({
   slots: {
-    band: "relative flex items-center gap-2 border-b border-border/70 bg-background/80 px-4 py-2 backdrop-blur-xl sm:px-6 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)]",
+    band: "relative flex items-center justify-center gap-2 border-b border-border/70 bg-background/80 px-4 py-2 backdrop-blur-xl sm:px-6",
     progress: "pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden transition-opacity duration-150",
-    nav: "hidden min-w-0 flex-1 flex-row-reverse overflow-x-auto overscroll-x-contain sm:flex [scrollbar-width:none] xl:col-start-2 [&::-webkit-scrollbar]:hidden",
+    nav: "hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     trail: "ml-auto flex shrink-0 items-center gap-2 justify-self-end xl:col-start-3",
   },
   variants: { pending: { true: { progress: "opacity-100" }, false: { progress: "opacity-0" } } },
@@ -78,7 +78,7 @@ const yearCapsule = tv({
     months: "flex w-max shrink-0 items-center gap-0.5 py-[3px] pr-0.5 pl-1 pointer-coarse:gap-1",
   },
   variants: {
-    expanded: { true: { year: "cursor-default text-foreground" }, false: {} },
+    expanded: { true: { year: "text-foreground hover:bg-white/[0.045]" }, false: {} },
     holdsSelected: { true: {}, false: {} },
     scoped: { true: {}, false: {} },
   },
@@ -151,7 +151,7 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
     return () => window.clearTimeout(done);
   }, [intro]);
 
-  const selectedYear = Number(selected.slice(0, 4));
+
 
 
 
@@ -161,7 +161,7 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
     setBrowsing(null);
   }
 
-  const expandedYear = browsing?.year ?? selectedYear;
+  const expandedYear = browsing?.year ?? null;
   const hydrated = useSyncExternalStore(subscribeNothing, isClient, isServer);
   const years = useMemo(() => groupByYear(items), [items]);
 
@@ -267,7 +267,7 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
   }, [updateEdges]);
 
   const expandYear = (year: number) => {
-    setBrowsing(year === selectedYear ? null : { year, from: selected });
+    setBrowsing(browsing?.year === year ? null : { year, from: selected });
   };
 
   if (items.length === 0) {
@@ -362,8 +362,7 @@ function YearCapsule({
         aria-expanded={expanded}
         aria-controls={expanded ? panelId : undefined}
         aria-describedby={hint ? hintId : undefined}
-        aria-disabled={expanded || undefined}
-        onClick={expanded ? undefined : onExpand}
+        onClick={onExpand}
         className={slots.year()}
       >
         <span className="leading-none">{group.year}</span>

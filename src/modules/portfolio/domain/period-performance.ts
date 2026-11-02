@@ -1,3 +1,4 @@
+import { periodStart, type ChartPeriod } from "./chart-period";
 import { timeWeightedReturns, type TwrObservation } from "./time-weighted-return";
 export type PeriodChange = { usd:number|null; eur:number|null; percent:number|null };
 const unavailable:PeriodChange={usd:null,eur:null,percent:null};
@@ -21,4 +22,14 @@ export function overviewPeriodChanges(points:TwrObservation[],asOf:string,eurUsd
   const year=end.getUTCFullYear()-1, month=end.getUTCMonth();
   const anniversary=new Date(Date.UTC(year,month,Math.min(end.getUTCDate(),new Date(Date.UTC(year,month+1,0)).getUTCDate()))).toISOString().slice(0,10);
   return {month:periodChange(points,monthStart,asOf,eurUsd,true),year:periodChange(points,anniversary,asOf,eurUsd)};
+}
+
+/** Period selector returns share the same cash-flow-adjusted reference as Performance. */
+export function chartPeriodReturn(points:TwrObservation[],through:string,period:ChartPeriod):number|null {
+  const history=points.filter(point=>point.day<=through);
+  if(!history.length)return null;
+  if(period==="all")return timeWeightedReturns(history).at(-1)?.percent??null;
+  const cutoff=periodStart(Date.parse(through),period);
+  const baseline=new Date(cutoff-(period==="ytd"?86400000:0)).toISOString().slice(0,10);
+  return periodChange(history,baseline,through,null,period==="ytd").percent;
 }
