@@ -59,6 +59,7 @@ export type MonthPosition = {
 
 
   liquidated: boolean;
+  historicalSold?: boolean;
   unitPriceBrl: number | null;
   totalBrl: number;
   totalUsd: number | null;

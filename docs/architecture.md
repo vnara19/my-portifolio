@@ -630,3 +630,12 @@ independent of the total-return benchmark used by performance charts. Public ind
 snapshots are requested server-side and shared for five minutes. Currency changes
 use the latest two dated database observations, and Selic uses the last two policy
 rate settings. Missing comparisons remain unavailable rather than appearing as 0%.
+
+
+### Holdings table analytics
+
+Positions has Position, Price, Performance and Risk views. The row identity, native currency and expandable details remain shared. Position columns are optional; the other views have fixed column sets. Display Sold also retrieves historical, fully redeemed account/asset holdings without recreating positions or cash.
+
+`get-holdings-analytics` is read-only. It reuses the native transaction ledger and average-cost gain engine. Fees remain realized costs. Invested is remaining principal, average price is remaining principal per unit, Total Gain % is investment TWR and Annualized Yield is dated XIRR. Daily gain removes same-day funding and redemption flows. Missing or inconsistent transaction histories are unavailable.
+
+Public Yahoo listing history supplies price changes, listing-session volume, average volume over ten preceding sessions and market capitalization when supplied. Performance is listing-price return, independent of purchases. Beta uses completed monthly observations against the S&P 500 price index expressed in the same currency (1/3/5 years); incomplete horizons are unavailable. Risk volatility follows TradingView's published range methodology: daily true range / low; weekly and monthly mean daily (high-low) / low over 7/30 calendar days. Reference: https://www.tradingview.com/support/solutions/43000635876-how-is-volatility-calculated-in-the-screener/ . Provider failures and unsupported fields stay null. Public requests include symbols only and have bounded five-minute caches; no portfolio data is transmitted or rewritten.

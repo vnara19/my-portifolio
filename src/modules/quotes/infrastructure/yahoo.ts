@@ -18,10 +18,13 @@ const chartSchema = z.object({
             exchangeTimezoneName: z.string().nullable().optional(),
             regularMarketTime: z.number().nullable().optional(),
             regularMarketPrice: z.number().nullable().optional(),
+            regularMarketVolume: z.number().nullable().optional(),
+            firstTradeDate: z.number().nullable().optional(),
+            marketCap: z.number().nullable().optional(),
           }),
           timestamp: z.array(z.number()).optional(),
           indicators: z.object({
-            quote: z.array(z.object({ close: z.array(z.number().nullable()).optional() })),
+            quote: z.array(z.object({ close: z.array(z.number().nullable()).optional(), high: z.array(z.number().nullable()).optional(), low: z.array(z.number().nullable()).optional(), volume: z.array(z.number().nullable()).optional() })),
           }),
         }),
       )
@@ -44,10 +47,11 @@ export function toYahooSymbol(symbol: string) {
   return symbol.endsWith(".SAO") ? symbol.replace(/\.SAO$/, ".SA") : symbol;
 }
 
-async function fetchChart(symbol: string, range: string, timeoutMs?: number) {
+async function fetchChart(symbol: string, range: string, timeoutMs?: number, period?:{from:number;to:number}) {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(toYahooSymbol(symbol))}`);
   url.searchParams.set("range", range);
   url.searchParams.set("interval", "1d");
+  if(period){url.searchParams.delete("range");url.searchParams.set("period1",String(period.from));url.searchParams.set("period2",String(period.to));}
 
   try {
     const payload = chartSchema.parse(await fetchJson(url, { headers: HEADERS }, { timeoutMs }));
@@ -136,4 +140,21 @@ export async function fetchYahooSnapshot(symbol:string){
  const history=dailyHistory(result,symbol).points;
  const previous=history.filter(p=>p.day<day).at(-1);
  return {price,currency:result.meta.currency??null,day,previous:previous?.value??null,previousDay:previous?.day??null};
+}
+
+/** Public listing data, including ranges needed for holdings risk statistics. */
+export async function fetchYahooHoldingHistory(symbol:string){
+ const result=await fetchChart(symbol,"10y",8000),quote=result.indicators.quote[0];
+ const firstTrade=result.meta.firstTradeDate;
+ let origin:ReturnType<typeof dailyHistory>["points"][number]|null=null;
+ if(firstTrade!=null&&firstTrade<(result.timestamp?.[0]??0)){
+  try{origin=dailyHistory(await fetchChart(symbol,"10y",6000,{from:firstTrade,to:firstTrade+14*86400}),symbol).points[0]??null;}catch{}
+ }
+ const allTimeAvailable=firstTrade!=null&&(origin!==null||Math.abs((result.timestamp?.[0]??0)-firstTrade)<7*86400);
+ return {currency:result.meta.currency??null,exchange:result.meta.fullExchangeName??null,
+  marketCap:result.meta.marketCap??null,allTimeAvailable,
+  points:[...(origin?[{...origin,high:null,low:null,volume:null}]:[]),...(result.timestamp??[]).flatMap((time,i)=>{
+   const value=quote.close?.[i],day=yahooQuoteDay(time,result.meta.exchangeTimezoneName);
+   return value&&value>0&&usableHistoricalClose(symbol,day,value)?[{day,value,high:quote.high?.[i]??null,low:quote.low?.[i]??null,volume:quote.volume?.[i]??null}]:[];
+  })]};
 }

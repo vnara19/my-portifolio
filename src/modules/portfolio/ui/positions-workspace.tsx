@@ -1,4 +1,6 @@
 "use client";
+import { VIEW_COLUMNS, POSITION_COLUMNS, DEFAULT_POSITION_COLUMNS, holdingCellText, type HoldingColumn, type HoldingView } from "./holding-table-columns";
+import type { HoldingAnalytics } from "../application/get-holdings-analytics";
 import { SavingsMovementButton } from "./savings-movement-dialog";
 import { PortfolioLedgerPanel } from "./portfolio-ledger";
 import type { PortfolioLedger } from "../application/get-portfolio-ledger";
@@ -22,14 +24,7 @@ import {
   TableIcon,
   XIcon,
 } from "@phosphor-icons/react/dist/ssr";
-import {
-  createColumnHelper,
-  createSortedRowModel,
-  rowSortingFeature,
-  tableFeatures,
-  useTable,
-  type SortingState,
-} from "@tanstack/react-table";
+import type { SortingState } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { parseAsArrayOf, parseAsString, useQueryStates } from "nuqs";
@@ -72,12 +67,6 @@ import { PositionFormDialog, type PositionFormTarget } from "@/modules/portfolio
 const QUICK_CLASSES = ["Caixa", "Cripto", "Renda Fixa", "Renda Variável", "Reserva"];
 const list = parseAsArrayOf(parseAsString).withDefault([]);
 
-const features = tableFeatures({
-  rowSortingFeature,
-  sortedRowModel: createSortedRowModel(),
-});
-const helper = createColumnHelper<typeof features, MonthPosition>();
-
 type ColumnMeta = { align: "left" | "right"; calculated: boolean; hide: string };
 
 
@@ -90,33 +79,24 @@ const COLUMN_META: Record<string, ColumnMeta> = {
   share: { align: "right", calculated: true, hide: "hidden md:table-cell" },
 };
 
-const columns = helper.columns([
-  helper.accessor((row) => positionTitle(row.assetName, row.ticker), { id: "assetName", header: "Asset" }),
-
-  helper.accessor((row) => row.maturityDate ?? undefined, {
-    id: "maturityDate",
-    header: "Maturity",
-    sortUndefined: "last",
-  }),
-  helper.accessor((row) => row.securityQuantity === null ? undefined : Number(row.securityQuantity), { id: "quantity", header: "Quantity", sortUndefined: "last" }),
-  helper.accessor("totalBrl", { header: "Value" }),
-  helper.accessor("share", { header: "Portfolio %" }),
-]);
-
-
-const COLUMN_COUNT = columns.length + 1;
-
 type FormState = { open: boolean; target: PositionFormTarget | null; key: number };
 
 export function PositionsWorkspace({
   month,
   catalog,
   ledger,
+  analytics = {},
 }: {
   month: MonthPositions | null;
   catalog: EditingCatalog;
   ledger?: PortfolioLedger | null;
+  analytics?: Record<string,HoldingAnalytics>;
 }) {
+  const [view,setView]=useState<HoldingView>("position");
+  const [displaySold,setDisplaySold]=useState(false);
+  const [visibleColumns,setVisibleColumns]=useState<string[]>(DEFAULT_POSITION_COLUMNS);
+  const shownColumns=view==="position"?POSITION_COLUMNS.filter(column=>visibleColumns.includes(column.id)):VIEW_COLUMNS[view];
+  const columnCount=shownColumns.length+2;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useQueryStates(
@@ -181,25 +161,12 @@ export function PositionsWorkspace({
     liquidities: [...new Set(query.liq.map(liquidityLabel))],
     search: query.q,
   };
-  const positions = (month?.positions ?? []).filter((position) => !position.liquidated);
+  const positions = (month?.positions ?? []).filter((position) => displaySold || !position.liquidated);
   const filtered = filterPositions(positions, filters);
 
 
   const options = filterOptions(positions, filters);
   const sorting = parseSorting(query.ordem);
-
-  const table = useTable({
-    features,
-    columns,
-    data: filtered,
-    enableSortingRemoval: false,
-    state: { sorting },
-    onSortingChange: (updater) => {
-      const next = typeof updater === "function" ? updater(sorting) : updater;
-      const first = next[0];
-      void setQuery({ ordem: first ? `${first.id}.${first.desc ? "desc" : "asc"}` : null });
-    },
-  });
 
   if (!month || month.positions.length === 0) {
     return (
@@ -213,7 +180,14 @@ export function PositionsWorkspace({
 
   const canEdit = !month.isLocked;
   const monthLabel = formatMonthCompact(month.referenceDate);
-  const sortedPositions = table.getRowModel().rows.map((row) => row.original);
+  const sort=sorting[0];
+  const sortedPositions = [...filtered].sort((a,b)=>{
+    const column=[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].find(c=>c.id===sort?.id);
+    const left=sort?.id==='assetName'?positionTitle(a.assetName,a.ticker):sort?.id==='totalBrl'?a.totalBrl:column?.get(a,analytics[a.id]);
+    const right=sort?.id==='assetName'?positionTitle(b.assetName,b.ticker):sort?.id==='totalBrl'?b.totalBrl:column?.get(b,analytics[b.id]);
+    if(left==null)return right==null?0:1;if(right==null)return -1;
+    return (typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right)))*(sort?.desc?-1:1);
+  });
   const filteredTotal = sortedPositions.reduce((total, position) => total + position.totalBrl, 0);
   const activeFilterCount =
     filters.classes.length +
@@ -223,7 +197,7 @@ export function PositionsWorkspace({
     filters.maturities.length +
     filters.liquidities.length +
     (filters.search ? 1 : 0);
-  const occupied = new Set(month.positions.map((position) => `${position.accountId}:${position.assetId}`));
+  const occupied = new Set(month.positions.filter(position=>!position.historicalSold).map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
     { key: "tipo", label: "Asset Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
@@ -275,6 +249,8 @@ export function PositionsWorkspace({
       opening={isOpening && openingId === position.id}
       onOpen={openPosition}
       onToggle={toggleExpanded}
+      shownColumns={shownColumns}
+      analytics={analytics[position.id]}
     />
   );
 
@@ -286,7 +262,7 @@ export function PositionsWorkspace({
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Positions</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Portfolio</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Holdings</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground" data-testid="positions-count">
             {activeCount} {activeCount === 1 ? "Position" : "Positions"}
             {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidated" : "liquidated"}` : ""}
@@ -392,54 +368,19 @@ export function PositionsWorkspace({
       </section>
 
       <section className="premium-panel mt-5 overflow-hidden rounded-[24px]" aria-label="Positions for the reporting month">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+          <div role="tablist" aria-label="Holdings view" className="flex gap-1">{(['position','price','performance','risk'] as const).map(item=><button key={item} type="button" role="tab" aria-selected={view===item} onClick={()=>setView(item)} className={cn("rounded-lg px-3 py-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-primary",view===item?"bg-primary/15 text-primary":"text-muted-foreground hover:text-foreground")}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div>
+          <div className="flex items-center gap-4"><label className="flex items-center gap-2 text-xs text-muted-foreground">Display Sold<input type="checkbox" role="switch" checked={displaySold} onChange={e=>setDisplaySold(e.target.checked)} className="accent-primary"/></label>{view==='position'?<details className="relative"><summary className="cursor-pointer rounded-lg border border-border px-3 py-2 text-xs">Columns</summary><fieldset className="absolute right-0 top-full z-30 mt-2 max-h-96 w-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xl"><legend className="sr-only">Customize Position Columns</legend>{POSITION_COLUMNS.map(column=><label key={column.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(column.id)} onChange={e=>setVisibleColumns(old=>e.target.checked?[...old,column.id]:old.filter(id=>id!==column.id))} className="accent-primary"/>{column.label}</label>)}</fieldset></details>:null}</div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <thead>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr
-                  key={headerGroup.id}
-                  className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase"
-                >
-                  <th className="w-9 py-3 pr-0 pl-3 sm:pl-4">
-                    <span className="sr-only">Expand</span>
-                  </th>
-                  {headerGroup.headers.map((header) => {
-                    const meta = COLUMN_META[header.column.id];
-                    const sorted = header.column.getIsSorted();
-
-                    return (
-                      <th
-                        key={header.id}
-                        aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}
-                        className={cn("px-4 py-3", meta.hide)}
-                      >
-                        <button
-                          type="button"
-                          onClick={header.column.getToggleSortingHandler()}
-                          title={header.column.id === "totalBrl" ? "Compare values using their BRL equivalent" : undefined}
-                          className={cn(
-                            "inline-flex items-center gap-1 uppercase outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-                            meta.align === "right" && "w-full justify-end",
-                            sorted && "text-foreground",
-                          )}
-                        >
-                          <table.FlexRender header={header} />
-                          {sorted === "asc" ? (
-                            <ArrowUpIcon aria-hidden="true" size={10} weight="bold" />
-                          ) : sorted === "desc" ? (
-                            <ArrowDownIcon aria-hidden="true" size={10} weight="bold" />
-                          ) : <ArrowsDownUpIcon aria-hidden="true" size={10} className="opacity-50" />}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
+              <tr className="border-b border-border/60 text-[10px] font-semibold text-muted-foreground"><th className="w-9"><span className="sr-only">Expand</span></th>{[{id:'assetName',label:'Asset'},...shownColumns].map(column=><th key={column.id} className={cn("px-4 py-3 whitespace-nowrap",column.id!=='assetName'&&"text-right")} aria-sort={sort?.id===column.id?(sort.desc?'descending':'ascending'):'none'}><button type="button" onClick={()=>void setQuery({ordem:`${column.id}.${sort?.id===column.id&&!sort.desc?'desc':'asc'}`})} className="inline-flex items-center gap-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">{column.label}{sort?.id===column.id?(sort.desc?<ArrowDownIcon size={10}/>:<ArrowUpIcon size={10}/>):<ArrowsDownUpIcon size={10} className="opacity-50"/>}</button></th>)}</tr>
             </thead>
             <tbody className="divide-y divide-border/55">
               {sortedPositions.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="px-6 py-10 text-center text-sm text-muted-foreground">No positions match the filters.
+                  <td colSpan={columnCount} className="px-6 py-10 text-center text-sm text-muted-foreground">No positions match the filters.
                   </td>
                 </tr>
               ) : (
@@ -448,7 +389,7 @@ export function PositionsWorkspace({
             </tbody>
             <tfoot>
               <tr className="border-t border-border/70 text-xs">
-                <td colSpan={COLUMN_COUNT} className="px-5 py-4 sm:px-6">
+                <td colSpan={columnCount} className="px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                     <span className="text-muted-foreground">
                       {sortedPositions.length} of {positions.length} Positions
@@ -496,8 +437,12 @@ function PositionRow({
   opening,
   onOpen,
   onToggle,
+  shownColumns,
+  analytics,
 }: {
   position: MonthPosition;
+  shownColumns: HoldingColumn[];
+  analytics?: HoldingAnalytics;
   href: string;
   expanded: boolean;
   opening: boolean;
@@ -591,32 +536,11 @@ function PositionRow({
           </p>
           {position.maturityDate ? <p className="mt-1.5 font-mono text-[10px] text-muted-foreground xl:hidden">{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
-        <Cell id="maturityDate">
-          {position.maturityDate ? (
-            <>
-              <p className="font-mono text-xs text-foreground/80">{formatDay(parseDay(position.maturityDate))}</p>
-
-            </>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">—</span>
-          )}
-        </Cell>
-        <Cell id="quantity">
-          <QuantityText position={position} />
-        </Cell>
-        <Cell id="totalBrl">
-          <span className="font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
-            {position.nativeValue === null ? "—" : formatCurrency(position.nativeValue, position.valueCurrency)}
-          </span>
-
-        </Cell>
-        <Cell id="share">
-          <span className="font-mono text-xs text-muted-foreground">{formatSharePercent(position.share)}</span>
-        </Cell>
+        {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={column.description} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>
       {expanded ? (
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
-          <td colSpan={COLUMN_COUNT} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
+          <td colSpan={shownColumns.length+2} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
             <PositionDetails position={position} />
             {position.assetType === "savings" ? <div className="mt-4"><SavingsMovementButton assetId={position.assetId} name={position.assetName} /></div> : null}
           </td>
@@ -708,7 +632,7 @@ function FooterValue({ label, value, emphasis = false }: { label: string; value:
 function parseSorting(value: string): SortingState {
   const [id, direction] = value.split(".");
 
-  return id && COLUMN_META[id] ? [{ id, desc: direction !== "asc" }] : [{ id: "totalBrl", desc: true }];
+  return id && (id==='assetName'||[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].some(c=>c.id===id)) ? [{ id, desc: direction !== "asc" }] : [{ id: "totalBrl", desc: true }];
 }
 
 function portfolioEquivalent(totalBrl: number, currency: "BRL" | "USD" | "EUR", usdRate: number | null, eurRate: number | null) {
