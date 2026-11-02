@@ -13,5 +13,5 @@ test("unknown or ambiguous instruments never receive a guessed US issuer",()=>{
  assert.equal(assetIcon("AAPL","Apple","us-stock"),"https://images.financialmodelingprep.com/symbol/AAPL.png");
  assert.equal(assetIcon("PETR4","Petrobras","br-stock","PETR4.SA"),"https://images.financialmodelingprep.com/symbol/PETR4.SA.png");
  assert.equal(assetIcon("ABC","Unknown","eu-market","https://attacker.invalid"),null);
- assert.equal(assetIcon("NEW","UBS World Fund","eu-market"),"/asset-icons/ubs.png");
+ assert.equal(assetIcon("NEW","UBS World Fund","eu-market"),"/asset-icons/ubs.svg");
 });

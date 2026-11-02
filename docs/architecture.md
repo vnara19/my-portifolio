@@ -617,7 +617,7 @@ no default target plans are generated and new strategy input is rejected. Actual
 asset classification and portfolio distribution remain independent of targets.
 
 Overview issuer icons are resolved from registered asset identity, with locally
-served high-resolution brand images for verified issuers and a Tesouro Direto icon. Stock logos may
+served vector brand images for verified issuers and a Tesouro Direto icon. Stock logos may
 use the public FMP image endpoint; unverified or failed images fall back to initials.
 No portfolio balances or transaction data are sent to image providers.
 Profitability uses one axis category per colored bar, so the full plot height
