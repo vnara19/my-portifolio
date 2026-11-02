@@ -35,7 +35,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const market=holdingMarketMetrics(history,asOf,nativeBenchmark);
   if(!source?.allTimeAvailable)market.performance.all=null;
   market.exchange=source?.exchange??null;
-  market.marketCap=month.isCurrent?source?.marketCap??null:null;
+  market.marketCap=month.isCurrent&&source?.currency===p.valueCurrency?source.marketCap??null:null;
   // Native cost and income use the same recorded transaction amounts as the existing asset pages.
   const entries=(ledger?.editEntries??[]).filter(t=>t.accountId===p.accountId&&t.assetId===p.assetId&&t.occurredOn<=asOf).sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn));
   const valid=entries.length>0&&entries.every(t=>!t.moneyUnavailable&&!t.transferId);
