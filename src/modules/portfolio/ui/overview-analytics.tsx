@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, usePlotArea, type BarShapeProps } from "recharts";
+import { Area, Bar, BarChart, Cell, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, usePlotArea, type RectangleProps } from "recharts";
 import { monthlyProfitability, profitHistory, riskMetrics } from "../domain/overview-analytics";
 import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
 import type { TwrObservation } from "../domain/time-weighted-return";
@@ -30,6 +30,7 @@ export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labe
  const years=[...new Set(rows.map(p=>p.month.slice(0,4)))].reverse();
  const ttm=new Date(`${asOf.slice(0,7)}-01T00:00:00Z`);ttm.setUTCMonth(ttm.getUTCMonth()-11);
  const months=rows.filter(r=>year==="all"||year==="ttm"&&r.month>=ttm.toISOString().slice(0,7)||r.month.startsWith(year));
+ const bars=months.flatMap(row=>[{...row,slot:`${row.month}:portfolio`,value:row.portfolio,name:"Portfolio %",color:"#4086ff"},{...row,slot:`${row.month}:benchmark`,value:row.benchmark,name:"SPX %",color:"#48c9db"}]);
  const start=periodStart(Date.parse(asOf),period);
  const profits=overview.gainsEur?.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,fxHistory).filter(p=>Date.parse(p.day)>=start&&p.day<=asOf);
  const fx=currentFx;
@@ -38,12 +39,12 @@ export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labe
  return <>
   <section className={panel} aria-label="Portfolio Profitability">
    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">Portfolio Profitability</h2><div className="flex max-w-full flex-wrap gap-1" aria-label="Profitability year">{["all","ttm",...years].map(y=><button key={y} type="button" aria-pressed={year===y} title={y==="ttm"?"Trailing 12 Months":undefined} className={button+(year===y?selected:"")} onClick={()=>setYear(y)}>{y==="all"?"All":y==="ttm"?"TTM":y}</button>)}</div></div>
-   <div className="h-[300px] w-full min-w-0" {...touch.containerProps}><ResponsiveContainer width="100%" height="100%"><BarChart data={months} margin={{left:0,right:8,top:10,bottom:0}}><CartesianGrid vertical={false} stroke="var(--border)"/><XAxis dataKey="month" tick={{fontSize:11}} tickFormatter={v=>new Intl.DateTimeFormat("en-GB",{month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(`${v}-01`))}/><YAxis width={48} tick={{fontSize:11}} tickFormatter={v=>`${v}%`}/><Tooltip shared={false} cursor={false} content={({active,payload})=>{
+   <div className="h-[300px] w-full min-w-0" {...touch.containerProps}><ResponsiveContainer width="100%" height="100%"><BarChart data={bars} margin={{left:0,right:8,top:10,bottom:0}}><CartesianGrid vertical={false} stroke="var(--border)"/><XAxis dataKey="slot" ticks={months.map(row=>`${row.month}:portfolio`)} tick={{fontSize:11}} tickFormatter={v=>new Intl.DateTimeFormat("en-GB",{month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(`${String(v).split(":")[0]}-01`))}/><YAxis width={48} tick={{fontSize:11}} tickFormatter={v=>`${v}%`}/><Tooltip shared cursor={<ProfitabilityCursor/>} content={({active,payload})=>{
  const entry=payload?.[0];if(!active||!entry)return null;
  const month=entry.payload?.month;
  const label=typeof month==="string"&&/^\d{4}-\d{2}$/.test(month)?new Intl.DateTimeFormat("en-GB",{month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(`${month}-01`)):"";
- return <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs leading-5 shadow-xl"><p className="text-muted-foreground">{label}</p><p className="flex items-center gap-2"><span className="size-2 rounded-full" style={{backgroundColor:entry.color}}/>{entry.name}<span className="font-mono">{typeof entry.value==="number"?percent(entry.value):"—"}</span></p></div>;
- }}/><Legend iconSize={8} wrapperStyle={{fontSize:12}} formatter={value=><span className="text-muted-foreground">{value}</span>}/><Bar dataKey="portfolio" name="Portfolio %" fill="#4086ff" activeBar={<ActiveProfitabilityBar/>} radius={[3,3,0,0]}/><Bar dataKey="benchmark" name="SPX %" fill="#48c9db" activeBar={<ActiveProfitabilityBar/>} radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
+ return <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs leading-5 shadow-xl"><p className="text-muted-foreground">{label}</p><p className="flex items-center gap-2"><span className="size-2 rounded-full" style={{backgroundColor:entry.payload?.color??entry.color}}/>{entry.payload?.name??entry.name}<span className="font-mono">{typeof entry.value==="number"?percent(entry.value):"—"}</span></p></div>;
+ }}/><Legend content={()=><div className="mt-2 flex justify-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 bg-[#4086ff]"/>Portfolio %</span><span className="flex items-center gap-1.5"><span className="size-2 bg-[#48c9db]"/>SPX %</span></div>}/><Bar dataKey="value" activeBar={false} isAnimationActive={false} radius={[3,3,0,0]}>{bars.map(row=><Cell key={row.slot} fill={row.color}/>)}</Bar></BarChart></ResponsiveContainer></div>
   </section>
   <section className={panel} aria-label="Profit">
    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">Profit</h2><div className="flex flex-wrap" aria-label="Profit period">{CHART_PERIODS.map(p=><button key={p.key} type="button" aria-pressed={period===p.key} className={button+(period===p.key?selected:"")} onClick={()=>setPeriod(p.key)}>{p.label}</button>)}</div></div>
@@ -58,8 +59,8 @@ export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labe
  </>;
 }
 
-function ActiveProfitabilityBar(props:Partial<BarShapeProps>){
+function ProfitabilityCursor(props:RectangleProps){
  const plot=usePlotArea();
- const {x=0,y=0,width=0,height=0,fill}=props;
- return <g><line x1={x+width/2} x2={x+width/2} y1={plot?.y??0} y2={(plot?.y??0)+(plot?.height??0)} stroke="var(--muted-foreground)" strokeWidth={1} pointerEvents="none"/><rect x={x} y={y} width={width} height={height} rx={3} fill={fill} stroke="var(--foreground)" strokeWidth={1} pointerEvents="none"/></g>;
+ const x=Number(props.x??0),width=Number(props.width??0);
+ return <line x1={x+width/2} x2={x+width/2} y1={plot?.y??0} y2={(plot?.y??0)+(plot?.height??0)} stroke="var(--muted-foreground)" strokeWidth={1} pointerEvents="none"/>;
 }

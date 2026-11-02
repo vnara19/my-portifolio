@@ -617,8 +617,16 @@ no default target plans are generated and new strategy input is rejected. Actual
 asset classification and portfolio distribution remain independent of targets.
 
 Overview issuer icons are resolved from registered asset identity, with locally
-served favicons for the verified issuers and Tesouro Direto. US stock logos may
+served high-resolution brand images for verified issuers and a Tesouro Direto icon. Stock logos may
 use the public FMP image endpoint; unverified or failed images fall back to initials.
 No portfolio balances or transaction data are sent to image providers.
-Profitability hover uses individual bar events. Profit legend buttons can isolate
+Profitability uses one axis category per colored bar, so the full plot height
+selects the nearest bar without replacing the underlying rectangle. Profit legend buttons can isolate
 realized P&L to inspect commissions on its natural scale; numeric history is unchanged.
+
+The Overview market strip contains USD/BRL, EUR/BRL, BTC/USD, Selic, SPX and SXXP.
+SPX is the S&P 500 price index (^GSPC); SXXP is STOXX Europe 600 price EUR (^STOXX),
+independent of the total-return benchmark used by performance charts. Public index
+snapshots are requested server-side and shared for five minutes. Currency changes
+use the latest two dated database observations, and Selic uses the last two policy
+rate settings. Missing comparisons remain unavailable rather than appearing as 0%.

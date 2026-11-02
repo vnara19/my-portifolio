@@ -125,3 +125,15 @@ export async function searchEuropeanListings(query: string) {
     .map((quote) => ({ symbol: quote.symbol, name: quote.longname ?? quote.shortname ?? quote.symbol,
       exchange: quote.exchDisp ?? quote.symbol.split(".").at(-1)! }));
 }
+
+/** A regular-session comparison, never the chart range's first-price baseline. */
+export async function fetchYahooSnapshot(symbol:string){
+ const result=await fetchChart(symbol,"5d",6000);
+ const price=result.meta.regularMarketPrice;
+ const time=result.meta.regularMarketTime;
+ if(!price||!time)throw new Error("Missing index quote");
+ const day=yahooQuoteDay(time,result.meta.exchangeTimezoneName);
+ const history=dailyHistory(result,symbol).points;
+ const previous=history.filter(p=>p.day<day).at(-1);
+ return {price,currency:result.meta.currency??null,day,previous:previous?.value??null,previousDay:previous?.day??null};
+}

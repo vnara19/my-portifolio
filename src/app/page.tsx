@@ -1,3 +1,4 @@
+import { getOverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
 import { getOverviewFx } from "@/modules/portfolio/application/get-overview-fx";
 import { getRiskFreeRate } from "@/modules/portfolio/application/risk-free-rate";
 import { getPortfolioLedger } from "@/modules/portfolio/application/get-portfolio-ledger";
@@ -20,7 +21,7 @@ export default async function Home({
 }) {
   const { mes } = await searchParams;
   const { months, selected } = await getMonthContext(mes);
-  const [overview, selic, ledger, benchmark] = await Promise.all([getOverviewData(selected?.referenceDate), getSelicForMonth(selected?.referenceDate), getPortfolioLedger(months), getSp500Benchmark()]);
+  const [overview, selic, ledger, benchmark, marketStrip] = await Promise.all([getOverviewData(selected?.referenceDate), getSelicForMonth(selected?.referenceDate), getPortfolioLedger(months), getSp500Benchmark(),getOverviewMarketStrip(selected?.referenceDate)]);
   const [performance, performanceEur, riskFreeRate, fxHistory] = await Promise.all([
     getOverviewPerformance(overview, ledger),
     getOverviewPerformance(overview, ledger, "EUR"),
@@ -31,7 +32,7 @@ export default async function Home({
 
   return (
     <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null}>
-      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} fxHistory={fxHistory} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,t.ticker??t.assetName??"Asset"]))} />
+      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} marketStrip={marketStrip} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} fxHistory={fxHistory} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,t.ticker??t.assetName??"Asset"]))} />
     </AppShell>
   );
 }

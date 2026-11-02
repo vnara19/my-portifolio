@@ -1,3 +1,4 @@
+import type { OverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
 import { OverviewAnalytics } from "./overview-analytics";
 import { overviewPeriodChanges } from "../domain/period-performance";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
@@ -14,7 +15,7 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark, riskFreeRate, assetLabels, fxHistory }: { overview: OverviewData | null; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string>;fxHistory:{day:string;value:number}[] }) {
+export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark, riskFreeRate, assetLabels, fxHistory, marketStrip }: { overview: OverviewData | null;marketStrip:OverviewMarketStrip; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string>;fxHistory:{day:string;value:number}[] }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -41,7 +42,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
         <OverviewKpis overview={overview} changes={overviewPeriodChanges(performanceEur,asOf,eurToUsdRate(overview.eurRate,overview.usdRate))} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
       </div>
 
-      <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} /></div>
+      <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} market={marketStrip} /></div>
 
       <section
         id="evolucao"
