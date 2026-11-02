@@ -615,3 +615,10 @@ The strategy, target-allocation, tolerance and rebalancing application paths are
 retired. Legacy database fields and backup tables remain for restore compatibility;
 no default target plans are generated and new strategy input is rejected. Actual
 asset classification and portfolio distribution remain independent of targets.
+
+Overview issuer icons are resolved from registered asset identity, with locally
+served favicons for the verified issuers and Tesouro Direto. US stock logos may
+use the public FMP image endpoint; unverified or failed images fall back to initials.
+No portfolio balances or transaction data are sent to image providers.
+Profitability hover uses individual bar events. Profit legend buttons can isolate
+realized P&L to inspect commissions on its natural scale; numeric history is unchanged.

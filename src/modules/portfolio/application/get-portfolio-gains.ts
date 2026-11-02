@@ -22,7 +22,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     }),
     db.position.findMany({ where: { portfolioMonth: { referenceDate }, quantity: { gt: 0 } }, select: { accountId: true, assetId: true, quantity: true, totalBrl: true, asset: { select: { fixedIncomeContract: true, quoteSymbol: true } } } }),
     db.dailyQuote.findMany({ where: { symbol: currency, quoteDate: { lt: end } }, orderBy: { quoteDate: "asc" }, select: { quoteDate: true, valueBrl: true } }),
-    db.asset.findMany({ where: { assetType: "international-bond" }, select: { id: true, fixedIncomeContract: true } }),
+    db.asset.findMany({ select: { id: true, name:true, ticker:true, assetType:true, fixedIncomeContract: true } }),
   ]);
   const closingValues = await historicalClosingValues(referenceDate, positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
   for (const position of positions) {
@@ -69,7 +69,8 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     const keys=new Set([...positions.filter(p=>p.assetId===assetId).map(holding),...transactions.filter(t=>t.position.assetId===assetId).map(t=>holding(t.position))]);
     const entries=movements.filter(m=>keys.has(m.holding));
     const principal=entries.filter(m=>m.kind==="CONTRIBUTION"||m.kind==="OPENING").reduce((sum,m)=>sum+(m.usdRate?(m.amountBrl-(m.feeBrl??0))/m.usdRate:0),0);
-    return {assetId, sold:!positions.some(p=>p.assetId===assetId), principal, ...portfolioGains(movements.filter(m=>keys.has(m.holding)),snapshots.filter(p=>keys.has(p.holding)))};
+    const identity=bondAssets.find(a=>a.id===assetId);
+    return {assetId,name:identity?.name??"",ticker:identity?.ticker??null,assetType:identity?.assetType??null, sold:!positions.some(p=>p.assetId===assetId), principal, ...portfolioGains(movements.filter(m=>keys.has(m.holding)),snapshots.filter(p=>keys.has(p.holding)))};
   });
   return {...gains,...(issue?{issue}: {}),byAsset,realizedHistory:issue?[]:realizedHistory};
 }
