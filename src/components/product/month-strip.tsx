@@ -15,7 +15,7 @@ import {
 } from "react";
 import { tv } from "tailwind-variants";
 
-import { MonthSheet, monthMarker } from "@/components/product/month-sheet";
+import { monthMarker } from "@/components/product/month-sheet";
 import { cn } from "@/lib/utils";
 
 
@@ -64,7 +64,7 @@ const strip = tv({
   slots: {
     band: "relative flex items-center justify-center gap-2 border-b border-border/70 bg-background/80 px-4 py-2 backdrop-blur-xl sm:px-6",
     progress: "pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden transition-opacity duration-150",
-    nav: "hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+    nav: "flex min-w-0 max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     trail: "ml-auto flex shrink-0 items-center gap-2 justify-self-end xl:col-start-3",
   },
   variants: { pending: { true: { progress: "opacity-100" }, false: { progress: "opacity-0" } } },
@@ -290,7 +290,6 @@ export function MonthStrip({ items, selected, onSelect, pending = false, scoped 
         {pending ? "Loading reporting month" : ""}
       </span>
 
-      <MonthSheet items={items} selected={selected} onSelect={onSelect} scoped={scoped} />
 
       {}
       <nav
