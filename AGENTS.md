@@ -22,7 +22,9 @@ longer the source of truth. Do not act on archived account identifiers.
 - Repository: `vnara19/my-portifolio`.
 - `dev`: Vercel Preview and Neon `development`.
 - `main`: Vercel Production and Neon `production`.
-- Implement, verify, commit and push requested changes on `dev`.
+- Implement, verify, commit and push requested changes on `dev`, then publish and verify the Vercel Preview.
+- Data entered in the Vercel test environment is real user data. Preserve all holdings, transactions, authentication records and backups. Never reset, reseed, replace or delete it for testing.
+- Keep checks proportional to the change; avoid redundant builds and repeated broad test runs.
 - Require explicit approval before publishing a reviewed change to `main` or
   applying production migrations. Approval for a Preview does not approve release.
 - Store credentials only in ignored local files or service secrets. Never print,
@@ -53,8 +55,9 @@ roadmaps or implementation details to the product UI.
 
 ## Checks
 
-Run `pnpm check`, relevant unit/browser tests and a production build. Verify actual
-rendered behavior, including narrow mobile screens, before sending a Preview.
+Run appropriate lint/type checks, relevant tests and a production build before
+publishing a Preview. Verify the requested rendered behavior when UI changes.
+Use isolated test data for any verification that writes; preserve real Preview data.
 Changes to backup contracts require compatibility and restore validation.
 
 Keep one root `CLAUDE.md`; use `AGENTS.md` for any future local instructions.
