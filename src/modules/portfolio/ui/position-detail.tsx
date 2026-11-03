@@ -182,7 +182,7 @@ function PositionDetailContent({
         <div className="min-w-0">
           <BackLink href={backHref} />
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] break-words sm:text-[2.65rem]">
-            {history.assetName}
+            {history.bond ? `${history.bond.issuer}${history.maturityDate ? ` · ${formatDayKey(history.maturityDate)}` : ""}` : history.assetName}
           </h1>
           <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
@@ -226,7 +226,7 @@ function PositionDetailContent({
                 {englishLabel(assetClass)}
               </span>
             ))}
-            {history.maturityDate ? (
+            {history.maturityDate && !history.bond ? (
               <span className="font-mono text-xs text-muted-foreground">{formatDayKey(history.maturityDate)}</span>
             ) : null}
 
