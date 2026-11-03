@@ -29,7 +29,8 @@ export function nativeUnitPrice(priceBrl: number | null, currency: "BRL" | "USD"
 }
 
 /** Normalize generated ETF labels without renaming saved assets or repeating their ticker. */
-export function positionTitle(name: string, ticker: string | null) {
+export function positionTitle(name: string, ticker: string | null, bondIssuer?: string) {
+  if (bondIssuer) return bondIssuer;
   return ticker && /^ETF\s*[-–—]\s*/i.test(name) ? name.replace(/^ETF\s*[-–—]\s*/i, "").trim() : name;
 }
 export function showPositionTicker(name: string, ticker: string | null) {

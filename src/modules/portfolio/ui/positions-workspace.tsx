@@ -183,8 +183,8 @@ export function PositionsWorkspace({
   const sort=sorting[0];
   const sortedPositions = [...filtered].sort((a,b)=>{
     const column=[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].find(c=>c.id===sort?.id);
-    const left=sort?.id==='assetName'?positionTitle(a.assetName,a.ticker):sort?.id==='totalBrl'?a.totalBrl:column?.get(a,analytics[a.id]);
-    const right=sort?.id==='assetName'?positionTitle(b.assetName,b.ticker):sort?.id==='totalBrl'?b.totalBrl:column?.get(b,analytics[b.id]);
+    const left=sort?.id==='assetName'?positionTitle(a.assetName,a.ticker,a.bondIssuer):sort?.id==='totalBrl'?a.totalBrl:column?.get(a,analytics[a.id]);
+    const right=sort?.id==='assetName'?positionTitle(b.assetName,b.ticker,b.bondIssuer):sort?.id==='totalBrl'?b.totalBrl:column?.get(b,analytics[b.id]);
     if(left==null)return right==null?0:1;if(right==null)return -1;
     return (typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right)))*(sort?.desc?-1:1);
   });
@@ -516,10 +516,8 @@ function PositionRow({
             }}
             className="rounded-sm text-sm font-medium text-foreground/90 underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <AssetClassDot position={position} className="mr-2 align-middle" />{positionTitle(position.assetName, position.ticker)}
+            <AssetClassDot position={position} className="mr-2 align-middle" />{positionTitle(position.assetName, position.ticker, position.bondIssuer)}
           </Link>
-          {position.bondAtCost ? <span className="ml-2 text-[10px] text-muted-foreground">At Cost</span> : null}
-          {position.bondValuationDate ? <span className="ml-2 text-[10px] text-muted-foreground">Manual · {position.bondValuationDate}</span> : null}
           {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}
           {position.liquidated ? (
             <span
@@ -529,12 +527,12 @@ function PositionRow({
             </span>
           ) : null}
           <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
-            {[showPositionTicker(position.assetName, position.ticker) && position.ticker !== position.valueCurrency ? position.ticker : null,
-              typeOf(position)?.toLowerCase() !== positionTitle(position.assetName, position.ticker).toLowerCase() ? typeOf(position) || "Review Product Type" : null,
+            {[position.assetType !== "international-bond" && showPositionTicker(position.assetName, position.ticker) && position.ticker !== position.valueCurrency ? position.ticker : null,
+              typeOf(position)?.toLowerCase() !== positionTitle(position.assetName, position.ticker, position.bondIssuer).toLowerCase() ? typeOf(position) || "Review Product Type" : null,
               marketOf(position) !== "Other Markets" ? marketOf(position) : null,
               position.valueCurrency].filter(Boolean).join(" · ")}
           </p>
-          {position.maturityDate ? <p className="mt-1.5 font-mono text-[10px] text-muted-foreground xl:hidden">{formatDay(parseDay(position.maturityDate))}</p> : null}
+          {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
         {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={column.description??(["volume","averageVolume","marketCap"].includes(column.id)&&typeof value==='number'?value.toLocaleString("en-GB",{maximumFractionDigits:2}):undefined)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>

@@ -43,6 +43,7 @@ export type MonthPosition = {
 
   fixedIncomeEstimate?: boolean;
   bondAtCost?: boolean;
+  bondIssuer?: string;
   bondValuationDate?: string | null;
   autoIncome?: boolean;
   appliedOn?: string | null;
@@ -236,6 +237,7 @@ export async function getMonthPositions(
             productType: displayProduct,
             market: listingMarket(displayProduct === "Cryptocurrency" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry ?? readSavings(position.asset.fixedIncomeContract)?.country),
             assetTypeInferred: position.asset.assetType === null,
+            bondIssuer: bond?.issuer,
             bondAtCost: bond?.valuationMode === "Cost",
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
             fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),

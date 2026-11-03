@@ -13,7 +13,7 @@ export type EditToastState = {
   undoToken?: string;
 };
 
-const AUTO_DISMISS_MS = 9000;
+const AUTO_DISMISS_MS = 8000;
 const HANDOFF_KEY = "portfolio:edit-toast";
 
 
@@ -50,13 +50,13 @@ export function EditToast({
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!toast || toast.tone === "error" || toast.undoToken) {
+    if (!toast || toast.tone === "error" || undoing) {
       return;
     }
 
     const timer = window.setTimeout(onDismiss, AUTO_DISMISS_MS);
     return () => window.clearTimeout(timer);
-  }, [toast, onDismiss]);
+  }, [toast, onDismiss, undoing]);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+88px)] z-50 flex justify-center px-4">

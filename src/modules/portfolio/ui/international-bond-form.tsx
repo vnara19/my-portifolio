@@ -98,18 +98,21 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
         {text("annualRate", "Annual Coupon Rate (%)", "4.125", true)}
         <Field label="Coupon Frequency"><Picker aria-label="Coupon frequency" value={fields.frequency} onValueChange={(v) => updateField("frequency", v)} searchable={false} options={[{ value: "1", label: "Annual" }, { value: "2", label: "Semi-annual" }, { value: "4", label: "Quarterly" }, { value: "12", label: "Monthly" }]} /></Field>
         <Field label="Next Scheduled Coupon Date"><DatePicker aria-label="Next scheduled coupon date" value={fields.anchorDate} onChange={(v) => updateField("anchorDate", v)} /></Field>
-        {text("purchaseAccruedPerBond", `Purchase Accrued Interest per Bond (${fields.currency || "USD / EUR"})`, "10.43", true)}
+        {text("purchaseAccruedPerBond", `Interest Paid at Purchase / Bond (${fields.currency || "USD / EUR"})`, "10.43", true)}
       </div>
     </div> : null}
     <div className="space-y-3 border-t border-border pt-4">
       <h3 className="text-sm font-semibold">Your Purchase</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {text("quantity", "Quantity Purchased", "1.50", true)}
+        <div className="space-y-1.5">{text("quantity", "Number of Bonds", "10", true)}
+          <p className="text-[10px] leading-snug text-muted-foreground">If your broker shows a nominal amount, divide it by Face Value per Bond. For example: 10,000 ÷ 1,000 = 10 bonds.</p>
+        </div>
         <Field label="Purchase Date"><DatePicker aria-label="Purchase date" max={latestPurchaseDay} value={fields.settlementDate} onChange={(v) => updateField("settlementDate", v)} /></Field>
         {text("totalPaid", `Total Paid, Including Fees (${fields.currency || "USD / EUR"})`, "992.31", true)}
-        {fields.structure !== "Fixed" ? text("purchaseAccruedPerBond", `Purchase Accrued Interest per Bond (${fields.currency || "USD / EUR"})`, fields.structure === "Zero" ? "0" : "10.43", true) : null}
+        {fields.structure !== "Fixed" ? text("purchaseAccruedPerBond", `Interest Paid at Purchase / Bond (${fields.currency || "USD / EUR"})`, fields.structure === "Zero" ? "0" : "10.43", true) : null}
       </div>
     </div>
+    <p className="text-[10px] leading-snug text-muted-foreground">Interest Paid at Purchase is the accrued interest paid per bond on your original purchase date, even when adding an older purchase.</p>
     {calculated && fields.currency ? <dl className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-3 text-sm sm:grid-cols-2">
       {[["Nominal Amount Held", calculated.faceAmount], ["Purchase Accrued Interest", calculated.accruedInterestPaid]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{formatCurrency(Number(value), fields.currency as "USD" | "EUR")}</dd></div>)}
     </dl> : null}
