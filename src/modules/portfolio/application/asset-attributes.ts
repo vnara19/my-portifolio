@@ -40,6 +40,7 @@ export type AssetAttributes = {
 
 
 export type AssetState = {
+  appliedOn?: Date | null;
   fixedIncomeContract?: Prisma.InputJsonValue | null;
   expectedFixedIncomeContract?: Prisma.InputJsonValue;
   id: string;
@@ -218,6 +219,7 @@ export async function restoreAssetState(transaction: Prisma.TransactionClient, s
       maturityDate: state.maturityDate,
       cashAccount: state.cashAccount,
       autoIncome: state.autoIncome,
+      ...(state.appliedOn !== undefined ? { appliedOn: state.appliedOn } : {}),
       assetType: state.assetType,
       ...(state.fixedIncomeContract !== undefined ? { fixedIncomeContract: state.fixedIncomeContract ?? Prisma.DbNull } : {}),
     },

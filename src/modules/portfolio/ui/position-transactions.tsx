@@ -3,7 +3,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "./edit-dialogs";
 import { usePositionMoney } from "./position-money-context";
 
-import { isAutomaticAccrualNote, englishTransactionNote } from "@/lib/transaction-notes";
+import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -47,8 +47,6 @@ function dayLabel(day: string) {
 
 export function PositionTransactions({
   transactions,
-  selectedMonth,
-  defaultPeriod = "all",
   quoted,
   dollars,
   editableMonthId,
@@ -60,8 +58,6 @@ export function PositionTransactions({
   onRemove,
 }: {
   transactions: PositionTransactionView[];
-  selectedMonth?: string;
-  defaultPeriod?: "all" | "month";
   editableAccountId: string | null;
   showAccountLabels?: boolean;
   showAssets?: boolean;
@@ -77,9 +73,7 @@ export function PositionTransactions({
 
   const [toRemove, setToRemove] = useState<PositionTransactionView | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
-  const [period, setPeriod] = useState<{ month: string | undefined; value: "all" | "month" } | null>(null);
-  const currentPeriod = period && period.month === selectedMonth ? period.value : defaultPeriod;
-  const inPeriod = currentPeriod === "month" && selectedMonth ? transactions.filter(entry => entry.month === selectedMonth) : transactions;
+  const inPeriod = transactions;
   const kinds = new Set(inPeriod.map(filterKey));
   const shown = filter === "all" ? inPeriod : inPeriod.filter((entry) => filterKey(entry) === filter);
 
@@ -92,7 +86,6 @@ export function PositionTransactions({
       testId="position-transactions-section"
     >
       <div className="px-5 pt-1 pb-5 sm:px-6">
-      {selectedMonth ? <div role="group" aria-label="Transaction period" className="mb-4 flex flex-wrap gap-2">{([{value:"all",label:"All Transactions"},{value:"month",label:monthLabel(selectedMonth)}] as const).map(option=><button key={option.value} type="button" aria-pressed={currentPeriod===option.value} onClick={()=>{setPeriod({ month: selectedMonth, value: option.value });setFilter("all");}} className={cn("rounded-full border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50",currentPeriod===option.value?"border-primary/40 bg-primary/10 text-primary":"border-border text-muted-foreground")}>{option.label}</button>)}</div>:null}
       {inPeriod.length > 0 ? <RecordedTotals transactions={inPeriod} /> : null}
 
       {transactions.length > 0 ? (
@@ -135,7 +128,6 @@ export function PositionTransactions({
                 {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantity"}</th> : null}
                 {quoted ? <th className="py-2 pr-3 text-right">{showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"}</th> : null}
                 <th className="py-2 pr-3 text-right">{showAssets ? "Value (USD)" : "Value"}</th>
-                <th className="py-2 pr-3">Note</th>
                 <th className="py-2" aria-label="Actions" />
               </tr>
             </thead>
@@ -144,7 +136,7 @@ export function PositionTransactions({
                 const negative = entry.kind === "WITHDRAWAL" || entry.amountBrl < 0;
 
                 const editable =
-                  !isAutomaticIncome(entry) && !entry.locked && Boolean(entry.positionId) && editableMonthId !== null && (editableAccountId === null || entry.accountId === editableAccountId);
+                  !isAutomaticIncome(entry) && (!entry.locked || Boolean(entry.bondPurchase)) && Boolean(entry.positionId) && editableMonthId !== null && (editableAccountId === null || entry.accountId === editableAccountId);
 
                 return (
                   <tr key={entry.id} className="border-t border-border/60" data-transaction-kind={entry.kind} data-transaction-filter={filterKey(entry)}>
@@ -175,19 +167,18 @@ export function PositionTransactions({
                     </td>
                     {quoted ? (
                       <td className="py-2.5 pr-3 text-right font-mono">
-                        {entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.quantity)}
+                        {entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.bondPurchase?.faceValuePerBond ? entry.quantity / Number(entry.bondPurchase.faceValuePerBond) : entry.quantity)}
                       </td>
                     ) : null}
                     {quoted ? (
-                      <td className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
-                        {!entry.moneyUnavailable && entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
+                      <td title={entry.bondPurchase ? "Cost per bond, including purchase interest and fees" : undefined} className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
+                        {entry.moneyUnavailable ? "—" : entry.bondPurchase?.faceValuePerBond && entry.quantity > 0 ? formatPriceBrl(entry.amountBrl / (entry.quantity / Number(entry.bondPurchase.faceValuePerBond))) : entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
                       </td>
                     ) : null}
                     <td className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
                       {negative ? "−" : ""}
                       {entry.moneyUnavailable ? "—" : formatBrl(Math.abs(entry.amountBrl))}
                     </td>
-                    <td className="max-w-[200px] truncate py-2.5 pr-3 text-muted-foreground">{entry.note ? englishTransactionNote(entry.note) : ""}</td>
                     <td className="py-2.5 text-right">
                       {editable ? (
                         <span className="flex justify-end gap-0.5">
@@ -202,7 +193,7 @@ export function PositionTransactions({
                               <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />
                             </button>
                           )}
-                          <button
+                          {!entry.locked ? <button
                             type="button"
                             aria-label={`Delete ${entry.transferId ? "liquidation" : TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("en-GB")} on ${dayLabel(entry.occurredOn)}`}
                             disabled={removing}
@@ -210,7 +201,7 @@ export function PositionTransactions({
                             className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-40"
                           >
                             <TrashIcon aria-hidden="true" size={14} />
-                          </button>
+                          </button> : null}
                         </span>
                       ) : null}
                     </td>

@@ -1,4 +1,5 @@
 "use client";
+import { BondPurchaseCorrectionDialog } from "./bond-purchase-correction-dialog";
 import { TradeCorrectionDialog } from "./trade-correction-dialog";
 import { investmentMonthReturn } from "../domain/position-money";
 import { usePositionMoney } from "./position-money-context";
@@ -410,15 +411,14 @@ function PositionDetailContent({
 
       <PositionTransactions
         transactions={transactions}
-        selectedMonth={history.selectedMonth}
-        defaultPeriod={searchParams.has("mes") ? "month" : "all"}
         quoted={quoted}
         dollars={dollarBalance}
-        editableMonthId={!history.bond ? "all" : null}
+        editableMonthId="all"
         editableAccountId={scope === "all" ? null : history.accountId}
         showAccountLabels={scope === "all"}
         removing={isRemoving}
         onEdit={(entry) => {
+          if (entry.bondPurchase) { setTradeCorrection(entry); return; }
           if (quoted && !dollarBalance && (entry.kind === "CONTRIBUTION" || entry.kind === "WITHDRAWAL")) { setTradeCorrection(entry); return; }
           setMovement((value) => ({
             open: true,
@@ -444,7 +444,7 @@ function PositionDetailContent({
         }
       />
 
-      {tradeCorrection ? <TradeCorrectionDialog entry={tradeCorrection} original={storedHistory?.transactions.find(t=>t.id===tradeCorrection.id) ?? tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : null}
+      {tradeCorrection?.bondPurchase ? <BondPurchaseCorrectionDialog entry={tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : tradeCorrection ? <TradeCorrectionDialog entry={tradeCorrection} original={storedHistory?.transactions.find(t=>t.id===tradeCorrection.id) ?? tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : null}
       {movement.target && movement.month ? (
         <PositionTransactionDialog
           open={movement.open}

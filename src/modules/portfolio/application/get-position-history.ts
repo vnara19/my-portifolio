@@ -109,6 +109,7 @@ export type PositionTransactionView = {
   assetType?: string | null;
   baseCurrency?: string;
   moneyUnavailable?: boolean;
+  bondPurchase?: InternationalBond | null;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
 
   transferId: string | null;
@@ -504,7 +505,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
       positionId: true,
       position: {
         select: {
-          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true } },
+          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true } },
           accountId: true,
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
@@ -517,7 +518,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
     id: row.id,
     positionId: row.positionId,
     assetId: row.position.asset.id,
-    assetName: row.position.asset.name,
+    assetName: readInternationalBond(row.position.asset.fixedIncomeContract)?.issuer ?? row.position.asset.name,
     ticker: row.position.asset.ticker,
     quoteSymbol: row.position.asset.quoteSymbol,
     assetType: row.position.asset.assetType,
@@ -529,6 +530,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
     quantity: row.quantity.toNumber(),
     unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
     amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
+    bondPurchase: row.kind === "CONTRIBUTION" ? readInternationalBond(row.position.asset.fixedIncomeContract) : null,
     locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
     automatic: row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
     note: row.note,

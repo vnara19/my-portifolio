@@ -1,4 +1,5 @@
 "use client";
+import { BondPurchaseCorrectionDialog } from "./bond-purchase-correction-dialog";
 import { useCallback, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -45,8 +46,8 @@ function PortfolioLedgerContent({ledger,selectedMonth}:{ledger:PortfolioLedger;s
  <td className="px-5 py-3 text-right font-mono"><p>{cash(row.flow,true)}</p></td>
  </tr>;})}</tbody></table></div>
  </CollapsibleSection>
- <PositionTransactions transactions={ledger.transactions} selectedMonth={selectedMonth} defaultPeriod={params.has("mes")?"month":"all"} quoted dollars={false} editableMonthId="all" editableAccountId={null} showAssets removing={removing} onEdit={entry=>{const edit=ledger.editEntries.find(t=>t.id===entry.id);if(edit?.moneyUnavailable){notify({ok:false,message:"The historical exchange rate for this transaction is unavailable."});return;}setSelected(entry);}} onRemove={entry=>startRemove(async()=>notify(await removeTransactionAction({monthId:entry.monthId,transactionId:entry.id})))}/>
- {selected&&original&&native&&target?(trade?<PositionMoneyProvider currency={currency}><TradeCorrectionDialog key={selected.id} entry={native} original={original} onClose={()=>setSelected(null)} onSaved={notify}/></PositionMoneyProvider>:<PositionTransactionDialog open onOpenChange={open=>{if(!open)setSelected(null);}} target={target} edit={original} formKey={0} month={transactionMonthOf(original.monthId,new Date(`${original.month}-01T00:00:00Z`))} onSaved={notify}/>):null}
+ <PositionTransactions transactions={ledger.transactions} quoted dollars={false} editableMonthId="all" editableAccountId={null} showAssets removing={removing} onEdit={entry=>{const edit=ledger.editEntries.find(t=>t.id===entry.id);if(edit?.moneyUnavailable){notify({ok:false,message:"The historical exchange rate for this transaction is unavailable."});return;}setSelected(entry);}} onRemove={entry=>startRemove(async()=>notify(await removeTransactionAction({monthId:entry.monthId,transactionId:entry.id})))}/>
+ {selected&&original&&native&&target?(selected.bondPurchase?<BondPurchaseCorrectionDialog entry={selected} onClose={()=>setSelected(null)} onSaved={notify}/>:trade?<PositionMoneyProvider currency={currency}><TradeCorrectionDialog key={selected.id} entry={native} original={original} onClose={()=>setSelected(null)} onSaved={notify}/></PositionMoneyProvider>:<PositionTransactionDialog open onOpenChange={open=>{if(!open)setSelected(null);}} target={target} edit={original} formKey={0} month={transactionMonthOf(original.monthId,new Date(`${original.month}-01T00:00:00Z`))} onSaved={notify}/>):null}
  <EditToast toast={toast} onDismiss={dismiss} onUndo={token=>startUndo(async()=>notify(await undoChangeAction(token)))} undoing={undoing}/>
  </>;
 }

@@ -162,7 +162,6 @@ function TransactionForm({
         )
       : [],
   );
-  const [note, setNote] = useState(edit?.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
@@ -214,7 +213,7 @@ function TransactionForm({
         quantity: quoted && plan.quantity ? String(plan.quantity) : null,
         unitPriceBrl: quoted && plan.quantity && plan.unitPrice ? String(plan.unitPrice) : null,
         amountBrl: String(plan.amount),
-        note: note.trim() || null,
+        note: edit?.note ?? null,
       };
       const result = edit
         ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction })
@@ -413,7 +412,6 @@ function TransactionForm({
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field label="Transaction date"><DatePicker aria-label="Transaction date" value={day} min={month.firstDay} max={month.lastDay} onChange={setDay} /></Field>
-            <Field label="Note (optional)"><input value={note} maxLength={200} aria-label="Note" onChange={(event) => setNote(event.target.value)} className={inputClass} /></Field>
           </div>
         </>}
         {step === 1 && showIssue ? <p role="status" data-testid="transaction-issue" className="mt-4 text-xs leading-5 text-warning-foreground">{plan.issue}</p> : null}

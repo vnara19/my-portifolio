@@ -1,3 +1,4 @@
+import { correctedBondPurchase } from "../domain/bond-purchase-correction";
 import { withUndo, MonthEditError } from "./month-editing";
 import { Prisma } from "@/generated/prisma/client";
 import { getUserDb, currentUserId, SCOPED_USER } from "@/lib/user-db";
@@ -85,4 +86,38 @@ export async function refreshBondsForUser() {
     }
   }, { maxWait: 10_000, timeout: 60_000 });
   return changed;
+}
+
+/** Correct the acquisition and its contract together; never edit a bond as a generic trade. */
+export async function correctBondPurchase(input: { monthId: string; transactionId: string; date: string; units: string; totalPaid: string; accruedPerBond: string }) {
+  const db = await getUserDb();
+  const initial = await db?.positionTransaction.findFirst({ where: { id: input.transactionId, kind: "CONTRIBUTION", position: { portfolioMonthId: input.monthId } }, select: { position: { select: { asset: { select: { fixedIncomeContract: true } } } } } });
+  const terms = readInternationalBond(initial?.position.asset.fixedIncomeContract);
+  if (!terms?.faceValuePerBond) throw new MonthEditError("This is not a supported bond purchase.");
+  if (input.date.slice(0,7) !== terms.settlementDate.slice(0,7)) throw new MonthEditError("Keep the corrected purchase in its original reporting month.");
+  if (input.date > toDateKey(calendarDay(new Date()))) throw new MonthEditError("The purchase cannot be in the future.");
+  const fx = await fetchReferenceFxLatest(terms.currency, input.date);
+  return withUndo(input.monthId, async tx => {
+    const entry = await tx.positionTransaction.findFirst({ where: { id: input.transactionId, kind: "CONTRIBUTION", position: { portfolioMonthId: input.monthId } }, include: { position: { include: { asset: true } } } });
+    const bond = readInternationalBond(entry?.position.asset.fixedIncomeContract);
+    if (!entry || !bond?.faceValuePerBond || bond.settlementDate !== terms.settlementDate || bond.totalPaid !== terms.totalPaid || bond.faceAmount !== terms.faceAmount) throw new MonthEditError("The purchase changed. Refresh and try again.");
+    const updated = correctedBondPurchase(bond, input);
+    const rows = await tx.position.findMany({ where: { assetId: entry.position.assetId }, include: { portfolioMonth: true } });
+    await tx.asset.update({ where: { id: entry.position.assetId }, data: { fixedIncomeContract: updated, appliedOn: new Date(input.date) } });
+    const recordedFx = /FX (\d+(?:\.\d+)?) BRL\/(USD|EUR)\./.exec(entry.note ?? "");
+    const rate = new Prisma.Decimal(input.date === bond.settlementDate && recordedFx?.[2] === bond.currency ? recordedFx[1] : fx.value);
+    await tx.positionTransaction.update({ where: { id: entry.id }, data: { occurredOn: new Date(input.date), quantity: updated.faceAmount, amountBrl: new Prisma.Decimal(input.totalPaid).mul(rate).toDecimalPlaces(2), unitPriceBrl: new Prisma.Decimal(input.totalPaid).mul(rate).div(updated.faceAmount).toDecimalPlaces(8), note: `Bond acquisition: ${bond.currency} ${input.totalPaid} total paid including accrued interest and fees; FX ${rate.toString()} BRL/${bond.currency}.` } });
+    for (const row of rows) {
+      const day = toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(row.portfolioMonth.referenceDate).getTime())));
+      if (day < input.date) throw new MonthEditError("A holding precedes the corrected purchase date.");
+      const rowRate = row.exchangeRateBrl;
+      if (!rowRate?.gt(0)) throw new MonthEditError("A historical bond exchange rate is missing.");
+      const redeemed = new Prisma.Decimal(bond.faceAmount).sub(row.quantity);
+      const held = new Prisma.Decimal(updated.faceAmount).sub(redeemed);
+      if (held.lt(0)) throw new MonthEditError("The corrected quantity is below the amount already redeemed.");
+      const value = bondValue(updated, day, rowRate.toString(), held.toFixed());
+      await tx.position.update({ where: { id: row.id }, data: { quantity: held, openingQuantity: row.id === entry.positionId ? row.openingQuantity : row.openingQuantity.add(new Prisma.Decimal(updated.faceAmount).sub(bond.faceAmount)), totalBrl: value.totalBrl, unitPriceBrl: value.unitPriceBrl } });
+    }
+    return { assets: [{ ...entry.position.asset, fixedIncomeContract: bond, expectedFixedIncomeContract: updated }] };
+  }, { linkedMonths: true });
 }

@@ -642,3 +642,15 @@ Public Yahoo listing history supplies price changes, listing-session volume, ave
 
 
 Holding market capitalization falls back to CoinGecko's public, currency-specific capitalization field for recognized cryptocurrencies, cached for five minutes. It is never calculated from an assumed supply, and historical views do not display current capitalization. Large volume/capitalization values use K/M/B/T display notation; underlying sorting values remain numeric. Asset-page gain cards use Total Gain (including realized results and fees), Monthly Change, Allocation, Value and Average Price labels. Their existing return formulas are unchanged.
+
+### Bond purchase corrections and transaction presentation
+
+Transaction panels always show all dates; notes are hidden from the UI but retained
+as internal compatibility metadata for dated FX, commissions and accrued interest.
+Bond acquisitions expose a dedicated correction form; quantity is entered in bond
+units and converted to nominal principal. Cost per bond in the transaction table
+includes purchase interest and fees. Corrections update the contract and monthly
+holdings atomically under the existing user-scoped edit lock and undo snapshots.
+Changing the acquisition to another reporting month is rejected; dated cash receipts
+remain protected from generic transaction edits. Real Preview holdings are never
+used as disposable test fixtures.

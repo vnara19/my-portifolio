@@ -3,14 +3,15 @@ import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
+import { investmentMonthReturn } from "../domain/position-money";
 import { CHART_PERIODS } from "../domain/chart-period";
 import { useMemo, useState } from "react";
-import { Area, AreaChart, Brush, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import type { HistorySlot } from "@/modules/portfolio/domain/position-history";
 import { formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatQuantity, monthLabel } from "@/modules/portfolio/presentation/position-page";
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type EvolutionRow = {
@@ -29,9 +30,6 @@ const GAP_FILL = "oklch(1 0 0 / 0.035)";
 export function PositionEvolutionChart({
   slots,
   selectedMonth,
-  quoted,
-  quoteSymbol,
-  ticker,
   scopeLabel,
 }: {
   slots: HistorySlot[];
@@ -80,7 +78,7 @@ export function PositionEvolutionChart({
       return;
     }
 
-    setRange({ key: rangeKey, range: [Math.max(defaultEnd - months + 1, 0), defaultEnd] });
+    setRange({ key: rangeKey, range: [Math.max(defaultEnd - months, 0), defaultEnd] });
   };
 
   return (
@@ -103,26 +101,14 @@ export function PositionEvolutionChart({
           ) : null}
         </ul>
 
-        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.key}
-              type="button"
-              aria-pressed={selectedPeriod === preset.key}
-              onClick={() => { setSelectedPeriod(preset.key); applyPreset(preset.months); }}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 ${selectedPeriod === preset.key ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              {englishLabel(preset.label)}
-            </button>
-          ))}
-        </div>
+
       </div>
 
 
       <div className="h-[300px] w-full" data-testid="position-evolution-chart" {...touch.containerProps}>
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart
-            data={rows}
+            data={rows.slice(range[0], range[1] + 1)}
             margin={{ top: 8, right: 4, bottom: 0, left: 4 }}
           >
             <defs>
@@ -177,9 +163,6 @@ export function PositionEvolutionChart({
                 return (
                   <EvolutionTooltip
                     row={row}
-                    quoted={quoted}
-                    quoteSymbol={quoteSymbol}
-                    ticker={ticker}
                     scopeLabel={scopeLabel}
                   />
                 );
@@ -193,7 +176,7 @@ export function PositionEvolutionChart({
               strokeWidth={2}
               fill="url(#position-value-fill)"
               connectNulls={false}
-              dot={(props) => <ValueDot {...props} rows={rows} selectedMonth={selectedMonth} />}
+              dot={(props) => <ValueDot {...props} rows={rows.slice(range[0], range[1] + 1)} selectedMonth={selectedMonth} />}
               activeDot={{ r: 4, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }}
             />
             {hasApplied ? (
@@ -225,23 +208,23 @@ export function PositionEvolutionChart({
                 legendType="none"
               />
             ))}
-            <Brush
-              dataKey="label"
-              height={26}
-              startIndex={range[0]}
-              endIndex={range[1]}
-              onChange={(next) => {
-                if (typeof next.startIndex === "number" && typeof next.endIndex === "number") {
-                  setRange({ key: rangeKey, range: [next.startIndex, next.endIndex] });
-                }
-              }}
-              fill="oklch(1 0 0 / 0.02)"
-              stroke="var(--border)"
-              travellerWidth={8}
-            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
+        <div className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              aria-pressed={selectedPeriod === preset.key}
+              onClick={() => { setSelectedPeriod(preset.key); applyPreset(preset.months); }}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 ${selectedPeriod === preset.key ? "bg-white/[0.06] text-foreground" : "text-muted-foreground"}`}
+            >
+              {englishLabel(preset.label)}
+              <span className={cn("mt-1 block font-mono text-[10px]", periodGain(rows, preset.months, defaultEnd).startsWith("-") ? "text-destructive" : "text-primary")}>{periodGain(rows, preset.months, defaultEnd)}</span>
+            </button>
+          ))}
+        </div>
     </div>
   );
 }
@@ -352,18 +335,12 @@ function ValueDot({
 
 function EvolutionTooltip({
   row,
-  quoted,
-  quoteSymbol,
-  ticker,
   scopeLabel,
 }: {
   row: EvolutionRow;
-  quoted: boolean;
-  quoteSymbol: string | null;
-  ticker: string | null;
   scopeLabel: "account" | "all";
 }) {
- const { formatBrl, formatPriceBrl } = usePositionMoney();
+ const { formatBrl } = usePositionMoney();
 
   const slot = row.slot;
 
@@ -384,11 +361,6 @@ function EvolutionTooltip({
       ) : (
         <>
           <p className="mt-1 font-mono text-xs text-foreground">{formatBrl(slot.valueBrl)}</p>
-          {quoted && slot.priceBrl !== null ? (
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-              {formatQuantity(slot.quantity, quoteSymbol, ticker)} × {formatPriceBrl(slot.priceBrl)}
-            </p>
-          ) : null}
           <div className={cn("mt-2 space-y-1")}>
             {slot.appliedBrl !== null ? (
               <>
@@ -414,4 +386,18 @@ function TooltipRow({ label, value }: { label: string; value: string }) {
       <span className="ml-auto font-mono text-[10px] text-muted-foreground">{value}</span>
     </div>
   );
+}
+
+function periodGain(rows: EvolutionRow[], months: number | "ytd" | "all", end: number) {
+ const start = months === "all" ? 0 : months === "ytd" ? Math.max(0, rows.findIndex(r => r.month.startsWith(rows[end].month.slice(0,4))) - 1) : Math.max(0, end - months);
+ let factor = 1, count = 0;
+ for(let i = start + 1; i <= end; i++) {
+  const slot = rows[i].slot;
+  if(slot.kind !== "present") return "—";
+  const percent = investmentMonthReturn(slot, rows[i-1].value).percent;
+  if(percent === null) return "—";
+  factor *= 1 + percent / 100; count++;
+ }
+ const result = (factor - 1) * 100;
+ return count ? `${result >= 0 ? "+" : ""}${result.toFixed(2)}%` : "—";
 }
