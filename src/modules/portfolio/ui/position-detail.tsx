@@ -395,7 +395,7 @@ function PositionDetailContent({
 
 
 
-      {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} monthId={null} positionId={null} /> : null}
+      {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} /> : null}
       {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
 
       <PositionMonthsTable

@@ -73,7 +73,8 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       });
     } catch (e) { setError(e instanceof Error ? e.message : "Review the bond details."); }
   }
-  const text = (key: keyof typeof fields, label: string, placeholder: string, numeric = false) => <div className={key === "purchaseAccruedPerBond" ? "[&_label>span]:text-[9px] [&_label>span]:tracking-[0.02em]" : undefined}><Field label={label}><input aria-label={label} className={inputClass} value={fields[key]} inputMode={numeric ? "decimal" : "text"} placeholder={placeholder} onChange={(e) => { if (key === "identifier") { setAutomatic([]); setLookupResult(null); setLookupState("idle"); setModel({ fields: { ...emptyBondFields(), identifier: e.target.value }, touched: new Set() }); } else updateField(key, e.target.value); }} maxLength={key === "identifier" ? 12 : 80} /></Field></div>;
+  const fieldError = (key: keyof typeof fields) => fields[key].trim() && validation.errors[key] ? <p role="alert" className="mt-1 text-xs text-destructive">{validation.errors[key]}</p> : null;
+  const text = (key: keyof typeof fields, label: string, placeholder: string, numeric = false) => <div className={key === "purchaseAccruedPerBond" ? "[&_label>span]:text-[9px] [&_label>span]:tracking-[0.02em]" : undefined}><Field label={label}><input aria-label={label} className={inputClass} value={fields[key]} inputMode={numeric ? "decimal" : "text"} placeholder={placeholder} onChange={(e) => { if (key === "identifier") { setAutomatic([]); setLookupResult(null); setLookupState("idle"); setModel({ fields: { ...emptyBondFields(), identifier: e.target.value }, touched: new Set() }); } else updateField(key, e.target.value); }} maxLength={key === "identifier" ? 12 : 80} /></Field>{fieldError(key)}</div>;
   return <FieldFeedbackProvider fields={feedback}><form noValidate id={formId} className="space-y-5" onSubmit={(event) => { event.preventDefault(); submit(); }}>
     <h2 className="text-base font-semibold">Bond Details</h2>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -97,7 +98,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {text("annualRate", "Annual Coupon Rate (%)", "4.125", true)}
         <Field label="Coupon Frequency"><Picker aria-label="Coupon frequency" value={fields.frequency} onValueChange={(v) => updateField("frequency", v)} searchable={false} options={[{ value: "1", label: "Annual" }, { value: "2", label: "Semi-annual" }, { value: "4", label: "Quarterly" }, { value: "12", label: "Monthly" }]} /></Field>
-        <Field label="Next Scheduled Coupon Date"><DatePicker aria-label="Next scheduled coupon date" value={fields.anchorDate} onChange={(v) => updateField("anchorDate", v)} /></Field>
+        <div><Field label="Next Scheduled Coupon Date"><DatePicker aria-label="Next scheduled coupon date" value={fields.anchorDate} onChange={(v) => updateField("anchorDate", v)} /></Field>{fieldError("anchorDate")}</div>
         {text("purchaseAccruedPerBond", `Interest Paid at Purchase / Bond (${fields.currency || "USD / EUR"})`, "10.43", true)}
       </div>
     </div> : null}
@@ -113,7 +114,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       </div>
     </div>
     {calculated && fields.currency ? <dl className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-3 text-sm sm:grid-cols-2">
-      {[["Nominal Amount Held", calculated.faceAmount], ["Purchase Accrued Interest", calculated.accruedInterestPaid]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{formatCurrency(Number(value), fields.currency as "USD" | "EUR")}</dd></div>)}
+      {[["Nominal Amount Held", calculated.faceAmount], ["Total Interest Paid at Purchase", calculated.accruedInterestPaid]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{formatCurrency(Number(value), fields.currency as "USD" | "EUR")}</dd></div>)}
     </dl> : null}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
   </form></FieldFeedbackProvider>;

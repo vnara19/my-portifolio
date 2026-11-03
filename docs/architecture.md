@@ -659,3 +659,9 @@ Deleting a bond acquisition from Transactions removes that account's lot holding
 across reporting months under the linked-month undo snapshot. Dependent manual
 receipts, additional trades and linked movements block removal; a derived maturity
 exit may be removed with the acquisition. The asset catalog record is retained.
+
+Bond coupon schedules are informational only. The receipt-entry UI and receipt
+mutation path have been removed; the valuation action accepts dated market values
+only and rejects unknown receipt fields. Existing historical receipt metadata is
+read for backup compatibility and is never erased by this change. Scheduled
+coupons never create transactions, cash, additional units or automatic gains.

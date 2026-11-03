@@ -86,3 +86,14 @@ test("multi-country control cases use valid identifiers and never infer terms fr
   const brazil = await lookupBond("US105756BK57", [noLiveData]);
   assert.equal(brazil.fields.issuerCountry, "Brazil"); assert.equal(brazil.fields.currency, "USD");
 });
+
+test("coupon validation is independent of total paid and per-bond interest stays exact", () => {
+  const fields = { ...emptyBondFields(), identifier: "US172967KU42", issuer: "Citigroup", issuerCountry: "United States", currency: "USD", family: "Corporate", structure: "Fixed", maturityDate: "2030-06-18", faceValuePerBond: "1000", annualRate: "4.3", frequency: "2", anchorDate: "2026-12-18", quantity: "10", totalPaid: "9967.81", purchaseAccruedPerBond: "1.07", settlementDate: "2025-06-23" };
+  assert.equal(validateBondEntry(fields).calculated?.accruedInterestPaid, "10.7");
+  assert.equal(validateBondEntry({ ...fields, purchaseAccruedPerBond: "7.07" }).calculated?.accruedInterestPaid, "70.7");
+  assert.equal(validateBondEntry(fields).errors.anchorDate, undefined);
+  for (const totalPaid of ["", "9", "9967.81"]) {
+    assert.ok(validateBondEntry({ ...fields, totalPaid, maturityDate: "2030-04-12" }).errors.anchorDate);
+    assert.equal(validateBondEntry({ ...fields, totalPaid }).errors.anchorDate, undefined);
+  }
+});

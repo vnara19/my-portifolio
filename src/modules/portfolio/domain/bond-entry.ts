@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/browser";
 import { bondReference } from "./bond-reference";
-import { bondDay, fixedBondCouponSchema, internationalBondSchema, purchaseBondInterest } from "./international-bond";
+import { bondDay, fixedBondCouponSchema, internationalBondSchema, purchaseBondInterest, regularCouponMaturity } from "./international-bond";
 import { normalizeLocaleNumberInput } from "../presentation/portfolio-format";
 export const emptyBondFields = () => ({ identifier: "", issuer: "", issuerCountry: "", family: "", currency: "", structure: "", quantity: "", faceValuePerBond: "", settlementDate: "", maturityDate: "", totalPaid: "", purchaseAccruedPerBond: "", annualRate: "", frequency: "", anchorDate: "", dayCount: "Manual" });
 export type BondEntryFields = ReturnType<typeof emptyBondFields>;
@@ -24,6 +24,7 @@ export function validateBondEntry(fields: BondEntryFields, latestPurchaseDay = n
   } catch { errors.purchaseAccruedPerBond = "Enter purchase accrued interest, or 0 if none was paid."; }
   const coupon = fields.structure === "Fixed" ? fixedBondCouponSchema.safeParse({ annualRate: number("annualRate"), frequency: Number(fields.frequency), anchorDate: fields.anchorDate, dayCount: fields.dayCount, accrualStartDate: bondReference(fields.identifier)?.fixedCoupon?.accrualStartDate }) : null;
   if (coupon && !coupon.success) for (const issue of coupon.error.issues) errors[String(issue.path[0])] = "Review the coupon terms.";
+  if (coupon?.success && bondDay.safeParse(fields.maturityDate).success && !regularCouponMaturity(coupon.data, fields.maturityDate)) errors.anchorDate = "Coupon date must match the payment schedule ending on the maturity date. Check both dates.";
   if (!bondDay.safeParse(fields.maturityDate).success) errors.maturityDate = "Enter the maturity date.";
   if (fields.settlementDate > latestPurchaseDay) errors.settlementDate = "Purchase date cannot follow the reporting date.";
   const parsed = internationalBondSchema.safeParse({ type: "international-bond", ...fields, faceAmount, accruedInterestPaid, faceValuePerBond: number("faceValuePerBond"), totalPaid: number("totalPaid"), ...(coupon?.success ? { fixedCoupon: coupon.data } : {}), valuationMode: "Cost", quotes: [] });
