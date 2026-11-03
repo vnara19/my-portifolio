@@ -73,7 +73,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       });
     } catch (e) { setError(e instanceof Error ? e.message : "Review the bond details."); }
   }
-  const text = (key: keyof typeof fields, label: string, placeholder: string, numeric = false) => <Field label={label}><input aria-label={label} className={inputClass} value={fields[key]} inputMode={numeric ? "decimal" : "text"} placeholder={placeholder} onChange={(e) => { if (key === "identifier") { setAutomatic([]); setLookupResult(null); setLookupState("idle"); setModel({ fields: { ...emptyBondFields(), identifier: e.target.value }, touched: new Set() }); } else updateField(key, e.target.value); }} maxLength={key === "identifier" ? 12 : 80} /></Field>;
+  const text = (key: keyof typeof fields, label: string, placeholder: string, numeric = false) => <div className={key === "purchaseAccruedPerBond" ? "[&_label>span]:text-[9px] [&_label>span]:tracking-[0.02em]" : undefined}><Field label={label}><input aria-label={label} className={inputClass} value={fields[key]} inputMode={numeric ? "decimal" : "text"} placeholder={placeholder} onChange={(e) => { if (key === "identifier") { setAutomatic([]); setLookupResult(null); setLookupState("idle"); setModel({ fields: { ...emptyBondFields(), identifier: e.target.value }, touched: new Set() }); } else updateField(key, e.target.value); }} maxLength={key === "identifier" ? 12 : 80} /></Field></div>;
   return <FieldFeedbackProvider fields={feedback}><form noValidate id={formId} className="space-y-5" onSubmit={(event) => { event.preventDefault(); submit(); }}>
     <h2 className="text-base font-semibold">Bond Details</h2>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
