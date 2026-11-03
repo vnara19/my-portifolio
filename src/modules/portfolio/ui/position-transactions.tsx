@@ -193,7 +193,7 @@ export function PositionTransactions({
                               <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />
                             </button>
                           )}
-                          {!entry.locked ? <button
+                          {!entry.locked || entry.bondPurchase ? <button
                             type="button"
                             aria-label={`Delete ${entry.transferId ? "liquidation" : TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("en-GB")} on ${dayLabel(entry.occurredOn)}`}
                             disabled={removing}
@@ -214,7 +214,7 @@ export function PositionTransactions({
       )}
       <Dialog.Root open={toRemove !== null} onOpenChange={open=>{if(!open)setToRemove(null);}}><Dialog.Portal><Dialog.Backdrop className={backdropClass}/><Dialog.Popup className={centeredPopupClass}>
         <Dialog.Title className="text-base font-semibold">Delete Transaction?</Dialog.Title>
-        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${toRemove.moneyUnavailable ? "Value unavailable" : formatBrl(toRemove.amountBrl)}. This removes the recorded transaction and recalculates later holdings. Use Edit to correct its values instead.` : ""}</Dialog.Description>
+        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${toRemove.moneyUnavailable ? "Value unavailable" : formatBrl(toRemove.amountBrl)}. ${toRemove.bondPurchase ? "This removes this bond purchase and its holdings from every reporting month." : "This removes the recorded transaction and recalculates later holdings."} Use Edit to correct its values instead.` : ""}</Dialog.Description>
         <div className="mt-5 flex justify-end gap-2"><Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close><button type="button" disabled={removing} className={`${secondaryButtonClass} border-destructive/40 text-destructive`} onClick={()=>{if(toRemove){onRemove(toRemove);setToRemove(null);}}}>Delete Transaction</button></div>
       </Dialog.Popup></Dialog.Portal></Dialog.Root>
       </div>

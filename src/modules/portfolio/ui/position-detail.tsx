@@ -439,7 +439,11 @@ function PositionDetailContent({
         onRemove={(entry) =>
           startRemoving(async () => {
             const result = await removeTransactionAction({ monthId: entry.monthId, transactionId: entry.id });
-            notify(result);
+            if (result.ok && entry.bondPurchase) {
+              handOffToast({ tone: "success", message: result.message, undoToken: result.undoToken });
+              router.push(backHref);
+              router.refresh();
+            } else notify(result);
           })
         }
       />

@@ -4,7 +4,7 @@ import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 
 /** Apply or undo transactions atomically to the open month. Reject negative balances and mismatched ownership. */
 import { PositionTransactionKind, Prisma } from "@/generated/prisma/client";
-import { SCOPED_USER } from "@/lib/user-db";
+import { getUserDb, SCOPED_USER } from "@/lib/user-db";
 import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
 import { foldCalculatedIncome, MonthEditError, parseDecimal, withUndo } from "@/modules/portfolio/application/month-editing";
 import { WITHDRAWAL_ABOVE_BALANCE } from "@/modules/portfolio/domain/cdi-valuation";
@@ -112,6 +112,8 @@ export async function updateTransaction(input: {
 
 
 export async function removeTransaction(input: { monthId: string; transactionId: string }) {
+  const owned = await (await getUserDb())?.positionTransaction.findFirst({ where: { id: input.transactionId, position: { portfolioMonthId: input.monthId } }, select: { position: { select: { asset: { select: { assetType: true } } } } } });
+  if (owned?.position.asset.assetType === "international-bond") return (await import("./international-bonds")).removeBondPurchase(input);
   return withUndo(input.monthId, async (transaction, month) => {
     const entry = await findMonthTransaction(transaction, month.id, input.transactionId);
     const legs = entry.transferId

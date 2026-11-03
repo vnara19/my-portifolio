@@ -1,3 +1,5 @@
+import { MATURITY_EXIT_NOTE } from "./maturity-exits";
+import { bondPurchaseRemovalIssue } from "../domain/bond-purchase-correction";
 import { correctedBondPurchase } from "../domain/bond-purchase-correction";
 import { withUndo, MonthEditError } from "./month-editing";
 import { Prisma } from "@/generated/prisma/client";
@@ -119,5 +121,20 @@ export async function correctBondPurchase(input: { monthId: string; transactionI
       await tx.position.update({ where: { id: row.id }, data: { quantity: held, openingQuantity: row.id === entry.positionId ? row.openingQuantity : row.openingQuantity.add(new Prisma.Decimal(updated.faceAmount).sub(bond.faceAmount)), totalBrl: value.totalBrl, unitPriceBrl: value.unitPriceBrl } });
     }
     return { assets: [{ ...entry.position.asset, fixedIncomeContract: bond, expectedFixedIncomeContract: updated }] };
+  }, { linkedMonths: true });
+}
+
+/** Remove one acquisition lot across reporting months; retain the asset and undo snapshots. */
+export async function removeBondPurchase(input: { monthId: string; transactionId: string }) {
+  return withUndo(input.monthId, async (tx, month) => {
+    const purchase = await tx.positionTransaction.findFirst({ where: { id: input.transactionId, position: { portfolioMonthId: month.id } }, include: { position: { include: { asset: true } } } });
+    const bond = readInternationalBond(purchase?.position.asset.fixedIncomeContract);
+    if (!purchase || !bond || purchase.kind !== "CONTRIBUTION" || toDateKey(purchase.occurredOn) !== bond.settlementDate) throw new MonthEditError("This transaction is not the original bond purchase.");
+    const holdings = await tx.position.findMany({ where: { assetId: purchase.position.assetId, accountId: purchase.position.accountId }, select: { id: true } });
+    const ids = holdings.map(row => row.id);
+    const movements = await tx.positionTransaction.findMany({ where: { positionId: { in: ids } }, select: { id: true, kind: true, note: true, transferId: true } });
+    const issue = bondPurchaseRemovalIssue(movements, purchase.id, MATURITY_EXIT_NOTE);
+    if (issue) throw new MonthEditError(issue);
+    await tx.position.deleteMany({ where: { id: { in: ids } } });
   }, { linkedMonths: true });
 }

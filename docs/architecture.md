@@ -654,3 +654,8 @@ holdings atomically under the existing user-scoped edit lock and undo snapshots.
 Changing the acquisition to another reporting month is rejected; dated cash receipts
 remain protected from generic transaction edits. Real Preview holdings are never
 used as disposable test fixtures.
+
+Deleting a bond acquisition from Transactions removes that account's lot holdings
+across reporting months under the linked-month undo snapshot. Dependent manual
+receipts, additional trades and linked movements block removal; a derived maturity
+exit may be removed with the acquisition. The asset catalog record is retained.
