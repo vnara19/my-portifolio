@@ -105,14 +105,13 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       <h3 className="text-sm font-semibold">Your Purchase</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">{text("quantity", "Number of Bonds", "10", true)}
-          <p className="text-[10px] leading-snug text-muted-foreground">If your broker shows a nominal amount, divide it by Face Value per Bond. For example: 10,000 ÷ 1,000 = 10 bonds.</p>
+          <p className="text-[10px] leading-snug text-muted-foreground">Nominal amount ÷ Face Value per Bond. Example: 10,000 ÷ 1,000 = 10 bonds.</p>
         </div>
         <Field label="Purchase Date"><DatePicker aria-label="Purchase date" max={latestPurchaseDay} value={fields.settlementDate} onChange={(v) => updateField("settlementDate", v)} /></Field>
         {text("totalPaid", `Total Paid, Including Fees (${fields.currency || "USD / EUR"})`, "992.31", true)}
         {fields.structure !== "Fixed" ? text("purchaseAccruedPerBond", `Interest Paid at Purchase / Bond (${fields.currency || "USD / EUR"})`, fields.structure === "Zero" ? "0" : "10.43", true) : null}
       </div>
     </div>
-    <p className="text-[10px] leading-snug text-muted-foreground">Interest Paid at Purchase is the accrued interest paid per bond on your original purchase date, even when adding an older purchase.</p>
     {calculated && fields.currency ? <dl className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-3 text-sm sm:grid-cols-2">
       {[["Nominal Amount Held", calculated.faceAmount], ["Purchase Accrued Interest", calculated.accruedInterestPaid]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{formatCurrency(Number(value), fields.currency as "USD" | "EUR")}</dd></div>)}
     </dl> : null}
