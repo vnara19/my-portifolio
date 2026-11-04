@@ -93,6 +93,7 @@ export async function syncQuotes({
   fetchCdiRates,
   symbols,
   currentOnly = false,
+  treasuryHistory = false,
 }: {
   now?: Date;
   fetchQuotes?: QuoteFetcher;
@@ -104,6 +105,7 @@ export async function syncQuotes({
   /** Trusted server-side scope. Browser requests cannot supply arbitrary provider symbols. */
   symbols?: string[];
   currentOnly?: boolean;
+  treasuryHistory?: boolean;
 } = {}): Promise<QuoteSyncOutcome> {
   if (!prisma) {
     return { state: "unavailable", message: "The database is not configured." };
@@ -113,7 +115,7 @@ export async function syncQuotes({
   const clock = () => new Date(now.getTime() + (Date.now() - startedClock));
   const today = calendarDay(now);
   const currentMonth = monthOf(today);
-  const claim = await claimRun(prisma, now, today, currentMonth, symbols, currentOnly);
+  const claim = await claimRun(prisma, now, today, currentMonth, symbols, currentOnly, treasuryHistory);
 
 
   const runSelic = () =>
@@ -216,7 +218,7 @@ export async function syncQuotes({
     }
   }
 
-  outcome.histories = currentOnly ? [] : await syncHistories(prisma, claim.historySymbols, {
+  outcome.histories = currentOnly && !treasuryHistory ? [] : await syncHistories(prisma, claim.historySymbols, {
     currentMonth,
     now: clock(),
     configuration,
@@ -243,7 +245,7 @@ export async function syncQuotes({
 }
 
 
-async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMonth: Date, symbols?: string[], currentOnly = false): Promise<Claim> {
+async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMonth: Date, symbols?: string[], currentOnly = false, treasuryHistory = false): Promise<Claim> {
   return prisma.$transaction(
     async (transaction) => {
       await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${QUOTE_REFRESH_LOCK_KEY})`;
@@ -283,7 +285,8 @@ async function claimRun(prisma: PrismaClient, now: Date, today: Date, currentMon
       });
       const scopedRegistry = registry.filter(symbol => !allowed || allowed.has(symbol.symbol));
       const quoteSymbols = scopedRegistry.filter((symbol) => isQuoteDue(symbol, now)).slice(0, MAX_QUOTES_PER_RUN);
-      const historySymbols = currentOnly ? [] : scopedRegistry
+      const historySymbols = currentOnly && !treasuryHistory ? [] : scopedRegistry
+        .filter(symbol => !currentOnly || symbol.instrumentType === "TESOURO")
         .filter((symbol) => (symbol.symbol === "USD" || symbol.symbol === "EUR")
           ? !symbol.historyAttemptedAt || now.getTime() - symbol.historyAttemptedAt.getTime() >= HISTORY_RETRY_AFTER_MS
           : isHistoryDue(symbol, currentMonth, now))

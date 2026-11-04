@@ -50,6 +50,8 @@ export async function readMonthQuoteValues(
   }
 
   for (const quote of manual) {
+    const official = values.get(quote.symbol);
+    if (quote.instrumentType === "CARRIED" && official && !official.carriedFrom) continue;
     values.set(quote.symbol, { ...quote, quoteDate: null, carriedFrom: null, manual: true });
   }
 
@@ -84,6 +86,8 @@ export async function readQuoteSeries(db: QuoteReader, symbols: string[]): Promi
   }
 
   for (const quote of manual) {
+    const official = points.get(key(quote.referenceDate, quote.symbol));
+    if (quote.instrumentType === "CARRIED" && official && !official.carriedFrom) continue;
     points.set(key(quote.referenceDate, quote.symbol), { ...quote, quoteDate: null, carriedFrom: null, manual: true });
   }
 

@@ -36,6 +36,7 @@ export function monthRangeLabel(first: string, last: string) {
 
 
 export function quantityUnit(quoteSymbol: string | null, ticker: string | null) {
+  if (quoteSymbol?.startsWith("TD:") || ticker?.startsWith("TD:")) return "titles";
   return (ticker ?? quoteSymbol ?? "").replace(/\.SAO$/, "");
 }
 

@@ -235,3 +235,10 @@ export function parseTreasurySnapshot(data: unknown): TreasuryBook {
   }
   return { series };
 }
+
+/** Keep all observed daily prices so new historical purchases have TWR boundary valuations. */
+export function treasuryDailyHistoryPoints(series:TreasurySeries,months:string[],through:string) {
+  if(!months.length)return [];
+  const first=`${months[0]}-01`;
+  return series.points.filter(point=>point.day>=first&&point.day<=through);
+}

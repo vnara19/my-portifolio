@@ -682,3 +682,14 @@ New Tesouro Direto purchases ask for Total Invested (BRL) and security quantity.
 The server derives the unit acquisition price to eight decimal places while keeping
 the exact entered total as the principal. Legacy price-based purchases remain
 compatible; current market valuation continues to use quantity and official quotes.
+
+Loading shells expose only Overview and Positions; Settings remains in the account
+menu. Tesouro's provider symbol stays internal in holding subtitles, headings and
+quantity labels. Asset details retain the security name and final maturity date.
+
+Authenticated quote checks may load due Tesouro history for owned symbols, retaining
+the normal history retry limits and shared refresh lock. Treasury backfills save all
+observed daily prices, not just month-end prices, so purchases on intermediate days
+have real valuation boundaries for portfolio TWR. Explicit manual valuations remain
+respected; provisional CARRIED quotes yield to an actual official monthly quote.
+Missing history remains unavailable until provider data arrives, never interpolated.

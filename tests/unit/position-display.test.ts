@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
+import { showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
 import { typeOf } from "@/modules/portfolio/presentation/position-filters";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -45,4 +45,8 @@ test("expanded unit prices use the same reporting currency and require that mont
   assert.equal(nativeUnitPrice(600, "USD", Infinity, 6), null);
   assert.equal(nativeUnitPrice(null, "USD", 5, 6), null);
   assert.equal(nativeUnitPrice(Infinity, "USD", 5, 6), null);
+});
+
+test("technical Tesouro symbols are hidden from the asset subtitle",()=>{
+ assert.equal(showPositionTicker("Tesouro Renda+ Aposentadoria Extra 2065","TD:TESOURO-RENDA-APOSENTADORIA-EXTRA:2084-12-15"),false);
 });

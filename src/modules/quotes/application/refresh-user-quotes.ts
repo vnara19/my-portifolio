@@ -2,7 +2,7 @@ import { getUserDb } from "@/lib/user-db";
 import { currentReferenceMonth } from "../domain/calendar";
 import { syncQuotes } from "./sync-quotes";
 
-/** Only due public quotes used by the authenticated user's current holdings. No history backfill on navigation. */
+/** Only due public quotes used by the authenticated user's current holdings. Only Tesouro history backfill is allowed alongside due current quotes. */
 export async function refreshUserQuotes(now = new Date()): Promise<boolean> {
   const db = await getUserDb();
   if (!db) return false;
@@ -12,6 +12,6 @@ export async function refreshUserQuotes(now = new Date()): Promise<boolean> {
   });
   const heldSymbols = positions.flatMap(p => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []);
   if (!positions.length) return false;
-  const outcome = await syncQuotes({ now, symbols: [...new Set(["USD", "EUR", ...heldSymbols])], currentOnly: true });
-  return outcome.state === "done" && (outcome.succeeded.length > 0 || (outcome.closes?.updated ?? 0) > 0);
+  const outcome = await syncQuotes({ now, symbols: [...new Set(["USD", "EUR", ...heldSymbols])], currentOnly: true, treasuryHistory: true });
+  return outcome.state === "done" && (outcome.succeeded.length > 0 || (outcome.closes?.updated ?? 0) > 0 || (outcome.histories?.some(history => history.status === "SUCCESS") ?? false));
 }

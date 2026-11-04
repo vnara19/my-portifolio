@@ -9,7 +9,7 @@ import { fetchPtaxUsdPeriod } from "@/modules/quotes/infrastructure/bcb";
 import { fetchBinanceMonthlyCloses } from "@/modules/quotes/infrastructure/binance";
 import { fetchCoinGeckoDailyHistory, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
 import { fetchYahooDailyHistory } from "@/modules/quotes/infrastructure/yahoo";
-import { treasuryMonthEndPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/modules/quotes/domain/treasury";
+import { treasuryDailyHistoryPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { ProviderRefusalError } from "@/modules/quotes/infrastructure/http";
 import { loadReportingFxHistory } from "@/modules/quotes/application/reporting-fx-history";
@@ -61,9 +61,9 @@ export async function loadSymbolHistory(
     if (months.length === 0) return { provider: TREASURY_PROVIDER, inserted: 0 };
     const series = treasurySeriesOf(await readTreasuryBook(), target);
     if (!series) throw new ProviderRefusalError("NOT_FOUND", "Tesouro Direto has not published history for this security and maturity.");
-    const points = treasuryMonthEndPoints(series, months, toDateKey(currentMonth).slice(0, 7));
+    const points = treasuryDailyHistoryPoints(series, months, toDateKey(now));
     const created = await prisma.dailyQuote.createMany({
-      data: [...points].map(([, point]) => ({
+      data: points.map((point) => ({
         symbol: target.symbol,
         quoteDate: new Date(`${point.day}T00:00:00.000Z`),
         instrumentType: target.instrumentType,

@@ -185,12 +185,12 @@ function PositionDetailContent({
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] break-words sm:text-[2.65rem]">
             {history.bond ? `${history.bond.issuer}${history.maturityDate ? ` · ${formatDayKey(history.maturityDate)}` : ""}` : history.assetName}
           </h1>
-          <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+          {!history.quoteSymbol?.startsWith("TD:") ? <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
               {history.ticker ?? "BALANCE"}
             </span>
 
-          </p>
+          </p> : null}
           <div className="mt-3 flex flex-wrap items-center gap-1.5" data-testid="position-chips">
             {exit ? (
               exit.month === history.selectedMonth ? (
@@ -327,6 +327,7 @@ function PositionDetailContent({
         <PositionKpis
           costReturn={costReturn}
           atCost={atCost}
+          treasuryMaturity={history.quoteSymbol?.startsWith("TD:") ? history.maturityDate : null}
           summary={performanceSummary}
           quoted={quoted}
           quoteSymbol={history.quoteSymbol}
@@ -357,7 +358,7 @@ function PositionDetailContent({
       {history.prices && history.quoteSymbol ? (
         <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="asset-price-title">
           <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">
-            {history.quoteSymbol === "USD" ? "USD exchange rate" : `Quote for ${history.ticker ?? history.quoteSymbol}`}
+            {history.quoteSymbol === "USD" ? "USD exchange rate" : `Quote for ${history.quoteSymbol?.startsWith("TD:") ? history.assetName : history.ticker ?? history.quoteSymbol}`}
           </h2>
           <PriceHistoryNotice state={history.history} />
           <div className="mt-5">
@@ -377,7 +378,7 @@ function PositionDetailContent({
         </section>
       ) : quoted ? (
         <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="asset-price-title">
-          <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">Quote for {history.ticker ?? history.quoteSymbol}
+          <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">Quote for {history.quoteSymbol?.startsWith("TD:") ? history.assetName : history.ticker ?? history.quoteSymbol}
           </h2>
           <PriceHistoryNotice state={history.history} />
         </section>
@@ -508,6 +509,7 @@ function PositionDetailContent({
 function PositionKpis({
   costReturn,
   atCost,
+  treasuryMaturity,
   summary,
   quoted,
   quoteSymbol,
@@ -519,6 +521,7 @@ function PositionKpis({
 }: {
   costReturn?: { gainBrl: number; contributionsBrl: number } | null;
   atCost?: boolean;
+  treasuryMaturity?: string | null;
   summary: PositionSummary;
   quoted: boolean;
   quoteSymbol: string | null;
@@ -565,7 +568,7 @@ function PositionKpis({
         detail={
           absent ??
           liquidatedOn ??
-          (quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
+          (treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
         }
       />
 
@@ -666,7 +669,7 @@ function averagePriceLabel(costSource: PositionSummary["costSource"], dollarBala
 function PriceHistoryNotice({ state }: { state: PositionHistoryView["history"] }) {
   if (state?.state === "pending") {
     return (
-      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-primary">Preparing quote history for this asset. It will appear after the next automatic update, usually within an hour.
+      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-primary">Quote history is pending. Automatic updates will request the available history.
       </p>
     );
   }

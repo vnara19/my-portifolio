@@ -34,7 +34,7 @@ export function positionTitle(name: string, ticker: string | null, bondIssuer?: 
   return ticker && /^ETF\s*[-–—]\s*/i.test(name) ? name.replace(/^ETF\s*[-–—]\s*/i, "").trim() : name;
 }
 export function showPositionTicker(name: string, ticker: string | null) {
-  return Boolean(ticker) && positionTitle(name, ticker).toUpperCase() !== ticker!.replace(/\.(SAO|SA)$/i, "").toUpperCase();
+  return Boolean(ticker) && !ticker!.startsWith("TD:") && positionTitle(name, ticker).toUpperCase() !== ticker!.replace(/\.(SAO|SA)$/i, "").toUpperCase();
 }
 
 /** Exposure grouping is distinct from the currency used to value an asset. */

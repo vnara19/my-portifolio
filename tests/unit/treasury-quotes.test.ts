@@ -8,6 +8,7 @@ import {
   getTreasuryCatalog,
   parseTreasuryCsv,
   parseTreasurySnapshot,
+  treasuryDailyHistoryPoints,
   treasuryMonthEndPoints,
   treasuryProviderId,
   treasurySeriesOf,
@@ -236,4 +237,27 @@ test("current catalog rejects partial, duplicate or invalid official records", (
   assert.throws(() => parseTreasurySnapshot({ ...snapshot, totalCount: 2 }), /Incomplete/);
   assert.throws(() => parseTreasurySnapshot({ totalCount: 2, items: [snapshot.items[0], snapshot.items[0]] }), /Duplicate/);
   assert.throws(() => parseTreasurySnapshot({ totalCount: 1, items: [{ ...snapshot.items[0], unitaryRedemptionValue: 0 }] }), /Invalid/);
+});
+
+test("navigation can backfill a new Treasury's history without global maintenance",async()=>{
+ const fixture=syncFixture();
+ Object.assign(fixture.registry[0],{historySyncedUntil:null});
+ Object.assign(fixture.prisma,{dailyQuote:{findMany:async()=>[]},marketQuote:{findMany:async()=>[]}});
+ let loaded=false;
+ const result=await syncQuotes({prisma:fixture.prisma,now:new Date("2026-10-04T15:00:00Z"),symbols:[identity.symbol],currentOnly:true,treasuryHistory:true,
+ fetchQuotes:async()=>[{symbol:identity.symbol,provider:"tesouro",status:"SUCCESS",valueBrl:1479.25,quoteDate:"2026-10-02"}],
+ loadHistory:async(_db,target)=>{assert.equal(target.instrumentType,"TESOURO");loaded=true;return {provider:"tesouro",inserted:200};},
+ fetchSelicRate:async()=>{throw new Error("Unexpected maintenance");},fetchCdiRates:async()=>{throw new Error("Unexpected maintenance");}});
+ assert.equal(loaded,true);
+ assert.equal(result.state,"done");
+ if(result.state==="done")assert.equal(result.histories[0].status,"SUCCESS");
+});
+
+test("Treasury backfill retains daily observations rather than only month ends",()=>{
+ const book=parseTreasuryCsv(fixture);
+ const series=treasurySeriesOf(book,identity)!;
+ const daily=treasuryDailyHistoryPoints(series,["2026-09","2026-10"],"2026-10-02");
+ assert.ok(daily.length>0);
+ assert.ok(daily.every(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
+ assert.deepEqual(daily,series.points.filter(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
 });
