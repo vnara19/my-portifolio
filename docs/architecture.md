@@ -665,3 +665,5 @@ mutation path have been removed; the valuation action accepts dated market value
 only and rejects unknown receipt fields. Existing historical receipt metadata is
 read for backup compatibility and is never erased by this change. Scheduled
 coupons never create transactions, cash, additional units or automatic gains.
+
+Historical bond creation reuses stored daily FIAT observations on or up to seven days before the requested date before consulting ECB. It retains the observation date and never substitutes current FX for historical cost. USD acquisition requests are shared rather than duplicated. Missing provider data produces an actionable save error. Undo snapshots for later months are read in batches; non-auto-income holdings skip CDI valuation and redundant reloads during carry-forward. `scripts/test-bond-save.ts` verifies the June 2025 US61690D6W39 purchase through the current month in a disposable schema with the FX provider disabled.

@@ -50,10 +50,15 @@ export async function carryDatedPositions(tx: Prisma.TransactionClient, month: {
       const data = { quantity, openingQuantity, unitPriceBrl, totalBrl };
       const saved = held ? await tx.position.update({ where: { id: held.id }, data }) : await tx.position.create({ data: { ...data, userId: SCOPED_USER, portfolioMonthId: target.id, accountId: previous.accountId, assetId: previous.assetId, strategy: previous.strategy, exchangeRateBrl: previous.exchangeRateBrl, calculationStartDate: asset.autoIncome ? target.referenceDate : null } });
       if (!held && previous.allocations.length) await tx.positionAllocation.createMany({ data: previous.allocations.map(({ assetClass, subclass, duration, weight, ratePercent }) => ({ userId: SCOPED_USER, positionId: saved.id, assetClass, subclass, duration, weight, ratePercent })) });
-      await valueCdiPositions(tx, { where: { id: saved.id }, asOf: toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), addMonths(target.referenceDate, 1).getTime()))) });
-      const updated = await tx.position.findUniqueOrThrow({ where: { id: saved.id }, include: { allocations: true } });
-      delta = updated.quantity.sub(held?.quantity ?? 0);
-      previous = updated;
+      if (asset.autoIncome) {
+        await valueCdiPositions(tx, { where: { id: saved.id }, asOf: toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), addMonths(target.referenceDate, 1).getTime()))) });
+        const updated = await tx.position.findUniqueOrThrow({ where: { id: saved.id }, include: { allocations: true } });
+        delta = updated.quantity.sub(held?.quantity ?? 0);
+        previous = updated;
+      } else {
+        delta = saved.quantity.sub(held?.quantity ?? 0);
+        previous = { ...saved, allocations: held?.allocations ?? previous.allocations };
+      }
     }
   }
 }

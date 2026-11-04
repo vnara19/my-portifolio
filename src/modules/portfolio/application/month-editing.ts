@@ -1,3 +1,4 @@
+import { bondReferenceFx } from "./bond-reference-fx";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { sameSavedClassifications } from "../domain/saved-classification";
 import { ensureDatedMonth } from "./month-rollover";
@@ -277,8 +278,15 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     if (!bondMonth) throw new MonthEditError("The reporting month does not exist.");
     const asOf = toDateKey(new Date(Math.min(Date.parse(today), lastDayOf(bondMonth.referenceDate).getTime())));
     if (bond.settlementDate > asOf || bond.quotes.some((quote) => quote.date > asOf)) throw new MonthEditError("Bond dates must be within or before the reporting month.");
-    const [acquisition, current, usd] = await Promise.all([fetchReferenceFxLatest(bond.currency, bond.settlementDate), fetchReferenceFxLatest(bond.currency, asOf), fetchReferenceFxLatest("USD", bond.settlementDate)]);
-    bondFx = { acquisition, current, usd };
+    try {
+      const usdRequest = bondReferenceFx("USD", bond.settlementDate);
+      const acquisitionRequest = bond.currency === "USD" ? usdRequest : bondReferenceFx(bond.currency, bond.settlementDate);
+      const currentRequest = asOf === bond.settlementDate ? acquisitionRequest : bondReferenceFx(bond.currency, asOf);
+      const [acquisition, current, usd] = await Promise.all([acquisitionRequest, currentRequest, usdRequest]);
+      bondFx = { acquisition, current, usd };
+    } catch {
+      throw new MonthEditError("The dated exchange rate could not be retrieved. Please try again shortly; your bond has not been added.");
+    }
   }
   let fixedFx: Awaited<ReturnType<typeof fetchReferenceFxLatest>> | null = null;
   if (fixed) {
@@ -1504,14 +1512,15 @@ export async function withUndo(
         const month = await assertEditable(transaction, monthId);
         const before = await readSnapshot(transaction, month);
         const later = (options.carryForward || options.linkedMonths) ? await transaction.portfolioMonth.findMany({ where: { referenceDate: { gt: month.referenceDate } }, orderBy: { referenceDate: "asc" }, select: { id: true, referenceDate: true } }) : [];
-        const previous = await Promise.all(later.map((m) => readSnapshot(transaction, m)));
+        const previous = await readSnapshots(transaction, later);
         const extras = await mutate(transaction, month);
         const after = await readSnapshot(transaction, month);
         if (options.carryForward) {
           try { await carryDatedPositions(transaction, month, before.positions, after.positions); }
           catch (error) { throw new MonthEditError(error instanceof Error ? error.message : "Could not update later reporting months."); }
         }
-        const following = await Promise.all(later.map(async (m, i) => ({ monthId: m.id, referenceDate: m.referenceDate, snapshot: previous[i], fingerprint: fingerprint(await readSnapshot(transaction, m)) })));
+        const followingSnapshots = await readSnapshots(transaction, later);
+        const following = later.map((m, i) => ({ monthId: m.id, referenceDate: m.referenceDate, snapshot: previous[i], fingerprint: fingerprint(followingSnapshots[i]) }));
         const undoToken = storeUndo(userId, {
           kind: "restore",
           monthId: month.id,
@@ -1552,15 +1561,21 @@ async function assertEditable(transaction: Transaction, monthId: string) {
   return { id: month.id, referenceDate: month.referenceDate };
 }
 
-async function readSnapshot(
+async function readSnapshot(transaction: Transaction, month: { id: string; referenceDate: Date }): Promise<MonthSnapshot> {
+  return (await readSnapshots(transaction, [month]))[0];
+}
+
+async function readSnapshots(
   transaction: Transaction,
-  month: { id: string; referenceDate: Date },
-): Promise<MonthSnapshot> {
+  months: { id: string; referenceDate: Date }[],
+): Promise<MonthSnapshot[]> {
+  if (!months.length) return [];
   const [positions, quotes] = await Promise.all([
     transaction.position.findMany({
-      where: { portfolioMonthId: month.id },
+      where: { portfolioMonthId: { in: months.map(month => month.id) } },
       orderBy: { id: "asc" },
       select: {
+        portfolioMonthId: true,
         id: true,
         accountId: true,
         assetId: true,
@@ -1588,13 +1603,13 @@ async function readSnapshot(
       },
     }),
     transaction.manualQuote.findMany({
-      where: { referenceDate: month.referenceDate },
+      where: { referenceDate: { in: months.map(month => month.referenceDate) } },
       orderBy: { symbol: "asc" },
-      select: { id: true, symbol: true, instrumentType: true, baseCurrency: true, valueBrl: true },
+      select: { referenceDate: true, id: true, symbol: true, instrumentType: true, baseCurrency: true, valueBrl: true },
     }),
   ]);
   const transactions = await transaction.positionTransaction.findMany({
-    where: { position: { portfolioMonthId: month.id } },
+    where: { position: { portfolioMonthId: { in: months.map(month => month.id) } } },
     orderBy: { id: "asc" },
     select: {
       id: true,
@@ -1610,7 +1625,12 @@ async function readSnapshot(
     },
   });
 
-  return { positions, quotes, transactions };
+  const positionMonths = new Map(positions.map(position => [position.id, position.portfolioMonthId]));
+  return months.map(month => ({
+    positions: positions.filter(position => position.portfolioMonthId === month.id).map(({ portfolioMonthId, ...position }) => { void portfolioMonthId; return position; }),
+    quotes: quotes.filter(quote => quote.referenceDate.getTime() === month.referenceDate.getTime()).map(({ referenceDate, ...quote }) => { void referenceDate; return quote; }),
+    transactions: transactions.filter(entry => positionMonths.get(entry.positionId) === month.id),
+  }));
 }
 
 async function restoreSnapshot(
