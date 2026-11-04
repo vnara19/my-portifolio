@@ -1,5 +1,5 @@
 import { periodStart, type ChartPeriod } from "./chart-period";
-import { timeWeightedReturns, type TwrObservation } from "./time-weighted-return";
+import { returnBaselineDay, timeWeightedReturns, type TwrObservation } from "./time-weighted-return";
 export type PeriodChange = { usd:number|null; eur:number|null; percent:number|null };
 const unavailable:PeriodChange={usd:null,eur:null,percent:null};
 
@@ -24,12 +24,24 @@ export function overviewPeriodChanges(points:TwrObservation[],asOf:string,eurUsd
   return {month:periodChange(points,monthStart,asOf,eurUsd,true),year:periodChange(points,anniversary,asOf,eurUsd)};
 }
 
-/** Period selector returns share the same cash-flow-adjusted reference as Performance. */
-export function chartPeriodReturn(points:TwrObservation[],through:string,period:ChartPeriod):number|null {
+/** Overview 1M is exactly 30 trailing days; other ranges retain calendar boundaries. */
+export function portfolioPeriodStart(end:number,period:ChartPeriod):number {
+  return period==="1m"?end-30*86400000:periodStart(end,period);
+}
+
+/** Monetary profit excludes funding; percentages link the same daily TWR factors. */
+export function chartPeriodChange(points:TwrObservation[],through:string,period:ChartPeriod,eurUsd:number|null):PeriodChange {
   const history=points.filter(point=>point.day<=through);
-  if(!history.length)return null;
-  if(period==="all")return timeWeightedReturns(history).at(-1)?.percent??null;
-  const cutoff=periodStart(Date.parse(through),period);
-  const baseline=new Date(cutoff-(period==="ytd"?86400000:0)).toISOString().slice(0,10);
-  return periodChange(history,baseline,through,null,period==="ytd").percent;
+  if(!history.length)return {...unavailable};
+  const cutoff=portfolioPeriodStart(Date.parse(through),period);
+  const baseline=period==="all"?returnBaselineDay(history)!:new Date(cutoff-(period==="ytd"?86400000:0)).toISOString().slice(0,10);
+  if(period==="all"&&history.length===1&&baseline===history[0].day){
+    const percent=timeWeightedReturns(history)[0].percent;
+    return percent===null?{...unavailable}:{eur:0,usd:eurUsd!==null&&Number.isFinite(eurUsd)&&eurUsd>0?0:null,percent};
+  }
+  return periodChange(history,baseline,through,eurUsd,period==="all"||period==="ytd");
+}
+
+export function chartPeriodReturn(points:TwrObservation[],through:string,period:ChartPeriod):number|null {
+  return chartPeriodChange(points,through,period,null).percent;
 }

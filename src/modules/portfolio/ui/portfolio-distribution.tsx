@@ -23,7 +23,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     </div>
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
       <div className="relative mx-auto w-full max-w-[520px]" onMouseLeave={()=>setHover(null)}>
-        <svg viewBox="-40 0 600 520" className="block h-auto w-full overflow-visible" role="group" aria-label={`${selected.label} distribution`}>
+        <svg viewBox="-110 0 740 520" className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
           <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="29" fontWeight="600">{data.assetCount}</text>
           <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="16" fontWeight="500">Total Assets</text>
           {slices.map(({row,start,middle})=>{
@@ -32,7 +32,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
             return <g key={row.key}>
               {hover===row.key?<circle cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="86" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
               <circle data-distribution-slice={row.key} cx="260" cy="260" r="174" fill="none" stroke={row.color} strokeWidth="60" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
-              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="15" fontWeight="600" pointerEvents="none">{row.label.length>20?`${row.label.slice(0,19)}…`:row.label}</text>:null}
+              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="13" fontWeight="600" pointerEvents="none"><title>{row.label}</title>{/ \w{3} \d{4}$/.test(row.label)?<><tspan x={label.x} dy="-0.3em">{row.label.replace(/ \w{3} \d{4}$/, "").slice(0,18)}</tspan><tspan x={label.x} dy="1.2em">{row.label.slice(-8)}</tspan></>:row.label.length>18?`${row.label.slice(0,17)}…`:row.label}</text>:null}
               {row.share>=6?<text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500" pointerEvents="none">{Math.round(row.share)}%</text>:null}
             </g>;
           })}

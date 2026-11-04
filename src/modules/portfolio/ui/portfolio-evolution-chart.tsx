@@ -6,9 +6,9 @@ import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContaine
 import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import type { OverviewHistoryPoint } from "../application/get-overview-data";
-import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
+import { CHART_PERIODS, type ChartPeriod } from "../domain/chart-period";
 import { returnBaselineDay, timeWeightedReturns, type TwrObservation } from "../domain/time-weighted-return";
-import { chartPeriodReturn } from "../domain/period-performance";
+import { chartPeriodChange, portfolioPeriodStart } from "../domain/period-performance";
 import { categoryColor } from "../presentation/category-colors";
 import { formatCurrency, formatMonthCompact } from "../presentation/portfolio-format";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
@@ -23,8 +23,8 @@ const PURPLE="#a66bd4";
 const TEAL="#12b5a5";
 const dateLabel=(day:string)=>new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(day));
 
-export function PortfolioEvolutionChart({history,selectedMonth,classLabels,currencyLabels,observations=[],returnObservations=observations,benchmark={points:[],source:"S&P 500",available:false}}:{
-  history:OverviewHistoryPoint[];selectedMonth:string;classLabels:string[];currencyLabels:string[];
+export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,classLabels,currencyLabels,observations=[],returnObservations=observations,benchmark={points:[],source:"S&P 500",available:false}}:{
+  eurUsd?:number|null;history:OverviewHistoryPoint[];selectedMonth:string;classLabels:string[];currencyLabels:string[];
   observations?:TwrObservation[];returnObservations?:TwrObservation[];benchmark?:Sp500Benchmark;
 }) {
   const [, startTransition] = useTransition();
@@ -33,7 +33,7 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
   const [period,setPeriod]=useState<ChartPeriod>("all");
   const touch=useTouchTooltip();
   const end=Date.parse(history.at(-1)?.day??`${history.at(-1)?.month}-01`);
-  const start=periodStart(end,period);
+  const start=portfolioPeriodStart(end,period);
   const visible=history.filter(p=>Date.parse(p.day??`${p.month}-01`)>=start);
   const lineRows = observations.filter(p=>Date.parse(p.day)>=start&&p.day<=history.at(-1)!.day!);
   const firstDay=lineRows[0]?.day??visible[0]?.day??`${visible[0]?.month}-01`;
@@ -99,8 +99,9 @@ export function PortfolioEvolutionChart({history,selectedMonth,classLabels,curre
     <div role="group" aria-label="Chart period" className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
       {CHART_PERIODS.map(p=>{
         const through=new Date(end).toISOString().slice(0,10);
-        const result=chartPeriodReturn(returnObservations,through,p.key);
-        return <button key={p.key} type="button" aria-pressed={period===p.key} onClick={()=>setPeriod(p.key)} className={cn("rounded-xl px-2 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",period===p.key?"bg-white/10 text-foreground":"text-muted-foreground hover:bg-white/5 hover:text-foreground")}><span>{p.label}</span>{isLine?<span className={cn("mt-1 block font-mono",result===null?"text-muted-foreground":result<0?"text-destructive":"text-primary")}>{result===null?"—":`${result>0?"+":""}${result.toFixed(2)}%`}</span>:null}</button>;
+        const change=chartPeriodChange(returnObservations,through,p.key,eurUsd);
+        const result=isPerformance?change.percent:change.usd;
+        return <button key={p.key} type="button" aria-pressed={period===p.key} onClick={()=>setPeriod(p.key)} className={cn("rounded-xl px-2 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",period===p.key?"bg-white/10 text-foreground":"text-muted-foreground hover:bg-white/5 hover:text-foreground")}><span>{p.label}</span>{isLine?<span className={cn("mt-1 block font-mono",result===null?"text-muted-foreground":result<0?"text-destructive":"text-primary")}>{result===null?"—":isPerformance?`${result>0?"+":""}${result.toFixed(2)}%`:formatCurrency(result,"USD",true)}</span>:null}</button>;
       })}
     </div>
     {unavailable?<p role="status" className="mt-2 text-xs text-muted-foreground">Portfolio TWR requires complete valuations on transaction dates. Missing periods are not estimated.</p>:null}

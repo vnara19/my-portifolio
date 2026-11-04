@@ -1,6 +1,5 @@
 import type { OverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
 import { OverviewAnalytics } from "./overview-analytics";
-import { overviewPeriodChanges } from "../domain/period-performance";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import { eurToUsdRate, expressEurMetricsInUsd } from "../domain/overview-reporting";
 import type { TwrObservation } from "../domain/time-weighted-return";
@@ -39,7 +38,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </header>
 
       <div className="mt-4 min-[1440px]:relative min-[1440px]:left-1/2 min-[1440px]:w-[calc(100vw-96px)] min-[1440px]:max-w-[1800px] min-[1440px]:-translate-x-1/2">
-        <OverviewKpis overview={overview} changes={overviewPeriodChanges(performanceEur,asOf,eurToUsdRate(overview.eurRate,overview.usdRate))} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
+        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} market={marketStrip} /></div>
@@ -56,6 +55,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
 
         <div className="mt-5">
           <PortfolioEvolutionChart
+            eurUsd={eurToUsdRate(overview.eurRate,overview.usdRate)}
             observations={performance}
             returnObservations={performanceEur}
             benchmark={benchmark}

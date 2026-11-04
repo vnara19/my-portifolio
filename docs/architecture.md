@@ -669,3 +669,11 @@ coupons never create transactions, cash, additional units or automatic gains.
 Historical bond creation reuses stored daily FIAT observations on or up to seven days before the requested date before consulting ECB. It retains the observation date and never substitutes current FX for historical cost. USD acquisition requests are shared rather than duplicated. Missing provider data produces an actionable save error. Undo snapshots for later months are read in batches; non-auto-income holdings skip CDI valuation and redundant reloads during carry-forward. `scripts/test-bond-save.ts` verifies the June 2025 US61690D6W39 purchase through the current month in a disposable schema with the FX provider disabled.
 
 Overview daily performance values international bonds from their stored contract and valuation mode instead of requiring a market ticker. Cost-only bonds retain the recorded purchase cost, converted using each day's dated FX, without adding scheduled coupons. Missing actual quotations for market-mode bonds remain unavailable. A bond acquisition's saved total is its new capital basis for daily gain calculations, so entering a historical purchase cannot create a false return.
+
+Overview summary cards are ordered Portfolio Value, Unrealized Gain, Realized Gain
+and Total Gain. The daily result is part of Unrealized Gain. Portfolio Change's
+Value range selectors show monetary investment profit in USD, excluding external
+funding; Performance selectors show EUR-reference TWR. Its 1M range spans exactly
+30 trailing days. Bond labels in the distribution and active holdings performance
+use issuer and maturity year, adding the maturity month for issuer/year collisions.
+Stored asset names, identifiers, transactions and valuation rules are unchanged.

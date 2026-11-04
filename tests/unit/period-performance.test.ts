@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {periodChange,overviewPeriodChanges,chartPeriodReturn} from "../../src/modules/portfolio/domain/period-performance";
+import {periodChange,overviewPeriodChanges,chartPeriodReturn,chartPeriodChange,portfolioPeriodStart} from "../../src/modules/portfolio/domain/period-performance";
 import type {TwrObservation} from "../../src/modules/portfolio/domain/time-weighted-return";
 const points:TwrObservation[]=[
  {day:"2025-11-01",value:100,flow:100,inflow:100,outflow:0},
@@ -47,4 +47,17 @@ test("chart periods use TWR, include first funding fees and exclude later fundin
  assert.equal(chartPeriodReturn([{day:"2026-01-01",value:99,flow:100}],"2026-01-01","all"),-1.0000000000000009);
  assert.equal(chartPeriodReturn([{day:"2026-01-01",value:100,flow:0}],"2026-01-01","all"),0);
  assert.equal(chartPeriodReturn(daily.map(p=>p.day==="2026-02-01"?{...p,value:null}:p),"2026-02-02","all"),null);
+});
+
+test("Value selector shows monetary profit excluding purchases and redemptions",()=>{
+ const result=chartPeriodChange(points,"2026-11-02","all",1.1);
+ assert.equal(result.eur,26);
+ assert.ok(Math.abs(result.usd!-28.6)<1e-10);
+ assert.equal(chartPeriodChange([{day:"2026-01-01",value:99,flow:100}],"2026-01-01","all",1.1).eur,-1);
+});
+test("1M uses exactly 30 days and differs from calendar month and month-to-date",()=>{
+ assert.equal(new Date(portfolioPeriodStart(Date.parse("2026-11-04"),"1m")).toISOString().slice(0,10),"2026-10-05");
+ const daily:TwrObservation[]=[{day:"2026-10-04",value:100,flow:100},{day:"2026-10-05",value:110,flow:0},{day:"2026-10-31",value:90,flow:0},{day:"2026-11-04",value:99,flow:0}];
+ assert.equal(chartPeriodChange(daily,"2026-11-04","1m",1).eur,-11);
+ assert.equal(overviewPeriodChanges(daily,"2026-11-04",1).month.eur,9);
 });
