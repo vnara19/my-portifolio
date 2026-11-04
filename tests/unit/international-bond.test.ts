@@ -78,7 +78,8 @@ test("regular coupon metadata survives JSON restoration and rejects unsupported 
   const citi = bondReference("US172967KU42")!;
   const fixed = { ...bond, identifier: "US172967KU42", issuer: citi.issuer, maturityDate: citi.maturityDate, fixedCoupon: citi.fixedCoupon, faceValuePerBond: "1000" };
   assert.deepEqual(readInternationalBond(JSON.parse(JSON.stringify(fixed))), fixed);
-  assert.equal(readInternationalBond({ ...fixed, maturityDate: "2028-08-10" }), null);
+  assert.notEqual(readInternationalBond({ ...fixed, maturityDate: "2028-08-10" }), null);
+  assert.equal(readInternationalBond({ ...fixed, maturityDate: "2026-08-10" }), null);
   assert.equal(readInternationalBond({ ...fixed, structure: "Floating" }), null);
   assert.equal(readInternationalBond({ ...fixed, fixedCoupon: { ...fixed.fixedCoupon, annualRate: "NaN" } }), null);
   assert.equal(readInternationalBond({ ...fixed, fixedCoupon: { ...fixed.fixedCoupon, frequency: 3 } }), null);

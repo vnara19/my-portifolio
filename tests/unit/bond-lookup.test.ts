@@ -58,7 +58,7 @@ test("entry readiness checks required fields, coupon schedules, zero values and 
   assert.ok(validateBondEntry(autofilled).errors.quantity);
   assert.ok(validateBondEntry({ ...complete, totalPaid: "abc" }).errors.totalPaid);
   const valid = validateBondEntry(complete); assert.deepEqual(valid.errors, {}); assert.equal(valid.parsed.success, true); assert.equal(valid.calculated?.accruedInterestPaid, "15.645");
-  assert.ok(validateBondEntry({ ...complete, anchorDate: "2027-02-01" }).errors.anchorDate);
+  assert.equal(validateBondEntry({ ...complete, anchorDate: "2027-02-01" }).parsed.success, true);
   assert.ok(validateBondEntry({ ...complete, maturityDate: "2025-01-01" }).errors.maturityDate);
   assert.ok(validateBondEntry({ ...complete, purchaseAccruedPerBond: "1000" }).errors.purchaseAccruedPerBond);
   assert.ok(validateBondEntry({ ...complete, settlementDate: "2099-01-01" }, "2026-10-23").errors.settlementDate);
@@ -93,7 +93,17 @@ test("coupon validation is independent of total paid and per-bond interest stays
   assert.equal(validateBondEntry({ ...fields, purchaseAccruedPerBond: "7.07" }).calculated?.accruedInterestPaid, "70.7");
   assert.equal(validateBondEntry(fields).errors.anchorDate, undefined);
   for (const totalPaid of ["", "9", "9967.81"]) {
-    assert.ok(validateBondEntry({ ...fields, totalPaid, maturityDate: "2030-04-12" }).errors.anchorDate);
+    assert.ok(validateBondEntry({ ...fields, totalPaid, maturityDate: "2026-04-12" }).errors.anchorDate);
     assert.equal(validateBondEntry({ ...fields, totalPaid }).errors.anchorDate, undefined);
   }
+});
+
+test("December 18 coupons and June 20 maturity are accepted without inventing a final coupon", async () => {
+  const { scheduledBondCoupons } = await import("@/modules/portfolio/domain/international-bond");
+  const terms = { annualRate: "4.3", frequency: 2 as const, anchorDate: "2026-12-18", dayCount: "Manual" as const };
+  const schedule = scheduledBondCoupons(terms, "2026-11-04", "2030-06-20", "10000");
+  assert.equal(schedule[0].date, "2026-12-18");
+  assert.equal(schedule[0].amount, "215");
+  assert.equal(schedule.at(-1)?.date, "2030-06-18");
+  assert.ok(schedule.every(coupon => coupon.date <= "2030-06-20"));
 });

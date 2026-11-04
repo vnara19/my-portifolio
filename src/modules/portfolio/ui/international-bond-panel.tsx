@@ -1,5 +1,5 @@
 "use client";
-import { type InternationalBond, BOND_FAMILIES, scheduledBondCoupons, fixedBondAccrued, bondCostState } from "../domain/international-bond";
+import { type InternationalBond, BOND_FAMILIES, scheduledBondCoupons, fixedBondAccrued, bondCostState, regularCouponMaturity } from "../domain/international-bond";
 import { Prisma } from "@/generated/prisma/browser";
 import { formatCurrency } from "../presentation/portfolio-format";
 export function InternationalBondPanel({ bond, asOf, faceHeld }: { bond: InternationalBond; asOf: string; faceHeld: number }) {
@@ -8,7 +8,7 @@ export function InternationalBondPanel({ bond, asOf, faceHeld }: { bond: Interna
   const money = (amount: string) => formatCurrency(Number(amount), bond.currency);
   const field = (label: string, text: string) => <div><dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm">{text}</dd></div>;
   const schedule = bond.fixedCoupon && bond.maturityDate ? scheduledBondCoupons(bond.fixedCoupon, asOf, bond.maturityDate, String(faceHeld)) : [];
-  const contractualAccrued = bond.fixedCoupon?.dayCount === "30/360 US" && bond.maturityDate ? fixedBondAccrued(bond.fixedCoupon, asOf, String(faceHeld), bond.maturityDate) : null;
+  const contractualAccrued = bond.fixedCoupon?.dayCount === "30/360 US" && bond.maturityDate && regularCouponMaturity(bond.fixedCoupon, bond.maturityDate) ? fixedBondAccrued(bond.fixedCoupon, asOf, String(faceHeld), bond.maturityDate) : null;
   const originalCoupons = bond.fixedCoupon && bond.maturityDate ? scheduledBondCoupons(bond.fixedCoupon, bond.settlementDate, bond.maturityDate, bond.faceAmount) : [];
   const originalGrossGain = originalCoupons.length ? originalCoupons.reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(bond.faceAmount)).sub(bond.totalPaid) : null;
   return <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" data-testid="international-bond-panel">

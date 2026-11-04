@@ -59,7 +59,7 @@ export const internationalBondSchema = z.object({
   if (bond.maturityDate && bond.maturityDate <= bond.settlementDate) ctx.addIssue({ code: "custom", path: ["maturityDate"], message: "Maturity must follow settlement." });
   if (bond.quotes.some((quote) => quote.date < bond.settlementDate)) ctx.addIssue({ code: "custom", path: ["quotes"], message: "A quote cannot precede settlement." });
   if (new Set(bond.quotes.map((quote) => quote.date)).size !== bond.quotes.length) ctx.addIssue({ code: "custom", path: ["quotes"], message: "Keep one closing valuation per date." });
-  if (bond.fixedCoupon && (bond.structure !== "Fixed" || !bond.maturityDate || !regularCouponMaturity(bond.fixedCoupon, bond.maturityDate))) ctx.addIssue({ code: "custom", path: ["fixedCoupon"], message: "Coupon dates must follow a regular schedule ending at maturity. Use manual receipts for irregular bonds." });
+  if (bond.fixedCoupon && (bond.structure !== "Fixed" || !bond.maturityDate || bond.fixedCoupon.anchorDate > bond.maturityDate)) ctx.addIssue({ code: "custom", path: ["fixedCoupon"], message: "The next coupon date must be on or before maturity." });
   if (bond.fixedCoupon?.accrualStartDate && bond.settlementDate < bond.fixedCoupon.accrualStartDate) ctx.addIssue({ code: "custom", path: ["settlementDate"], message: "Settlement cannot precede the bond's interest start date." });
 });
 export type InternationalBond = z.infer<typeof internationalBondSchema>;
@@ -129,7 +129,7 @@ export function regularCouponMaturity(terms: FixedBondCoupon, maturity: string) 
 }
 /** Contractual dates, without guessing broker credit dates or holiday adjustments. */
 export function scheduledBondCoupons(terms: FixedBondCoupon, after: string, maturity: string, faceHeld: string) {
-  if (!regularCouponMaturity(terms, maturity)) throw new Error("The maturity does not match the regular coupon schedule.");
+  if (terms.anchorDate > maturity) throw new Error("The next coupon date must be on or before maturity.");
   const result: { date: string; amount: string }[] = [];
   const amount = new Prisma.Decimal(faceHeld).mul(terms.annualRate).div(100).div(terms.frequency).toDecimalPlaces(8).toFixed();
   let offset = couponOffset(terms, after);
