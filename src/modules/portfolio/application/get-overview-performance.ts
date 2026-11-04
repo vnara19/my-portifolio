@@ -1,3 +1,5 @@
+import { readInternationalBond } from "../domain/international-bond";
+import { bondReportingUnitPrice } from "../domain/bond-performance";
 import { dailyOpenGain } from "../domain/overview-performance-metrics";
 import { getUserDb } from "@/lib/user-db";
 import type { PortfolioLedger } from "./get-portfolio-ledger";
@@ -14,7 +16,7 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const history=historyThroughMonth(overview.history,overview.referenceDate);
   if (!history.length) return [];
   const tx=[...ledger.originals].sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn)||a.id.localeCompare(b.id));
-  const assets=await db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true}});
+  const assets=await db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true,fixedIncomeContract:true}});
   const monthlyPositions=await db.position.findMany({select:{assetId:true,quantity:true,portfolioMonth:{select:{referenceDate:true}}}});
   const invalidMonths=new Set<string>();
   for(const h of history){
@@ -35,10 +37,17 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const firstDay=tx[0]?.occurredOn??[...snapshots.keys()].sort()[0];
   const days=[...new Set([...snapshots.keys(),...flowDays,...quotes.map(q=>q.quoteDate.toISOString().slice(0,10)).filter(day=>day>=firstDay&&day<=end)])].sort();
   const assetMap=new Map(assets.map(a=>[a.id,a]));
+  const bonds=new Map(assets.flatMap(asset=>{const bond=readInternationalBond(asset.fixedIncomeContract);return bond?[[asset.id,bond] as const]:[];}));
   const eur=quotes.filter(q=>q.symbol==="EUR").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const reportingRates=currency==="EUR"?eur:usd;
   const unitReporting=(id:string,on:string)=>{
     const asset=assetMap.get(id),symbol=asset?.quoteSymbol;
+    const bond=bonds.get(id);
+    if(bond){
+      const nativeFx=datedFx(on,null,bond.currency,bond.currency==="EUR"?eur:usd,new Map());
+      const reportingFx=datedFx(on,null,currency,reportingRates,new Map());
+      return bondReportingUnitPrice(bond,on,nativeFx?.rate??null,reportingFx?.rate??null);
+    }
     const price=symbol?[...(prices.get(symbol)??[])].reverse().find(p=>p.day<=on&&Date.parse(on)-Date.parse(p.day)<=7*86400000):null;
     if(!price)return null;
     const nativeCurrency=asset?.assetType==="crypto"?"USD":price.currency;
@@ -71,7 +80,7 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
       if(id && (entry.kind==="CONTRIBUTION"||entry.kind==="OPENING")){
         const previous=bought.get(id)??{units:0,principal:0};
         const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
-        const principal=exact?exact.amountBrl.minus(exact.feeBrl).toNumber():entry.unitPriceBrl===null?null:entry.unitPriceBrl*entry.quantity;
+        const principal=id&&bonds.has(id)?paid:exact?exact.amountBrl.minus(exact.feeBrl).toNumber():entry.unitPriceBrl===null?null:entry.unitPriceBrl*entry.quantity;
         bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&principal!==null&&fx?previous.principal+principal/fx.rate:null});
       }
       const paidIncome=entry.kind==="INCOME"&&entry.quantity===0;
