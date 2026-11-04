@@ -364,7 +364,7 @@ function PositionDetailContent({
           <div className="mt-5">
             <AssetPriceChart
               prices={history.prices}
-              symbol={history.quoteSymbol}
+              symbol={history.quoteSymbol.startsWith("TD:") ? history.assetName : history.quoteSymbol}
               selectedMonth={history.selectedMonth}
               averagePriceBrl={summary.averagePriceBrl}
               averageLabel={averagePriceLabel(summary.costSource, dollarBalance)}

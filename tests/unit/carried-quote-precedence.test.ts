@@ -16,3 +16,10 @@ test("explicit manual quotes and provisional values without official closes reta
  assert.equal((await readMonthQuoteValues(reader("TESOURO"),referenceDate)).values().next().value?.valueBrl.toFixed(),"153.32");
  assert.equal((await readQuoteSeries(reader("CARRIED",new Date("2026-10-01")),["TD:TEST:2084-12-15"]))[0].valueBrl.toFixed(),"153.32");
 });
+
+test("provisional monthly prices remain marked as carried so daily history can replace them",async()=>{
+ const db={marketQuote:{findMany:async()=>[]},manualQuote:reader("CARRIED").manualQuote} as unknown as Parameters<typeof readMonthQuoteValues>[0];
+ const series=await readQuoteSeries(db,["TD:TEST:2084-12-15"]);
+ assert.equal(series[0].carriedFrom?.toISOString(),referenceDate.toISOString());
+ assert.equal((await readMonthQuoteValues(db,referenceDate)).values().next().value?.carriedFrom?.toISOString(),referenceDate.toISOString());
+});

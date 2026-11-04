@@ -214,8 +214,12 @@ export async function getPositionHistory({
     const trackedSince = new Map(
       [...recordedByAccount].map(([id, byMonth]) => [id, [...byMonth.keys()].sort()[0] ?? null]),
     );
+    const treasuryPrices = asset.quoteSymbol?.startsWith("TD:") ? await prisma.dailyQuote.findMany({where:{symbol:asset.quoteSymbol},orderBy:{quoteDate:"asc"},select:{quoteDate:true,valueBrl:true}}) : [];
     const observations: PositionObservation[] = positions.map((position) => {
       const month = monthKey(position.portfolioMonth.referenceDate);
+      const closingDay = new Date(Math.min(Date.now(), Date.UTC(position.portfolioMonth.referenceDate.getUTCFullYear(),position.portfolioMonth.referenceDate.getUTCMonth()+1,0)));
+      const observed = treasuryPrices.findLast(point=>point.quoteDate<=closingDay);
+      const treasuryPrice = observed && +closingDay-+observed.quoteDate<=7*86400000 ? observed.valueBrl : null;
       const movements = recordedByAccount.get(position.accountId)?.get(month) ?? null;
       const since = trackedSince.get(position.accountId) ?? null;
       const tracked = since !== null && month >= since;
@@ -230,8 +234,8 @@ export async function getPositionHistory({
 
 
       recorded,
-      unitPriceBrl: position.unitPriceBrl?.toNumber() ?? null,
-      totalBrl: position.totalBrl.toNumber(),
+      unitPriceBrl: (treasuryPrice ?? position.unitPriceBrl)?.toNumber() ?? null,
+      totalBrl: treasuryPrice ? position.quantity.mul(treasuryPrice).toNumber() : position.totalBrl.toNumber(),
       strategy: position.strategy,
       allocations: position.allocations.map((allocation) => ({
         assetClass: allocation.assetClass,
