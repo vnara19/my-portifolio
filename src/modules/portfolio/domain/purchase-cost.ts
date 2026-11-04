@@ -53,3 +53,12 @@ export function recordedTradeAmounts(input: {
   if (!price.mul(fx).toDecimalPlaces(8).eq(input.unitPriceBrl) || !amount.toDecimalPlaces(2).eq(input.amountBrl)) return null;
   return { amountBrl: amount, feeBrl: fee.mul(fx) };
 }
+
+/** Derive the execution unit price server-side, retaining the exact entered principal. */
+export function treasuryUnitPriceFromTotal(total:string,quantity:string):string {
+  for(const raw of [total,quantity]) {
+    if(!/^\d+(?:\.\d+)?$/.test(raw)||!new Prisma.Decimal(raw).isFinite()||new Prisma.Decimal(raw).lte(0)) throw new Error("Enter a positive invested amount and quantity.");
+  }
+  if(new Prisma.Decimal(total).decimalPlaces()>2) throw new Error("Enter the total invested with at most two decimal places.");
+  return new Prisma.Decimal(total).div(quantity).toDecimalPlaces(8).toFixed();
+}

@@ -677,3 +677,8 @@ funding; Performance selectors show EUR-reference TWR. Its 1M range spans exactl
 30 trailing days. Bond labels in the distribution and active holdings performance
 use issuer and maturity year, adding the maturity month for issuer/year collisions.
 Stored asset names, identifiers, transactions and valuation rules are unchanged.
+
+New Tesouro Direto purchases ask for Total Invested (BRL) and security quantity.
+The server derives the unit acquisition price to eight decimal places while keeping
+the exact entered total as the principal. Legacy price-based purchases remain
+compatible; current market valuation continues to use quantity and official quotes.

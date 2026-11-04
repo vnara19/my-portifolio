@@ -1,3 +1,4 @@
+import { treasuryUnitPriceFromTotal } from "../domain/purchase-cost";
 import { bondReferenceFx } from "./bond-reference-fx";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { sameSavedClassifications } from "../domain/saved-classification";
@@ -260,6 +261,10 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     let purchaseInput = input.addition.purchase;
     if (purchaseKind === "treasury") {
       if (treasury?.offered === false && purchaseInput.occurredOn >= treasury.points[0].day) throw new MonthEditError("This security is no longer offered. Enter the original purchase date from your confirmation.");
+      if (purchaseInput.amountInvested !== undefined) {
+        try { purchaseInput = {...purchaseInput, price: treasuryUnitPriceFromTotal(purchaseInput.amountInvested, input.addition.value)}; }
+        catch(error) { throw new MonthEditError(error instanceof Error ? error.message : "Review the invested amount."); }
+      }
       const rate = purchaseInput.contractedRate;
       if (!rate || !/^-?\d+(?:\.\d{1,8})?$/.test(rate) || new Prisma.Decimal(rate).lte(-100) || new Prisma.Decimal(rate).gt(1000)) throw new MonthEditError("Enter the contracted annual rate from your purchase confirmation.");
       if (purchaseInput.side === "SELL") throw new MonthEditError("Use the existing redemption workflow for a Tesouro Direto sale.");

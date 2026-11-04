@@ -276,7 +276,9 @@ function PositionForm({
   const purchaseEntry = !editing && kind !== null && (isMarketKind(kind) || kind === "crypto" || kind === "treasury");
   const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : kind === "treasury" ? "BRL" : null);
   const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
-  const purchaseUnit = parseLocaleNumber(purchasePrice);
+  const enteredPurchaseAmount = parseLocaleNumber(purchasePrice);
+  const treasuryUnits = parseLocaleNumber(value);
+  const purchaseUnit = kind === "treasury" ? enteredPurchaseAmount !== null && treasuryUnits !== null && treasuryUnits > 0 ? enteredPurchaseAmount / treasuryUnits : null : enteredPurchaseAmount;
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const fixedIncomeEntry = !editing && kind === "fixed-income";
@@ -401,7 +403,7 @@ function PositionForm({
   const issues: Issue[] = [];
   if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
-    issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the price per title, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
+    issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the total invested, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
 
   if (purchaseEntry && kind === "treasury" && (!selectedTreasury || parseLocaleNumber(contractedRate) === null || (parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7))) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
@@ -532,7 +534,7 @@ function PositionForm({
                   },
                 }),
             value: purchaseEntry || fixedIncomeEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
-            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: normalizeLocaleNumberInput(purchasePrice)!, commission: kind === "treasury" ? "0" : normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)! } : {}) } } : {}),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: kind === "treasury" ? "1" : normalizeLocaleNumberInput(purchasePrice)!, ...(kind === "treasury" ? { amountInvested: normalizeLocaleNumberInput(purchasePrice)! } : {}), commission: kind === "treasury" ? "0" : normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)! } : {}) } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -574,7 +576,7 @@ function PositionForm({
     } else if (purchaseEntry) {
       requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
       requireField(kind === "treasury" ? "Titles Purchased" : "Quantity", parsedValue !== null && parsedValue > 0 && (kind !== "treasury" || Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) < 1e-7));
-      requireField(kind === "treasury" ? "Price per Title" : side === "SELL" ? "Sale price" : "Purchase price", purchaseUnit !== null && purchaseUnit > 0);
+      requireField(kind === "treasury" ? "Total Invested" : side === "SELL" ? "Sale price" : "Purchase price", purchaseUnit !== null && purchaseUnit > 0);
       requireField(kind === "treasury" ? "Purchase date" : "Trade date", Boolean(purchaseDate) && purchaseDate <= latestPurchaseDay);
       if (kind === "treasury") requireField(treasuryYieldLabel(selectedTreasury?.indexer), parseLocaleNumber(contractedRate) !== null);
       else requireField("Commission", purchaseFee !== null && purchaseFee >= 0);
@@ -833,7 +835,7 @@ function PositionForm({
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={(day) => { if (day === purchaseDate) return; setPurchaseDate(day); setContractedRate(""); }} max={latestPurchaseDay} /></Field>
                       <Field label="Titles Purchased"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
-                      <Field label="Price per Title (BRL)"><input aria-label="Purchase price" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="153.32" className={inputClass} /></Field>
+                      <Field label="Total Invested (BRL)"><input aria-label="Total invested" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
                       <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="7.23" className={inputClass} /></Field>
                     </div>
                   </> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
