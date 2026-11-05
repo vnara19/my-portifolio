@@ -1,7 +1,7 @@
 import { bondChartLabels } from "../presentation/bond-chart-labels";
 import { buildPortfolioDistribution, type PortfolioDistribution } from "../domain/portfolio-distribution";
 import { englishLabel } from "@/lib/english-labels";
-import { positionTitle } from "../presentation/position-display";
+import { overviewAssetLabel } from "../presentation/position-display";
 import { historicalClosingValues } from "./historical-closing-values";
 import { getMonthPositions } from "./get-month-positions";
 import { eurToUsdRate, expressEurGainsInUsd } from "../domain/overview-reporting";
@@ -240,7 +240,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       const gainEur=gainByAsset.get(position.assetId);
       const cross=eurToUsdRate(eurRate,usdRate);
       const previous=uniqueHoldings.get(position.assetId);
-      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||position.ticker?.replace(/\.(SAO|SA)$/i,"")||positionTitle(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainEur==null||cross==null?null:gainEur*cross});
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainEur==null||cross==null?null:gainEur*cross});
     }
     const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
     const gains = expressEurGainsInUsd(referenceGains, eurToUsdRate(eurRate, usdRate));

@@ -41,3 +41,8 @@ export function showPositionTicker(name: string, ticker: string | null) {
 export function exposureCurrency(assetType: AssetType, baseCurrency: string): string {
   return valuationCurrency(assetType, baseCurrency);
 }
+
+/** Human-readable Treasury names replace internal provider keys across Overview. */
+export function overviewAssetLabel(name:string,ticker:string|null) {
+  return ticker?.startsWith("TD:") ? name : ticker?.replace(/\.(SAO|SA)$/i, "") || positionTitle(name,ticker);
+}

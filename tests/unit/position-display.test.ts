@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
+import { overviewAssetLabel, showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
 import { typeOf } from "@/modules/portfolio/presentation/position-filters";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -49,4 +49,10 @@ test("expanded unit prices use the same reporting currency and require that mont
 
 test("technical Tesouro symbols are hidden from the asset subtitle",()=>{
  assert.equal(showPositionTicker("Tesouro Renda+ Aposentadoria Extra 2065","TD:TESOURO-RENDA-APOSENTADORIA-EXTRA:2084-12-15"),false);
+});
+
+test("Overview uses the Treasury asset name consistently instead of its provider key",()=>{
+ const name="Tesouro Renda+ Aposentadoria Extra 2065";
+ assert.equal(overviewAssetLabel(name,"TD:TESOURO-RENDA-APOSENTADORIA-EXTRA:2084-12-15"),name);
+ assert.equal(overviewAssetLabel("ETF - UETW","UETW"),"UETW");
 });

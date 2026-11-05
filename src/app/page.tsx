@@ -1,3 +1,4 @@
+import { overviewAssetLabel } from "@/modules/portfolio/presentation/position-display";
 import { getOverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
 import { getOverviewFx } from "@/modules/portfolio/application/get-overview-fx";
 import { getRiskFreeRate } from "@/modules/portfolio/application/risk-free-rate";
@@ -32,7 +33,7 @@ export default async function Home({
 
   return (
     <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null}>
-      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} marketStrip={marketStrip} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} fxHistory={fxHistory} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,t.ticker??t.assetName??"Asset"]))} />
+      <OverviewDashboard overview={overview} selic={selic} performance={performance} performanceEur={performanceEur} marketStrip={marketStrip} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} fxHistory={fxHistory} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,overviewAssetLabel(t.assetName??"Asset",t.ticker??null)]))} />
     </AppShell>
   );
 }
