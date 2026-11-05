@@ -102,7 +102,7 @@ export function RefreshRunHistory({
             disabled={isLoading}
             className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
           >
-            {isLoading ? "Loading…" : "Show more"}
+            {isLoading ? "Loading…" : "Show More"}
           </button>
         </div>
       ) : null}

@@ -27,7 +27,7 @@ export type QuoteRunHistoryPage = {
   nextCursor: string | null;
 };
 
-export const RUN_HISTORY_PAGE_SIZE = 30;
+export const RUN_HISTORY_PAGE_SIZE = 10;
 
 export async function getRunHistory(referenceDate: Date, before?: string): Promise<QuoteRunHistoryPage | null> {
   const prisma = getPrismaClient();

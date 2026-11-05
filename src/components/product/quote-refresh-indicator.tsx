@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect } from "react";
 
 import { runOpenCheck } from "@/components/product/quote-refresh-client";
@@ -40,12 +42,12 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
 
   return (
     <>
-    <div
+    <Link
+      href="/posicoes/cotacoes"
       data-testid="quote-refresh"
       title={title || undefined}
       aria-label={[longLabel ?? "Quotes", issueText].filter(Boolean).join(". ")}
-      role="status"
-      className="relative flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-card/70 px-1 md:px-3"
+      className="relative flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-card/70 px-1 transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary md:px-3"
     >
       <span
         className={cn(
@@ -71,7 +73,7 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
           className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive ring-2 ring-card"
         />
       ) : null}
-    </div>
+    </Link>
     </>
   );
 }
