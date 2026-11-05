@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { internationalBondSchema, bondValue, validBondIdentifier, bondAllocation, readInternationalBond } from "@/modules/portfolio/domain/international-bond";
+import { newInternationalBondSchema, internationalBondSchema, bondValue, validBondIdentifier, bondAllocation, readInternationalBond } from "@/modules/portfolio/domain/international-bond";
 import { readFixedIncomeContract } from "@/modules/portfolio/domain/brazilian-fixed-income";
 const bond = internationalBondSchema.parse({ type: "international-bond", identifier: "US105756BK57", issuer: "Federative Republic of Brazil", issuerCountry: "Brazil", currency: "USD", family: "Sovereign", structure: "Fixed", faceAmount: "10000", totalPaid: "9803", settlementDate: "2026-01-15", maturityDate: "2037-01-20", quotes: [{ date: "2026-10-01", marketValue: "10500", source: "IBKR" }] });
 test("bond identifiers validate ISIN/CUSIP checksums without inferring issuer nationality", () => {
@@ -137,4 +137,11 @@ test("cost-tracked detail return includes received coupons and principal without
   const { bondCostReturn } = await import("@/modules/portfolio/domain/international-bond");
   assert.deepEqual(bondCostReturn(9750, [{ kind: "CONTRIBUTION", amountBrl: 9800 }, { kind: "INCOME", amountBrl: 100 }]), { gainBrl: 50, contributionsBrl: 9800 });
   assert.equal(bondCostReturn(4875, [{ kind: "CONTRIBUTION", amountBrl: 9800 }, { kind: "INCOME", amountBrl: 100 }, { kind: "WITHDRAWAL", amountBrl: 5000 }]).gainBrl, 175);
+});
+
+test("new bond purchases reject market valuation and receipt contracts while legacy backups stay readable",()=>{
+ assert.equal(newInternationalBondSchema.safeParse(bond).success,false);
+ assert.equal(newInternationalBondSchema.safeParse({...bond,valuationMode:"Cost",quotes:[]}).success,true);
+ assert.equal(newInternationalBondSchema.safeParse({...bond,valuationMode:"Cost",quotes:[],costEvents:[{date:"2026-02-01",coupon:"5",redeemedFace:"0"}]}).success,false);
+ assert.ok(readInternationalBond(bond));
 });

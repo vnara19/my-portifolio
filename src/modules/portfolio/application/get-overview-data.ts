@@ -4,7 +4,7 @@ import { englishLabel } from "@/lib/english-labels";
 import { overviewAssetLabel } from "../presentation/position-display";
 import { historicalClosingValues } from "./historical-closing-values";
 import { getMonthPositions } from "./get-month-positions";
-import { eurToUsdRate, expressEurGainsInUsd } from "../domain/overview-reporting";
+import { expressUsdGainsInEur } from "../domain/overview-reporting";
 import { exposureCurrency } from "../presentation/position-display";
 import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
@@ -45,7 +45,7 @@ export type OverviewData = {
   gainsEur?: PortfolioGains;
   realizedHistory: {day:string;value:number}[];
   holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;quoteSymbol:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
-  accountingCurrency: "EUR";
+  accountingCurrency: "USD";
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
@@ -229,21 +229,21 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
     })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
-    const gainsEur = await getPortfolioGains(selected.referenceDate, eurRate, "EUR");
-    const {byAsset:assetGains,realizedHistory,...referenceGains}=gainsEur;
+    const dollarGains = await getPortfolioGains(selected.referenceDate, usdRate, "USD");
+    const {byAsset:assetGains,realizedHistory,...referenceGains}=dollarGains;
     const gainByAsset = new Map(assetGains.map(row=>[row.assetId,row.unrealizedUsd]));
     const bondLabels=bondChartLabels(positionsView?.positions??[]);
     const uniqueHoldings = new Map<string,{assetId:string;label:string;assetClass:string;currency:string;valueUsd:number;unrealizedGainUsd:number|null}>();
     for (const position of positionsView?.positions ?? []) {
       if(position.liquidated || position.totalBrl<=0 || !usdRate)continue;
       const dominant=[...position.allocations].sort((a,b)=>b.weight-a.weight)[0];
-      const gainEur=gainByAsset.get(position.assetId);
-      const cross=eurToUsdRate(eurRate,usdRate);
+      const gainUsd=gainByAsset.get(position.assetId);
       const previous=uniqueHoldings.get(position.assetId);
-      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainEur==null||cross==null?null:gainEur*cross});
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
     }
     const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
-    const gains = expressEurGainsInUsd(referenceGains, eurToUsdRate(eurRate, usdRate));
+    const gains = referenceGains;
+    const gainsEur = expressUsdGainsInEur(referenceGains, eurRate, usdRate);
 
     return {
       referenceDate: selected.referenceDate,
@@ -255,8 +255,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       eurRate,
       reporting,
       gains,
-      gainsEur: referenceGains,
-      accountingCurrency: "EUR",
+      gainsEur,
+      accountingCurrency: "USD",
       realizedHistory,
       holdingResults: assetGains,
       changeBrl,

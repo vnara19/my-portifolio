@@ -8,6 +8,7 @@ export function holdingCutoff(asOf:string,period:string){
  if(period==='all')return null;
  if(period==='ytd')return `${d.getUTCFullYear()-1}-12-31`;
  if(period==='1w')return key(new Date(+d-7*86400000));
+ if(period==='1m')return key(new Date(+d-30*86400000));
  const months=period==='1m'?1:period==='3m'?3:period==='1y'?12:60;
  const first=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-months,1));
  return key(new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth(),Math.min(d.getUTCDate(),new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate()))));

@@ -17,7 +17,7 @@ const button="rounded-full px-3 py-2 text-xs font-medium text-muted-foreground h
 const selected=" bg-primary/15 text-primary";
 const panel="premium-panel mt-6 min-w-0 rounded-[24px] p-5 sm:p-7";
 
-export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labels,asOf,fxHistory,currentFx}:{overview:OverviewData;observations:TwrObservation[];usd:TwrObservation[];benchmark:Sp500Benchmark;rate:number|null;labels:Record<string,string>;asOf:string;currentFx:number|null;fxHistory:{day:string;value:number}[]}){
+export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labels,asOf}:{overview:OverviewData;observations:TwrObservation[];usd:TwrObservation[];benchmark:Sp500Benchmark;rate:number|null;labels:Record<string,string>;asOf:string}){
  const [profitSeries,setProfitSeries]=useState<"both"|"profit"|"realized">("both");
  const [year,setYear]=useState("all");
  const [period,setPeriod]=useState<ChartPeriod>("all");
@@ -32,9 +32,8 @@ export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labe
  const months=rows.filter(r=>year==="all"||year==="ttm"&&r.month>=ttm.toISOString().slice(0,7)||r.month.startsWith(year));
 
  const start=periodStart(Date.parse(asOf),period);
- const profits=overview.gainsEur?.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,fxHistory).filter(p=>Date.parse(p.day)>=start&&p.day<=asOf);
- const fx=currentFx;
- const holdings=overview.holdingResults.filter(r=>sold||!r.sold).map(r=>({...r,label:overview.distribution.assets.find(a=>a.key===r.assetId)?.label??labels[r.assetId]??"Asset",result:r.totalUsd===null||fx===null?null:r.totalUsd*fx,percentage:r.totalUsd===null||r.principal<=0?null:r.totalUsd/r.principal*100})).filter(r=>filter==="all"||filter==="gainers"&&r.totalUsd!==null&&r.totalUsd>0||filter==="losers"&&r.totalUsd!==null&&r.totalUsd<0).sort((a,b)=>(absolute?b.result??-Infinity:b.percentage??-Infinity)-(absolute?a.result??-Infinity:a.percentage??-Infinity));
+ const profits=overview.gains.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,[],true).filter(p=>Date.parse(p.day)>=start&&p.day<=asOf);
+ const holdings=overview.holdingResults.filter(r=>sold||!r.sold).map(r=>({...r,label:overview.distribution.assets.find(a=>a.key===r.assetId)?.label??labels[r.assetId]??"Asset",result:r.totalUsd,percentage:r.totalUsd===null||r.principal<=0?null:r.totalUsd/r.principal*100})).filter(r=>filter==="all"||filter==="gainers"&&r.totalUsd!==null&&r.totalUsd>0||filter==="losers"&&r.totalUsd!==null&&r.totalUsd<0).sort((a,b)=>(absolute?b.result??-Infinity:b.percentage??-Infinity)-(absolute?a.result??-Infinity:a.percentage??-Infinity));
  const max=Math.max(1,...holdings.map(r=>Math.abs((absolute?r.result:r.percentage)??0)));
  return <>
   <section className={panel} aria-label="Portfolio Profitability">

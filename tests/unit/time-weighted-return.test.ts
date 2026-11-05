@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { returnBaselineDay, timeWeightedReturns } from "@/modules/portfolio/domain/time-weighted-return";
-import { periodStart } from "@/modules/portfolio/domain/chart-period";
+import { periodStart, monthlyObservationTime } from "@/modules/portfolio/domain/chart-period";
 test("TWR excludes deposits and withdrawals, linking investment returns",()=>{
  const points=timeWeightedReturns([
   {day:"2026-01-01",value:100,flow:100},{day:"2026-01-02",value:200,flow:100},
@@ -20,8 +20,8 @@ test("missing flow-date values invalidate the linked return rather than interpol
  const result=timeWeightedReturns([{day:"2026-01-01",value:100,flow:100},{day:"2026-01-02",value:null,flow:100},{day:"2026-01-03",value:220,flow:0}]);
  assert.equal(result[2].percent,null);
 });
-test("calendar ranges clamp leap days and All does not truncate history",()=>{
- assert.equal(periodStart(Date.parse("2024-03-31"),"1m"),Date.parse("2024-02-29"));
+test("rolling 1M stays 30 days across leap years and All does not truncate history",()=>{
+ assert.equal(periodStart(Date.parse("2024-03-31"),"1m"),Date.parse("2024-03-01"));
  assert.equal(periodStart(Date.parse("2026-10-29"),"ytd"),Date.parse("2026-01-01"));
  assert.equal(periodStart(Date.now(),"all"),-Infinity);
 });
@@ -82,4 +82,11 @@ test("historical performance stops at its selected month after rollover", () => 
   const history = ["2026-09-01", "2026-10-01", "2026-11-01"].map(day => ({ date: new Date(day) }));
   assert.deepEqual(historyThroughMonth(history, new Date("2026-10-01")), history.slice(0, 2));
   assert.deepEqual(historyThroughMonth(history, new Date("2026-11-01")), history);
+});
+
+test("monthly chart windows use dated observations inside the trailing 30-day range",()=>{
+ const today=Date.parse("2026-11-05T12:00:00Z");
+ assert.equal(monthlyObservationTime("2026-11",today),Date.parse("2026-11-05"));
+ assert.equal(monthlyObservationTime("2026-10",today),Date.parse("2026-10-31"));
+ assert.equal(periodStart(monthlyObservationTime("2026-11",today),"1m"),Date.parse("2026-10-06"));
 });

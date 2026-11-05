@@ -14,7 +14,7 @@ import {
   treasurySeriesOf,
   treasurySymbol,
 } from "@/modules/quotes/domain/treasury";
-import { createTreasurySource, fetchTreasuryQuotes, TREASURY_CURRENT_URL } from "@/modules/quotes/infrastructure/treasury";
+import { createTreasurySource, resilientTreasuryBook, fetchTreasuryQuotes, TREASURY_CURRENT_URL } from "@/modules/quotes/infrastructure/treasury";
 
 const header = "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
 const fixture = `${header}\nTesouro IPCA+;15/05/2035;02/10/2026;7,10;7,22;1.500,00;1.480,00;1.479,25\nTesouro IPCA+;15/08/2035;02/10/2026;7,10;7,22;1.600,00;1.580,00;1.579,25\nTesouro IPCA+;15/05/2035;30/09/2026;7,10;7,22;1.450,00;1.430,00;1.429,25\nTesouro IPCA+;15/05/2035;31/08/2026;7,10;7,22;1.400,00;1.380,00;1.379,25\nTesouro Prefixado com Juros Semestrais;01/01/2033;02/10/2026;13,0;13,1;1.000,00;990,00;989,50\nTesouro Prefixado;01/01/2026;31/12/2025;13,0;13,1;1.000,00;990,00;989,50\nTesouro Selic;01/03/2031;02/10/2026;0,1;0,2;20.100,00;20.000,00;0,00\n`;
@@ -260,4 +260,18 @@ test("Treasury backfill retains daily observations rather than only month ends",
  assert.ok(daily.length>0);
  assert.ok(daily.every(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
  assert.deepEqual(daily,series.points.filter(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
+});
+
+
+test("incomplete live Treasury publications retry once then use a dated official fallback",async()=>{
+ const book=parseTreasuryCsv(fixture);let attempts=0,fallbacks=0;
+ const result=await resilientTreasuryBook(async()=>{attempts++;throw new Error("Incomplete listing");},async()=>{fallbacks++;return book;});
+ assert.equal(result,book);assert.equal(attempts,2);assert.equal(fallbacks,1);
+ const [quote]=await fetchTreasuryQuotes([identity],{today:"2026-10-04",loadBook:async()=>result});
+ assert.equal(quote.status,"SUCCESS");assert.equal(quote.quoteDate,"2026-10-02");
+ const [stale]=await fetchTreasuryQuotes([identity],{today:"2026-10-20",loadBook:async()=>result});assert.equal(stale.status,"FAILED");
+});
+test("a recovered live Treasury retry does not load the CSV",async()=>{
+ const book=parseTreasuryCsv(fixture);let attempts=0;
+ assert.equal(await resilientTreasuryBook(async()=>{if(++attempts===1)throw new Error("Incomplete");return book;},async()=>{throw new Error("Unexpected fallback");}),book);
 });

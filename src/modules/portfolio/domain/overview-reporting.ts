@@ -18,3 +18,9 @@ export function expressEurMetricsInUsd(metrics: OverviewPerformanceMetrics, rate
   return { ...metrics, dailyUsd: metrics.dailyUsd !== null && rate !== null && Number.isFinite(rate) && rate > 0
     ? new Prisma.Decimal(metrics.dailyUsd).mul(rate).toDecimalPlaces(2).toNumber() : null };
 }
+
+/** Convert the same USD-accounted result to its EUR display equivalent, keeping USD percentages. */
+export function expressUsdGainsInEur(gains: PortfolioGains, eurBrl: number | null, usdBrl: number | null): PortfolioGains {
+  const cross = eurToUsdRate(eurBrl, usdBrl);
+  return expressEurGainsInUsd(gains, cross === null ? null : 1 / cross);
+}

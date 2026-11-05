@@ -62,6 +62,8 @@ export const internationalBondSchema = z.object({
   if (bond.fixedCoupon && (bond.structure !== "Fixed" || !bond.maturityDate || bond.fixedCoupon.anchorDate > bond.maturityDate)) ctx.addIssue({ code: "custom", path: ["fixedCoupon"], message: "The next coupon date must be on or before maturity." });
   if (bond.fixedCoupon?.accrualStartDate && bond.settlementDate < bond.fixedCoupon.accrualStartDate) ctx.addIssue({ code: "custom", path: ["settlementDate"], message: "Settlement cannot precede the bond's interest start date." });
 });
+/** New purchases are cost-only. The broader reader remains for existing backup compatibility. */
+export const newInternationalBondSchema = internationalBondSchema.refine(bond => bond.valuationMode === "Cost" && bond.quotes.length === 0 && !bond.costEvents?.length, "New bonds use purchase cost without market valuations or coupon receipts.");
 export type InternationalBond = z.infer<typeof internationalBondSchema>;
 /** Entry is per bond; stored acquisition interest is for the whole holding. */
 export function purchaseBondInterest(perBond: string, quantity: string) {

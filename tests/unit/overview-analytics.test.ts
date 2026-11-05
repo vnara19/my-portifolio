@@ -32,3 +32,14 @@ test("annual risk reference rejects malformed or out-of-range inputs",()=>{
  for(const raw of ["", "-1", "101", "2.123", "Infinity", "2%", {}, null]) assert.equal(parseRiskFreeRate(raw),null);
  assert.equal(parseRiskFreeRate("2,5"),"2.5"); assert.equal(parseRiskFreeRate("0"),"0"); assert.equal(parseRiskFreeRate("100"),"100");
 });
+
+
+test("risk sampling excludes the first partial calendar month",()=>{
+ const rows=monthlyProfitability([{day:"2025-05-15",value:100,flow:100,inflow:100,outflow:0},{day:"2025-05-31",value:105,flow:0,inflow:0,outflow:0},{day:"2025-06-30",value:110,flow:0,inflow:0,outflow:0}],[],"2025-06-30");
+ assert.equal(rows[0].complete,false);assert.equal(rows[1].complete,true);
+ assert.equal(riskMetrics(rows,2).months,1);
+});
+test("USD profit does not reconvert with EUR FX and survives a full withdrawal",()=>{
+ const points=[{day:"2025-01-01",value:100,flow:100},{day:"2025-01-02",value:0,flow:-110}];
+ assert.deepEqual(profitHistory(points,points,[{day:"2025-01-02",value:10}],[],true).at(-1),{day:"2025-01-02",profit:10,realized:10});
+});

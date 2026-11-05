@@ -3,7 +3,7 @@ import { usePositionMoney } from "./position-money-context";
 
 import { englishLabel } from "@/lib/english-labels";
 
-import { CHART_PERIODS, type ChartPeriod } from "../domain/chart-period";
+import { CHART_PERIODS, periodStart, monthlyObservationTime, type ChartPeriod } from "../domain/chart-period";
 import { useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -218,6 +218,10 @@ function periodRows(rows: ChangeRow[], selectedMonth: string, period: Period) {
     return rows.slice(0, end + 1).filter((row) => row.month.startsWith(`${year}-`));
   }
 
+  if (period === "1m") {
+    const cutoff = periodStart(monthlyObservationTime(rows[end].month), period);
+    return rows.slice(0,end+1).filter(row => monthlyObservationTime(row.month) >= cutoff);
+  }
   const size = CHART_PERIODS.find(p=>p.key===period)?.months as number;
   return rows.slice(Math.max(end - size + 1, 0), end + 1);
 }

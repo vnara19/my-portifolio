@@ -1,7 +1,6 @@
 import type { OverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
 import { OverviewAnalytics } from "./overview-analytics";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
-import { eurToUsdRate, expressEurMetricsInUsd } from "../domain/overview-reporting";
 import type { TwrObservation } from "../domain/time-weighted-return";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import type { OverviewData } from "@/modules/portfolio/application/get-overview-data";
@@ -14,14 +13,14 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic, performance, performanceEur, benchmark, riskFreeRate, assetLabels, fxHistory, marketStrip }: { overview: OverviewData | null;marketStrip:OverviewMarketStrip; selic: SelicMonthView | null; performance: TwrObservation[]; performanceEur: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string>;fxHistory:{day:string;value:number}[] }) {
+export function OverviewDashboard({ overview, selic, performance, benchmark, riskFreeRate, assetLabels, marketStrip }: { overview: OverviewData | null;marketStrip:OverviewMarketStrip; selic: SelicMonthView | null; performance: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string> }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
 
   const monthParam = toMonthParam(overview.referenceDate);
   const asOf = overview.history.find(p=>p.month===monthParam)?.day??`${monthParam}-31`;
-  const referenceMetrics = overviewPerformanceMetrics(performanceEur, asOf);
+  const referenceMetrics = overviewPerformanceMetrics(performance, asOf);
 
   return (
     <div className="relative mx-auto w-full max-w-[1472px] px-5 py-5 sm:px-7 sm:py-6 xl:px-12">
@@ -38,7 +37,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
       </header>
 
       <div className="mt-4 min-[1440px]:relative min-[1440px]:left-1/2 min-[1440px]:w-[calc(100vw-96px)] min-[1440px]:max-w-[1800px] min-[1440px]:-translate-x-1/2">
-        <OverviewKpis overview={overview} metrics={expressEurMetricsInUsd(referenceMetrics, eurToUsdRate(overview.eurRate, overview.usdRate))} />
+        <OverviewKpis overview={overview} metrics={referenceMetrics} />
       </div>
 
       <div className="mt-3"><OverviewQuotes overview={overview} selic={selic} market={marketStrip} /></div>
@@ -55,9 +54,9 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
 
         <div className="mt-5">
           <PortfolioEvolutionChart
-            eurUsd={eurToUsdRate(overview.eurRate,overview.usdRate)}
+            eurUsd={1}
             observations={performance}
-            returnObservations={performanceEur}
+            returnObservations={performance}
             benchmark={benchmark}
             history={overview.history}
             selectedMonth={monthParam}
@@ -69,7 +68,7 @@ export function OverviewDashboard({ overview, selic, performance, performanceEur
 
 
       <PortfolioDistributionPanel data={overview.distribution} />
-      <OverviewAnalytics overview={overview} observations={performanceEur.filter(p=>p.day<=asOf)} usd={performance.filter(p=>p.day<=asOf)} benchmark={benchmark} rate={riskFreeRate} currentFx={eurToUsdRate(overview.eurRate,overview.usdRate)} fxHistory={fxHistory} labels={assetLabels} asOf={asOf}/>
+      <OverviewAnalytics overview={overview} observations={performance.filter(p=>p.day<=asOf)} usd={performance.filter(p=>p.day<=asOf)} benchmark={benchmark} rate={riskFreeRate} labels={assetLabels} asOf={asOf}/>
     </div>
   );
 }

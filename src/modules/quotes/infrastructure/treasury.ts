@@ -20,13 +20,21 @@ export async function readCurrentTreasuryBook(): Promise<TreasuryBook> {
   if (current && current.until > Date.now()) return current.book;
   if (currentPending) return currentPending;
   currentPending = (async () => {
-    const response = await fetchProvider(TREASURY_CURRENT_URL, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
-    if (!response.ok) throw new QuoteHttpError(response.status, `Tesouro listing responded with HTTP ${response.status}.`);
-    const book = parseTreasurySnapshot(JSON.parse(new TextDecoder().decode(await limitedBytes(response.body,5_000_000,response.headers.get("content-length")))));
+    const book = await resilientTreasuryBook(async () => {
+      const response = await fetchProvider(TREASURY_CURRENT_URL, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
+      if (!response.ok) throw new QuoteHttpError(response.status, `Tesouro listing responded with HTTP ${response.status}.`);
+      return parseTreasurySnapshot(JSON.parse(new TextDecoder().decode(await limitedBytes(response.body,5_000_000,response.headers.get("content-length")))));
+    }, readTreasuryBook);
     current = { book, until: Date.now() + 5 * 60_000 };
     return book;
   })().finally(() => { currentPending = null; });
   return currentPending;
+}
+
+/** A listing can be incomplete during publication. Retry once, then use the official dated CSV, never an invented current price. */
+export async function resilientTreasuryBook(live: () => Promise<TreasuryBook>, historical: () => Promise<TreasuryBook>): Promise<TreasuryBook> {
+  try { return await live(); } catch { /* The publisher may be replacing its listing. */ }
+  try { return await live(); } catch { return historical(); }
 }
 
 export type TreasuryBookLoader = () => Promise<TreasuryBook>;
@@ -79,6 +87,7 @@ export async function fetchTreasuryQuotes(
     if (series.maturityDate <= today) return quoteFailure(request.symbol, TREASURY_PROVIDER, "MATURED_TITLE", "This security has matured; confirm the amount received on liquidation.");
     const point = latestTreasuryPoint(series, today);
     if (!point) return quoteFailure(request.symbol, TREASURY_PROVIDER, "MISSING_QUOTE", "Tesouro Direto has no price for this security up to the requested date.");
+    if (Date.parse(today) - Date.parse(point.day) > 7 * 86400000) return quoteFailure(request.symbol, TREASURY_PROVIDER, "MISSING_QUOTE", "The latest official Tesouro price is more than seven days old.");
     return { symbol: request.symbol, provider: TREASURY_PROVIDER, status: "SUCCESS", valueBrl: point.value, quoteDate: point.day };
   });
 }

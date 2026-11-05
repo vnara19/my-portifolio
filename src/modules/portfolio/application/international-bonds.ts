@@ -4,36 +4,11 @@ import { correctedBondPurchase } from "../domain/bond-purchase-correction";
 import { withUndo, MonthEditError } from "./month-editing";
 import { Prisma } from "@/generated/prisma/client";
 import { getUserDb, currentUserId } from "@/lib/user-db";
-import { internationalBondSchema, bondValue, readInternationalBond } from "../domain/international-bond";
+import { bondValue, readInternationalBond } from "../domain/international-bond";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
 import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
 import { calendarDay, lastDayOf, toDateKey, currentReferenceMonth } from "@/modules/quotes/domain/calendar";
 
-/** Dated valuations only. Coupon receipts are not recorded by this application. */
-export async function updateBond(input: { monthId: string; positionId: string; date: string; marketValue: string; source: string }) {
-  const db = await getUserDb();
-  if (!db) throw new MonthEditError("The database is unavailable.");
-  const owned = await db.position.findFirst({ where: { id: input.positionId, portfolioMonthId: input.monthId }, select: { asset: { select: { fixedIncomeContract: true } }, portfolioMonth: { select: { referenceDate: true } } } });
-  const original = readInternationalBond(owned?.asset.fixedIncomeContract);
-  if (!original || original.valuationMode === "Cost") throw new MonthEditError("This bond does not use market valuations.");
-  const day = toDateKey(new Date(Math.min(calendarDay(new Date()).getTime(), lastDayOf(owned!.portfolioMonth.referenceDate).getTime())));
-  if (input.date < original.settlementDate || input.date > day) throw new MonthEditError("Enter a valuation date between purchase and the reporting date.");
-  const fx = await fetchReferenceFxLatest(original.currency, day);
-  return withUndo(input.monthId, async tx => {
-    const position = await tx.position.findFirst({ where: { id: input.positionId, portfolioMonthId: input.monthId }, include: { asset: true, portfolioMonth: true } });
-    const bond = readInternationalBond(position?.asset.fixedIncomeContract);
-    if (!position || !bond || bond.valuationMode === "Cost" || position.quantity.lte(0)) throw new MonthEditError("Choose an active bond with market valuations.");
-    const updated = internationalBondSchema.parse({ ...bond, quotes: [...bond.quotes.filter(q => q.date !== input.date), { date: input.date, marketValue: input.marketValue, source: input.source }] });
-    const quotes = await readMonthQuoteValues(tx, position.portfolioMonth.referenceDate, [bond.currency]);
-    const rate = quotes.get(bond.currency)?.valueBrl ?? new Prisma.Decimal(fx.value);
-    const value = bondValue(updated, day, rate.toString(), position.quantity.toString());
-    await tx.asset.update({ where: { id: position.assetId }, data: { fixedIncomeContract: updated } });
-    await tx.position.update({ where: { id: position.id }, data: { totalBrl: value.totalBrl, unitPriceBrl: value.unitPriceBrl, exchangeRateBrl: rate } });
-    return { assets: [{ ...position.asset, fixedIncomeContract: bond, expectedFixedIncomeContract: updated }] };
-  });
-}
-
-/** A daily FX refresh does not invent a new native market quotation. */
 export async function refreshBondsForUser() {
   const db = await getUserDb();
   if (!db) return false;

@@ -51,7 +51,7 @@ import { treasurySeriesOf } from "@/modules/quotes/domain/treasury";
 import { tradeBalance } from "../domain/trade-balance";
 import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purchase-cost";
 
-import { internationalBondSchema, bondAllocation, bondName, bondValue, type InternationalBond } from "@/modules/portfolio/domain/international-bond";
+import { newInternationalBondSchema, bondAllocation, bondName, bondValue, type InternationalBond } from "@/modules/portfolio/domain/international-bond";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -215,7 +215,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   if (newAsset?.kind === "savings") throw new MonthEditError("Use the Savings form to register a Savings investment.");
   if (newAsset && ["brl-cash", "usd-balance", "eur-balance"].includes(newAsset.kind)) throw new MonthEditError("Cash-only positions are no longer supported. Add an investment instead.");
   if (newAsset?.bondContract && newAsset.kind !== "international-bond") throw new MonthEditError("Bond terms require International Bonds.");
-  const bond = newAsset?.kind === "international-bond" ? internationalBondSchema.parse(newAsset.bondContract) : null;
+  const bond = newAsset?.kind === "international-bond" ? newInternationalBondSchema.parse(newAsset.bondContract) : null;
   const today = toDateKey(calendarDay(new Date()));
   if (bond) {
     if (bond.valuationMode === "Cost" && bond.costEvents?.length) throw new MonthEditError("New bond purchases cannot include legacy receipt history.");

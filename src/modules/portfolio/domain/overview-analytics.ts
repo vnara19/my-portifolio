@@ -4,7 +4,7 @@ import type { BenchmarkPoint } from "@/modules/quotes/application/sp500-benchmar
 
 export type MonthlyProfitability = { month:string; portfolio:number|null; benchmark:number|null; complete:boolean };
 const day=(date:Date)=>date.toISOString().slice(0,10);
-/** Monthly TWR, aligned to the same funded baseline and EUR benchmark. */
+/** Monthly TWR, aligned to the same funded baseline and reporting-currency benchmark. */
 export function monthlyProfitability(points:TwrObservation[],benchmark:BenchmarkPoint[],asOf:string):MonthlyProfitability[]{
  const first=points[0]; if(!first)return [];
  const result:MonthlyProfitability[]=[];
@@ -16,7 +16,7 @@ export function monthlyProfitability(points:TwrObservation[],benchmark:Benchmark
   const through=end<asOf?end:asOf;
   const base=[start,returnBaselineDay(points)??start].sort().at(-1)!;
   const a=quote(base),b=quote(through);
-  result.push({month:day(cursor).slice(0,7),portfolio:periodChange(points,start,through,null,true).percent,benchmark:a&&b?(b/a-1)*100:null,complete:end<=asOf&&end<new Date().toISOString().slice(0,10)});
+  result.push({month:day(cursor).slice(0,7),portfolio:periodChange(points,start,through,null,true).percent,benchmark:a&&b?(b/a-1)*100:null,complete:first.day<=day(cursor)&&end<=asOf&&end<new Date().toISOString().slice(0,10)});
   cursor.setUTCMonth(cursor.getUTCMonth()+1);
  }
  return result;
@@ -38,7 +38,7 @@ export function riskMetrics(rows:MonthlyProfitability[],annualRate:number|null){
  return {beta:variance>1e-12?mean(p.map((v,i)=>(v-pm)*(b[i]-bm)))/variance:null,...portfolio,benchmarkSharpe:market.sharpe,benchmarkSortino:market.sortino,months:complete.length};
 }
 /** Monetary profit excludes net funding, including after a full redemption. */
-export function profitHistory(eur:TwrObservation[],usd:TwrObservation[],realized:{day:string;value:number}[],rates:{day:string;value:number}[]=[]){
+export function profitHistory(eur:TwrObservation[],usd:TwrObservation[],realized:{day:string;value:number}[],rates:{day:string;value:number}[]=[],sameCurrency=false){
  const dollars=new Map(usd.map(p=>[p.day,p.value]));
  let funding=eur[0]&&(eur[0].inflow??eur[0].flow??0)<=0?eur[0].value??0:0;
  let valid=true,realizedIndex=0,realizedValue=0;
@@ -47,7 +47,7 @@ export function profitHistory(eur:TwrObservation[],usd:TwrObservation[],realized
   funding+=p.flow??0;
   while(realizedIndex<realized.length&&realized[realizedIndex].day<=p.day)realizedValue=realized[realizedIndex++].value;
   const value=dollars.get(p.day),rate=rates.filter(r=>r.day<=p.day).at(-1);
-  const fx=rate&&Date.parse(p.day)-Date.parse(rate.day)<=7*86400000?rate.value:p.value&&value!=null?value/p.value:null;
+  const fx=sameCurrency?1:rate&&Date.parse(p.day)-Date.parse(rate.day)<=7*86400000?rate.value:p.value&&value!=null?value/p.value:null;
   return {day:p.day,profit:valid&&fx!==null?(p.value!-funding)*fx:null,realized:valid&&fx!==null?realizedValue*fx:null};
  });
 }

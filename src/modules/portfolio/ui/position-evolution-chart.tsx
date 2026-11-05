@@ -4,7 +4,7 @@ import { usePositionMoney } from "./position-money-context";
 import { englishLabel } from "@/lib/english-labels";
 
 import { investmentMonthReturn } from "../domain/position-money";
-import { CHART_PERIODS } from "../domain/chart-period";
+import { CHART_PERIODS, periodStart, monthlyObservationTime } from "../domain/chart-period";
 import { useMemo, useState } from "react";
 import { Area, AreaChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -78,6 +78,12 @@ export function PositionEvolutionChart({
       return;
     }
 
+    if (months === 1) {
+      const cutoff = periodStart(monthlyObservationTime(rows[defaultEnd].month), "1m");
+      const first = rows.findIndex(row => monthlyObservationTime(row.month) >= cutoff);
+      setRange({ key: rangeKey, range: [Math.max(0, first), defaultEnd] });
+      return;
+    }
     setRange({ key: rangeKey, range: [Math.max(defaultEnd - months, 0), defaultEnd] });
   };
 
@@ -389,6 +395,11 @@ function TooltipRow({ label, value }: { label: string; value: string }) {
 }
 
 function periodGain(rows: EvolutionRow[], months: number | "ytd" | "all", end: number) {
+ if (months === 1) {
+  const cutoff = periodStart(monthlyObservationTime(rows[end].month), "1m");
+  // Exact trailing returns require a valuation at the boundary; monthly snapshots alone are insufficient.
+  if (!rows.some(row => monthlyObservationTime(row.month) === cutoff)) return "—";
+ }
  const start = months === "all" ? 0 : months === "ytd" ? Math.max(0, rows.findIndex(r => r.month.startsWith(rows[end].month.slice(0,4))) - 1) : Math.max(0, end - months);
  let factor = 1, count = 0;
  for(let i = start + 1; i <= end; i++) {

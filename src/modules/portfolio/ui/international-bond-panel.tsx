@@ -3,8 +3,6 @@ import { type InternationalBond, BOND_FAMILIES, scheduledBondCoupons, fixedBondA
 import { Prisma } from "@/generated/prisma/browser";
 import { formatCurrency } from "../presentation/portfolio-format";
 export function InternationalBondPanel({ bond, asOf, faceHeld }: { bond: InternationalBond; asOf: string; faceHeld: number }) {
-  const atCost = bond.valuationMode === "Cost";
-  const quote = bond.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0];
   const money = (amount: string) => formatCurrency(Number(amount), bond.currency);
   const field = (label: string, text: string) => <div><dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm">{text}</dd></div>;
   const schedule = bond.fixedCoupon && bond.maturityDate ? scheduledBondCoupons(bond.fixedCoupon, asOf, bond.maturityDate, String(faceHeld)) : [];
@@ -17,7 +15,7 @@ export function InternationalBondPanel({ bond, asOf, faceHeld }: { bond: Interna
       {field("ISIN / CUSIP", bond.identifier)}{field("Issuer", bond.issuer)}{field("Issuer Country", bond.issuerCountry)}
       {field("Bond Type", BOND_FAMILIES[bond.family])}{field("Bond Currency", bond.currency)}{field("Nominal Amount Held", money(String(faceHeld)))}
       {field("Original Total Paid, Including Interest and Fees", money(bond.totalPaid))}
-      {atCost ? field("Carrying Value at Cost", money(bondCostState(bond, asOf).cost.toFixed())) : <>{field("Full Market Value", quote ? money(quote.marketValue) : "Unavailable")}{field("Price Date", quote?.date ?? "Unavailable")}</>}
+      {field("Carrying Value at Cost", money(bondCostState(bond, asOf).cost.toFixed()))}
       {bond.maturityDate ? field("Maturity Date", bond.maturityDate) : null}
       {bond.fixedCoupon ? field("Annual Coupon", `${bond.fixedCoupon.annualRate}%`) : null}
       {schedule[0] ? field("Next Scheduled Coupon", `${schedule[0].date} · ${money(schedule[0].amount)} Gross`) : null}

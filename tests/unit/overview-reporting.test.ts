@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { portfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
-import { eurToUsdRate, expressEurGainsInUsd, expressEurMetricsInUsd } from "@/modules/portfolio/domain/overview-reporting";
+import { expressUsdGainsInEur, eurToUsdRate, expressEurGainsInUsd, expressEurMetricsInUsd } from "@/modules/portfolio/domain/overview-reporting";
 import { benchmarkInEur } from "@/modules/portfolio/domain/benchmark-reporting";
 
 test("the complete portfolio has one EUR result displayed equivalently in USD", () => {
@@ -40,4 +40,15 @@ test("the benchmark is measured in the same EUR reference before calculating its
   assert.ok(Math.abs((converted[1].value / converted[0].value - 1) * 100 - 20) < 1e-10);
   assert.equal(benchmarkInEur(index, [], eur), null);
   assert.deepEqual(index.map(p => p.value), [100, 110]);
+});
+
+
+test("USD accounting includes acquisition FX; EUR is only the current equivalent",()=>{
+ // EUR 100 cost BRL 600 when one USD cost BRL 5: USD acquisition cost is 120.
+ // EUR 110 now costs BRL 550 at USD/BRL 5: USD value is 110, so USD loss is 10.
+ const gains=portfolioGains([{holding:"euro",kind:"CONTRIBUTION",quantity:1,amountBrl:600,usdRate:5,transferId:null}],[{holding:"euro",quantity:1,valueUsd:110}]);
+ assert.equal(gains.totalUsd,-10);
+ const equivalent=expressUsdGainsInEur(gains,5,5);
+ assert.equal(equivalent.totalUsd,-10);assert.equal(equivalent.unrealizedPercent,gains.unrealizedPercent);
+ assert.equal(expressUsdGainsInEur(gains,6,5).totalUsd,-8.33);
 });
