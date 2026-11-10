@@ -10,9 +10,9 @@ test("the complete portfolio has one EUR result displayed equivalently in USD", 
     { holding: "usd-bitcoin", kind: "CONTRIBUTION", quantity: 1, amountBrl: 3000, usdRate: 6, feeBrl: 30, transferId: null },
   ], [{ holding: "eur-etf", quantity: 10, valueUsd: 1200 }, { holding: "usd-bitcoin", quantity: 1, valueUsd: 700 }]);
   const displayed = expressEurGainsInUsd(reference, eurToUsdRate(6, 5));
-  assert.equal(reference.unrealizedUsd, 405);
-  assert.equal(displayed.unrealizedUsd, 486);
-  assert.equal(displayed.realizedUsd, -6);
+  assert.equal(reference.unrealizedUsd, 400);
+  assert.equal(displayed.unrealizedUsd, 480);
+  assert.equal(displayed.realizedUsd, 0);
   assert.equal(displayed.totalUsd, 480);
   assert.equal(displayed.unrealizedPercent, reference.unrealizedPercent);
   assert.equal(displayed.realizedPercent, reference.realizedPercent);
@@ -22,7 +22,7 @@ test("the complete portfolio has one EUR result displayed equivalently in USD", 
 });
 
 test("daily, TWR and annualized metrics share the same reference basis", () => {
-  const reference = { asOf: "2026-10-30", dailyUsd: -10, dailyPercent: -1, totalPercent: 20, annualizedPercent: 10 };
+  const reference = { asOf: "2026-10-30", dailyUsd: -10, dailyPercent: -1, totalPercent: 20, annualizedPercent: 10, annualizedStatus: "unique" as const };
   const displayed = expressEurMetricsInUsd(reference, 1.2);
   assert.deepEqual(displayed, { ...reference, dailyUsd: -12 });
   for (const invalid of [null, 0, -1, NaN, Infinity]) {

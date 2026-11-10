@@ -32,11 +32,11 @@ test("missing gain reasons distinguish absent FX from inconsistent holdings", ()
   assert.deepEqual(reasons, ["historical-fx", "ledger-mismatch"]);
 });
 
-test("commissions on open purchases are realized expenses without changing total P&L", () => {
+test("commissions on open purchases increase historical cost without changing total P&L", () => {
  const buy={...movement("CONTRIBUTION",1,525),feeBrl:25};
  const result=portfolioGains([buy],snapshot(1,110));
- assert.equal(result.unrealizedUsd,10);assert.equal(result.realizedUsd,-5);assert.equal(result.totalUsd,5);
- assert.ok(Math.abs(result.realizedPercent!-(-5/105*100))<1e-10);
+ assert.equal(result.unrealizedUsd,5);assert.equal(result.realizedUsd,0);assert.equal(result.totalUsd,5);
+ assert.equal(result.realizedPercent,0);
  assert.equal(result.totalUsd,portfolioGains([{...buy,feeBrl:0}],snapshot(1,110)).totalUsd);
 });
 test("sale proceeds already include fees, so commissions are never deducted twice",()=>{
@@ -53,4 +53,21 @@ test("reporting-currency gains are not current-FX conversions of each other",()=
  assert.equal(dollar.unrealizedUsd,10);
  assert.equal(euro.unrealizedPercent,10);
  assert.ok(Math.abs(dollar.unrealizedPercent!-10/1200*100)<1e-10);
+});
+
+test("composition reconciles multiple FX lots and fees after a partial sale", () => {
+  const result: import("@/modules/portfolio/domain/portfolio-gains").GainComposition[] = [];
+  const gains = portfolioGains([
+    { ...movement("CONTRIBUTION", 1, 610), feeBrl: 10, nativePurchase: { currency: "EUR", price: 100, usdPerUnit: 1.2 } },
+    { ...movement("CONTRIBUTION", 1, 550), nativePurchase: { currency: "EUR", price: 100, usdPerUnit: 1.1 } },
+    movement("WITHDRAWAL", 1, 650),
+  ], [{ ...snapshot(1, 132)[0], native: { currency: "EUR", total: 120 } }], undefined, undefined, row => result.push(row));
+  const [row] = result;
+  assert.equal(row.costUsd, 116);
+  assert.equal(row.priceUsd, 23);
+  assert.equal(row.fxUsd, -6);
+  assert.equal(row.adjustmentUsd, -1);
+  assert.equal(row.priceUsd + row.fxUsd + row.adjustmentUsd, gains.unrealizedUsd);
+  assert.equal(row.percent, gains.unrealizedPercent);
+  assert.equal(gains.realizedUsd, 14);
 });

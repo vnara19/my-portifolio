@@ -24,7 +24,7 @@ test("profit preserves gains on full redemption and converts using dated FX",()=
 test("realized history reuses average-cost sales and commissions",()=>{
  const steps:number[]=[];
  const result=portfolioGains([{holding:"a",kind:"CONTRIBUTION",quantity:2,amountBrl:202,feeBrl:2,usdRate:1,transferId:null},{holding:"a",kind:"WITHDRAWAL",quantity:2,amountBrl:220,usdRate:1,transferId:null}],[],undefined,(_i,n)=>steps.push(n));
- assert.deepEqual(steps,[-2,18]);assert.equal(result.totalUsd,18);
+ assert.deepEqual(steps,[0,18]);assert.equal(result.totalUsd,18);
 });
 
 import { parseRiskFreeRate } from "../../src/modules/portfolio/domain/risk-free-rate";

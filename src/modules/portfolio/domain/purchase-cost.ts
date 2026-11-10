@@ -38,7 +38,7 @@ export function recordedTradeFeeBrl(note: string | null): number {
 export function recordedTradeAmounts(input: {
   kind: string; quantity: Prisma.Decimal; unitPriceBrl: Prisma.Decimal | null;
   amountBrl: Prisma.Decimal; note: string | null;
-}): { amountBrl: Prisma.Decimal; feeBrl: Prisma.Decimal } | null {
+}): { amountBrl: Prisma.Decimal; feeBrl: Prisma.Decimal; currency: PurchaseInput["currency"]; price: Prisma.Decimal } | null {
   const match = /^(Purchase|Sale): (\d+(?:\.\d+)?) × (USD|EUR|BRL) (\d+(?:\.\d+)?); commission (USD|EUR|BRL) (\d+(?:\.\d+)?); FX (\d+(?:\.\d+)?) BRL\/(USD|EUR|BRL)\./.exec(input.note ?? "");
   if (!match || match[3] !== match[5] || match[3] !== match[8] ||
     input.kind !== (match[1] === "Sale" ? "WITHDRAWAL" : "CONTRIBUTION") ||
@@ -51,7 +51,7 @@ export function recordedTradeAmounts(input: {
   const principal = invested ? new Prisma.Decimal(invested[1]) : input.quantity.mul(price);
   const amount = (match[1] === "Sale" ? principal.minus(fee) : principal.plus(fee)).mul(fx);
   if (!price.mul(fx).toDecimalPlaces(8).eq(input.unitPriceBrl) || !amount.toDecimalPlaces(2).eq(input.amountBrl)) return null;
-  return { amountBrl: amount, feeBrl: fee.mul(fx) };
+  return { amountBrl: amount, feeBrl: fee.mul(fx), currency: match[3] as PurchaseInput["currency"], price };
 }
 
 /** Derive the execution unit price server-side, retaining the exact entered principal. */

@@ -7,6 +7,7 @@ import type { OverviewData } from "./get-overview-data";
 import { datedFx } from "../domain/position-money";
 import { historyThroughMonth, type TwrObservation } from "../domain/time-weighted-return";
 import { Prisma } from "@/generated/prisma/client";
+import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-fx";
 import { recordedTradeAmounts } from "../domain/purchase-cost";
 
 /** Values at every external-flow boundary are mandatory; absent coverage is never interpolated. */
@@ -28,7 +29,8 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     for(const id of new Set([...saved.keys(),...units.keys()]))if(Math.abs((saved.get(id)??0)-(units.get(id)??0))>1e-7)invalidMonths.add(h.month);
   }
   const symbols=[...new Set(["USD","EUR",...assets.flatMap(a=>a.quoteSymbol?[a.quoteSymbol]:[])])];
-  const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true}});
+  const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true,provider:true,fetchedAt:true}});
+  const operationRates = reportingFxSeries(quotes);
   const usd=quotes.filter(q=>q.symbol==="USD").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
   const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
@@ -73,23 +75,24 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
       const entry=tx[cursor++];
       const id=entry.assetId;
       const exact=recordedTradeAmounts({ ...entry, quantity:new Prisma.Decimal(entry.quantity), amountBrl:new Prisma.Decimal(entry.amountBrl), unitPriceBrl:entry.unitPriceBrl===null?null:new Prisma.Decimal(entry.unitPriceBrl) });
-      const paid=exact?.amountBrl.toNumber()??entry.amountBrl;
+      const netWithdrawal = /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(entry.note ?? "")?.[1];
+      const paid = new Prisma.Decimal(netWithdrawal ?? exact?.amountBrl ?? entry.amountBrl);
       if (id) holdings.set(id,(holdings.get(id)??0)+(entry.kind==="WITHDRAWAL"||(entry.kind==="INCOME"&&entry.amountBrl<0)?-1:1)*entry.quantity);
       if(entry.occurredOn!==day || entry.transferId)continue;
       if(id && entry.kind==="WITHDRAWAL")sold.set(id,(sold.get(id)??0)+entry.quantity);
       if(id && (entry.kind==="CONTRIBUTION"||entry.kind==="OPENING")){
         const previous=bought.get(id)??{units:0,principal:0};
-        const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
-        const principal=id&&bonds.has(id)?paid:exact?exact.amountBrl.minus(exact.feeBrl).toNumber():entry.unitPriceBrl===null?null:entry.unitPriceBrl*entry.quantity;
-        bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&principal!==null&&fx?previous.principal+principal/fx.rate:null});
+        const fx=tradeReportingFx(day, entry.note, currency, operationRates);
+        const principal=id&&bonds.has(id)?paid:exact?exact.amountBrl.minus(exact.feeBrl):entry.unitPriceBrl===null?null:new Prisma.Decimal(entry.unitPriceBrl).mul(entry.quantity);
+        bought.set(id,{units:previous.units+entry.quantity,principal:previous.principal!==null&&principal!==null&&fx?previous.principal+principal.div(fx.divisor).toNumber():null});
       }
       const paidIncome=entry.kind==="INCOME"&&entry.quantity===0;
       if(entry.kind==="INCOME"&&!paidIncome)continue;
-      const fx=datedFx(day,entry.note,currency,reportingRates,new Map());
+      const fx=tradeReportingFx(day, entry.note, currency, operationRates);
       if(!fx){flow=null;inflow=null;outflow=null;continue;}
       if(flow!==null && inflow!==null && outflow!==null){
         const outward=entry.kind==="WITHDRAWAL"||paidIncome;
-        const signed=(outward?-1:1)*paid/fx.rate;
+        const signed=paid.div(fx.divisor).mul(outward ? -1 : 1).toNumber();
         flow+=signed;
         inflow+=Math.max(signed,0);outflow+=Math.max(-signed,0);
       }

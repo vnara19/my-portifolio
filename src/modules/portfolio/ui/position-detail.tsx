@@ -1,4 +1,6 @@
 "use client";
+import type { GainComposition } from "../domain/portfolio-gains";
+import { GainCompositionCard } from "./gain-composition-card";
 import { BondPurchaseCorrectionDialog } from "./bond-purchase-correction-dialog";
 import { TradeCorrectionDialog } from "./trade-correction-dialog";
 import { investmentMonthReturn } from "../domain/position-money";
@@ -67,15 +69,17 @@ export type PositionEditing = {
   catalog: EditingCatalog;
 };
 
-export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null}) {
+export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null; composition?: GainComposition | null}) {
   return <PositionMoneyProvider currency={props.history?.displayCurrency ?? "BRL"}><PositionDetailContent {...props} /></PositionMoneyProvider>;
 }
 function PositionDetailContent({
   history: storedHistory,
   editing,
+  composition,
 }: {
   history: PositionHistoryView | null;
   editing: PositionEditing | null;
+  composition?: GainComposition | null;
 }) {
 
   const history = storedHistory && storedHistory.native ? {...storedHistory,account:storedHistory.native.account,all:storedHistory.all?storedHistory.native.all:null,prices:storedHistory.native.prices} : storedHistory;
@@ -338,6 +342,9 @@ function PositionDetailContent({
           dollarBalance={dollarBalance}
         />
       </div>
+
+      {composition !== undefined ? <GainCompositionCard composition={composition} /> : null}
+
 
 
       <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="position-evolution-title">

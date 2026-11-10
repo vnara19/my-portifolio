@@ -414,6 +414,8 @@ function applyMovements(cost: Cost, recorded: RecordedMonth) {
       cost.value -= removed;
       cost.units -= moved;
       realized += entry.amountBrl - removed;
+    } else if (moved === 0) {
+      realized += entry.amountBrl;
     } else {
       cost.units += entry.amountBrl < 0 ? -moved : moved;
     }

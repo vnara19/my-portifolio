@@ -693,3 +693,28 @@ observed daily prices, not just month-end prices, so purchases on intermediate d
 have real valuation boundaries for portfolio TWR. Explicit manual valuations remain
 respected; provisional CARRIED quotes yield to an actual official monthly quote.
 Missing history remains unavailable until provider data arrives, never interpolated.
+
+### USD reporting and open gain composition
+
+Whole-portfolio gains and flows use historical USD conversion. The reporting
+resolver uses the recorded broker conversion when supplied, then the saved ECB
+reference for newer trades. For older trades it looks for a common observation
+date and provider across the EUR/BRL and USD/BRL legs. The lookback is at most
+seven calendar days and excludes future dates. USD-native trades require no
+economic FX conversion into USD. The transaction editor can record a broker
+USD conversion for supported EUR and BRL trades without changing their stored
+price, quantity, fee or amount. Both the original reference and subsequent
+broker entries are retained in the existing transaction metadata.
+
+The USD gain engine capitalizes acquisition fees and continues to use average
+cost by asset and account. Partial sales reduce the open cost and each lot's
+remaining quantity by the same fraction. Open gain attribution uses that
+quantity, acquisition price, historical USD conversion and the current
+valuation. Price/FX interaction belongs to FX. Costs and adjustments reconcile
+the remaining components to the same open gain. Closed positions have no open
+gain composition. The underlying trade basis and valuation must be available
+in the same native currency for attribution.
+
+Portfolio annualized yield uses dated XIRR. The solver groups same-day flows
+and checks for multiple roots, including roots close together. Ambiguous,
+insufficient and unresolved series carry a distinct unavailable status.

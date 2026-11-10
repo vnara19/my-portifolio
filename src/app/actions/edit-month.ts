@@ -20,6 +20,7 @@ import { ensureMonthsUpToDate } from "@/modules/portfolio/application/month-roll
 import {
   addTransaction,
   liquidatePosition,
+  recordExecutedUsdFx,
   removeTransaction,
   updateTransaction,
 } from "@/modules/portfolio/application/position-transactions";
@@ -233,6 +234,15 @@ export async function updateTransactionAction(input: unknown): Promise<EditActio
   });
 }
 
+
+export async function recordExecutedUsdFxAction(input: unknown): Promise<EditActionResult> {
+  const parsed = transactionRemovalSchema.extend({ rate: value }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Review the exchange rate." };
+  return run(async () => {
+    const result = await recordExecutedUsdFx(parsed.data);
+    return { ok: true, message: "Executed exchange rate recorded.", undoToken: result.undoToken };
+  });
+}
 
 export async function removeTransactionAction(input: unknown): Promise<EditActionResult> {
   const parsed = transactionRemovalSchema.safeParse(input);

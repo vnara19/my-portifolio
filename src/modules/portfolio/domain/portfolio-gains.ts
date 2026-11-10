@@ -9,45 +9,74 @@ export type PortfolioGains = {
   realizedPercent: number | null;
   totalUsd: number | null;
 };
+type Currency = "USD" | "EUR" | "BRL";
+type DecimalInput = string | number | Prisma.Decimal;
+export type GainComposition = {
+  totalUsd: number;
+  costUsd: number;
+  percent: number | null;
+  priceUsd: number;
+  fxUsd: number;
+  adjustmentUsd: number;
+  historicalReferences: { day: string; provider: string }[];
+};
+type NativePurchase = {
+  currency: Currency;
+  price: DecimalInput;
+  usdPerUnit: DecimalInput;
+  reference?: { day: string; provider: string };
+};
+type OpenLot = NativePurchase & { quantity: Prisma.Decimal };
 export type GainMovement = {
   holding: string;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
-  quantity: number;
-  amountBrl: number;
-  usdRate: number | null;
+  quantity: DecimalInput;
+  amountBrl: DecimalInput;
+  usdRate: DecimalInput | null;
   transferId: string | null;
-  costRecoveryUsd?: number;
-  feeBrl?: number;
+  costRecoveryUsd?: DecimalInput;
+  feeBrl?: DecimalInput;
+  nativePurchase?: NativePurchase;
 };
-export type GainSnapshot = { holding: string; quantity: number; valueUsd: number | null };
+export type GainSnapshot = {
+  holding: string;
+  quantity: DecimalInput;
+  valueUsd: DecimalInput | null;
+  native?: { currency: Currency; total: DecimalInput };
+};
 export const unavailableGains = (): PortfolioGains => ({ unrealizedUsd: null, unrealizedPercent: null, realizedUsd: null, realizedPercent: null, totalUsd: null });
 
 /** USD average cost uses FX at acquisition, not today's FX. Incomplete ledgers are not estimates. */
-export function portfolioGains(movements: GainMovement[], snapshots: GainSnapshot[], onIssue?: (issue: GainIssue) => void, onStep?: (index: number, realized: number) => void): PortfolioGains {
+export function portfolioGains(movements: GainMovement[], snapshots: GainSnapshot[], onIssue?: (issue: GainIssue) => void, onStep?: (index: number, realized: number) => void, onComposition?: (result: GainComposition) => void): PortfolioGains {
   const missing=(issue:GainIssue)=>{onIssue?.(issue);return unavailableGains();};
-  const costs = new Map<string, { units: Prisma.Decimal; cost: Prisma.Decimal }>();
+  const costs = new Map<string, { units: Prisma.Decimal; cost: Prisma.Decimal; lots: OpenLot[] }>();
   let realized = new Prisma.Decimal(0);
   let funded = new Prisma.Decimal(0);
   for (const [index, movement] of movements.entries()) {
     // Transfers need carried acquisition cost across accounts; do not treat them as sales.
-    const capitalized = movement.kind === "INCOME" && movement.quantity > 0;
-    if (movement.transferId) return missing("transfer-cost");
-    if (!capitalized && (movement.usdRate === null || !Number.isFinite(movement.usdRate) || movement.usdRate <= 0)) return missing("historical-fx");
-    const state = costs.get(movement.holding) ?? { units: new Prisma.Decimal(0), cost: new Prisma.Decimal(0) };
     const units = new Prisma.Decimal(movement.quantity);
+    const capitalized = movement.kind === "INCOME" && units.gt(0);
+    if (movement.transferId) return missing("transfer-cost");
+    const rate = movement.usdRate === null ? null : new Prisma.Decimal(movement.usdRate);
+    if (!capitalized && (!rate?.isFinite() || rate.lte(0))) return missing("historical-fx");
+    const state = costs.get(movement.holding) ?? { units: new Prisma.Decimal(0), cost: new Prisma.Decimal(0), lots: [] };
     const amount = new Prisma.Decimal(movement.amountBrl).div(capitalized ? 1 : movement.usdRate!);
     const fee = new Prisma.Decimal(movement.feeBrl ?? 0).div(movement.usdRate ?? 1);
-    if (!fee.isFinite() || fee.lt(0)) return missing("purchase-history");
+    if (!units.isFinite() || !amount.isFinite() || !fee.isFinite() || fee.lt(0)) return missing("purchase-history");
     if (movement.kind === "OPENING" || movement.kind === "CONTRIBUTION") {
       if (units.lte(0) || amount.lt(0)) return missing("purchase-history");
       state.units = state.units.plus(units);
       if (fee.gt(amount)) return missing("purchase-history");
-      state.cost = state.cost.plus(amount.minus(fee));
+      state.cost = state.cost.plus(amount);
+      if (onComposition && movement.nativePurchase) state.lots.push({ ...movement.nativePurchase, quantity: units });
       funded = funded.plus(amount);
-      realized = realized.minus(fee);
     } else if (movement.kind === "WITHDRAWAL") {
       if (units.lte(0) || units.minus(state.units).gt("0.00000001") || state.units.lte(0)) return missing("purchase-history");
-      const removed = state.cost.mul(Prisma.Decimal.min(units.div(state.units), 1));
+      const fraction = Prisma.Decimal.min(units.div(state.units), 1);
+      const removed = state.cost.mul(fraction);
+      if (onComposition) {
+        state.lots = fraction.eq(1) ? [] : state.lots.map(lot => ({ ...lot, quantity: lot.quantity.mul(new Prisma.Decimal(1).minus(fraction)) }));
+      }
       state.cost = state.cost.minus(removed);
       state.units = state.units.minus(units);
       realized = realized.plus(amount.minus(removed));
@@ -58,6 +87,8 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
       state.cost = state.cost.minus(recovery);
       realized = realized.plus(amount.minus(recovery));
     } else {
+      // Quantity-changing events need a native basis before they can be attributed.
+      if (onComposition) state.lots = [];
       state.units = amount.lt(0) ? state.units.minus(units) : state.units.plus(units);
       if (state.units.lt(0)) return missing("purchase-history");
       if (state.units.eq(0) && amount.lt(0)) { realized = realized.minus(state.cost); state.cost = new Prisma.Decimal(0); }
@@ -68,6 +99,10 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
   let value = new Prisma.Decimal(0);
   let invested = new Prisma.Decimal(0);
   const seen = new Set<string>();
+  let compositionAvailable = snapshots.length > 0;
+  let priceEffect = new Prisma.Decimal(0);
+  let currencyEffect = new Prisma.Decimal(0);
+  const references = new Map<string, { day: string; provider: string }>();
   for (const snapshot of snapshots) {
     const state = costs.get(snapshot.holding);
     if (!state || snapshot.valueUsd === null) return missing("purchase-history");
@@ -75,10 +110,34 @@ export function portfolioGains(movements: GainMovement[], snapshots: GainSnapsho
     seen.add(snapshot.holding);
     value = value.plus(snapshot.valueUsd);
     invested = invested.plus(state.cost);
+    if (onComposition) {
+      const native = snapshot.native;
+      const covered = state.lots.reduce((total, lot) => total.plus(lot.quantity), new Prisma.Decimal(0));
+      if (!native || !state.units.gt(0) || covered.minus(state.units).abs().gt("0.00000001") || state.lots.some(lot => lot.currency !== native.currency)) {
+        compositionAvailable = false;
+        continue;
+      }
+      const nativeUnit = new Prisma.Decimal(native.currency === "USD" ? snapshot.valueUsd : native.total).div(state.units);
+      const dollarUnit = new Prisma.Decimal(snapshot.valueUsd).div(state.units);
+      for (const lot of state.lots) {
+        priceEffect = priceEffect.plus(lot.quantity.mul(nativeUnit.minus(lot.price)).mul(lot.usdPerUnit));
+        currencyEffect = currencyEffect.plus(lot.quantity.mul(dollarUnit.minus(nativeUnit.mul(lot.usdPerUnit))));
+        if (lot.reference) references.set(`${lot.reference.provider}:${lot.reference.day}`, lot.reference);
+      }
+    }
   }
   // Include fully sold holdings in realized gains, and reject missing open positions.
   for (const [key, state] of costs) if (!seen.has(key) && state.units.abs().gt("0.00000001")) return missing("ledger-mismatch");
   const unrealized = value.minus(invested);
+  if (onComposition && compositionAvailable) {
+    onComposition({
+      totalUsd: unrealized.toNumber(), costUsd: invested.toNumber(),
+      percent: invested.gt(0) ? unrealized.div(invested).mul(100).toNumber() : null,
+      priceUsd: priceEffect.toNumber(), fxUsd: currencyEffect.toNumber(),
+      adjustmentUsd: unrealized.minus(priceEffect).minus(currencyEffect).toNumber(),
+      historicalReferences: [...references.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    });
+  }
   return {
     unrealizedUsd: unrealized.toDecimalPlaces(2).toNumber(),
     unrealizedPercent: invested.gt(0) ? unrealized.div(invested).mul(100).toNumber() : null,

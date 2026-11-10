@@ -1,4 +1,5 @@
-import { purchaseCost, purchaseNote } from "../domain/purchase-cost";
+import { executionFxNote } from "../domain/trade-reporting-fx";
+import { purchaseCost, purchaseNote, recordedTradeAmounts } from "../domain/purchase-cost";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 
@@ -100,16 +101,39 @@ export async function updateTransaction(input: {
       if (trade.currency === "BRL" && trade.fxBrl !== "1") throw new MonthEditError("BRL transactions use an exchange rate of 1.");
       const side = kind === "WITHDRAWAL" ? "SELL" : "BUY";
       const cost = purchaseCost(input.transaction.quantity ?? "", trade.price, trade.commission, trade.fxBrl, side);
-      const suffix = / Treasury .+$/.exec(input.transaction.note ?? "")?.[0] ?? "";
-      const originalNote = input.transaction.note?.replace(/^(?:Purchase|Sale):.*?BRL\/(?:USD|EUR|BRL)\.(?: Invested [A-Z]{3} [\d.]+\.)?(?: Treasury .+)?$/, "").trim();
+      const savedNote = entry.note ?? "";
+      const metadataStart = savedNote.search(/ USD (?:valuation|execution) FX:/);
+      const tradeNote = metadataStart < 0 ? savedNote : savedNote.slice(0, metadataStart);
+      const metadata = metadataStart < 0 ? "" : savedNote.slice(metadataStart);
+      const suffix = / Treasury .+$/.exec(tradeNote)?.[0] ?? "";
+      const originalNote = tradeNote.replace(/^(?:Purchase|Sale):.*?BRL\/(?:USD|EUR|BRL)\.(?: Invested [A-Z]{3} [\d.]+\.)?(?: Treasury [^;]+?% p\.a\.)?/, "").trim();
       values = { kind, occurredOn: parseOccurredOn(input.transaction.occurredOn, month.referenceDate), quantity: cost.quantity, unitPriceBrl: cost.unitPriceBrl, amountBrl: cost.amountBrl, note: `${purchaseNote({ ...trade, occurredOn: input.transaction.occurredOn, side }, cost.quantity.toString(), trade.fxBrl)}${suffix}${originalNote ? ` ${originalNote}` : ""}` };
       if (values.note.length > MAX_NOTE_LENGTH) throw new MonthEditError("The corrected trade note is too long. Shorten the note before saving.");
+      values.note += metadata;
     } else values = parseValues(position, month.referenceDate, kind, input.transaction);
     await transaction.positionTransaction.update({ where: { id: entry.id }, data: values });
     await recomputePosition(transaction, position.id, "The correction would make the position negative.");
   }, { carryForward: true });
 }
 
+
+/** Record an FX correction without changing the original trade or its reference. */
+export async function recordExecutedUsdFx(input: { monthId: string; transactionId: string; rate: string }) {
+  if (!/^\d{1,8}(?:\.\d{1,12})?$/.test(input.rate) || !new Prisma.Decimal(input.rate).gt(0)) {
+    throw new MonthEditError("Enter a positive rate in USD per unit of the trade currency.");
+  }
+  return withUndo(input.monthId, async (tx, month) => {
+    const entry = await tx.positionTransaction.findFirst({
+      where: { id: input.transactionId, position: { portfolioMonthId: month.id } },
+    });
+    const native = entry && recordedTradeAmounts(entry);
+    if (!entry || entry.transferId || !native || native.currency === "USD") {
+      throw new MonthEditError("An original EUR or BRL trade is required.");
+    }
+    const amendment = executionFxNote(native.currency, input.rate, toDateKey(entry.occurredOn), new Date());
+    await tx.positionTransaction.update({ where: { id: entry.id }, data: { note: (entry.note ?? "") + amendment } });
+  }, { carryForward: false });
+}
 
 export async function removeTransaction(input: { monthId: string; transactionId: string }) {
   const owned = await (await getUserDb())?.positionTransaction.findFirst({ where: { id: input.transactionId, position: { portfolioMonthId: input.monthId } }, select: { position: { select: { asset: { select: { assetType: true } } } } } });

@@ -1,33 +1,97 @@
 import { timeWeightedReturns, type TwrObservation } from "./time-weighted-return";
 export type DatedCashFlow = { day: string; amount: number };
 
-/** Calendar-day XIRR. Reject ambiguous roots instead of choosing an arbitrary yield. */
-export function xirr(flows: DatedCashFlow[]): number | null {
-  if (!flows.length || !flows.some(f=>f.amount>0) || !flows.some(f=>f.amount<0) || flows.some(f=>!Number.isFinite(f.amount)||!Number.isFinite(Date.parse(f.day)))) return null;
-  const start=Math.min(...flows.map(f=>Date.parse(f.day)));
-  const timed=flows.filter(f=>f.amount!==0).map(f=>({amount:f.amount,years:(Date.parse(f.day)-start)/(365*86400000)}));
-  if (!timed.some(f=>f.years>0)) return null;
-  const npv=(logRate:number)=>{
-    const shift=Math.max(...timed.map(f=>-logRate*f.years));
-    return timed.reduce((sum,f)=>sum+f.amount*Math.exp(-logRate*f.years-shift),0);
+type CashTerm = { day: number; amount: number };
+type XirrResult = { percent: number; status: "unique" } | {
+  percent: null;
+  status: "insufficient-data" | "no-solution" | "multiple-solutions" | "unresolved";
+};
+
+function signChanges(terms: CashTerm[]) {
+  return terms.slice(1).filter((term, index) => Math.sign(term.amount) !== Math.sign(terms[index].amount)).length;
+}
+
+/** Isolate roots on monotone intervals of an exponential sum. Removing the
+ * first exponent leaves the same roots and gives a derivative with one fewer term.
+ * With only one sign change, the generalized Descartes rule bounds roots to one.
+ */
+function cashRoots(terms: CashTerm[]): number[] | null {
+  const changes = signChanges(terms);
+  if (changes === 0) return [];
+  const first = terms[0];
+  const last = terms.at(-1)!;
+  const dominance = Math.log(2 * terms.length);
+  const bound = (edge: CashTerm) => Math.max(1, ...terms.filter(t => t !== edge).map(t =>
+    (dominance + Math.log(Math.abs(t.amount)) - Math.log(Math.abs(edge.amount))) / Math.abs(t.day - edge.day)));
+  const lo = -bound(first);
+  const hi = bound(last);
+  const evaluate = (x: number) => {
+    const logs = terms.map(t => Math.log(Math.abs(t.amount)) + (t.day - first.day) * x);
+    const max = Math.max(...logs);
+    let sum = 0;
+    let absolute = 0;
+    for (const [i, term] of terms.entries()) {
+      const weight = Math.exp(logs[i] - max);
+      sum += Math.sign(term.amount) * weight;
+      absolute += weight;
+    }
+    return { sum, absolute };
   };
-  const brackets:[number,number][]=[];
-  let previous=-20,previousValue=npv(previous);
-  for(let i=1;i<=400;i++){
-    const current=-20+i/10,value=npv(current);
-    if(value===0) brackets.push([current,current]);
-    else if(previousValue!==0 && Math.sign(value)!==Math.sign(previousValue))brackets.push([previous,current]);
-    previous=current;previousValue=value;
+  // Fail closed for unusually complex inputs instead of returning an arbitrary root.
+  if (changes > 1 && terms.length > 128) return null;
+  const stationary = changes === 1 ? [] : cashRoots(terms.slice(1).map(t => ({
+    day: t.day,
+    amount: t.amount * (t.day - first.day),
+  })));
+  if (stationary === null) return null;
+  const boundaries = [lo, ...stationary.filter(x => x > lo && x < hi), hi];
+  const values = boundaries.map(x => evaluate(x));
+  const roots: number[] = [];
+  for (let i = 0; i < boundaries.length; i++) {
+    const { sum, absolute } = values[i];
+    if (i > 0 && i < boundaries.length - 1 && Math.abs(sum) <= 32 * Number.EPSILON * absolute) {
+      roots.push(boundaries[i]);
+      continue;
+    }
+    if (i === 0 || Math.abs(values[i - 1].sum) <= 32 * Number.EPSILON * values[i - 1].absolute ||
+      Math.sign(sum) === Math.sign(values[i - 1].sum)) continue;
+    let left = boundaries[i - 1];
+    let right = boundaries[i];
+    const leftSign = Math.sign(values[i - 1].sum);
+    for (let n = 0; n < 140 && right - left > 1e-16; n++) {
+      const middle = (left + right) / 2;
+      const value = evaluate(middle).sum;
+      if (value === 0) { left = right = middle; break; }
+      if (Math.sign(value) === leftSign) left = middle;
+      else right = middle;
+    }
+    roots.push((left + right) / 2);
   }
-  if(brackets.length!==1)return null;
-  let [lo,hi]=brackets[0];
-  for(let i=0;i<100&&hi-lo>1e-12;i++){
-    const mid=(lo+hi)/2,value=npv(mid);
-    if(value===0){lo=hi=mid;break;}
-    if(Math.sign(value)===Math.sign(npv(lo)))lo=mid;else hi=mid;
+  return roots.sort((a, b) => a - b);
+}
+
+export function calculateXirr(flows: DatedCashFlow[]): XirrResult {
+  const grouped = new Map<number, number>();
+  for (const flow of flows) {
+    const day = Date.parse(flow.day) / 86400000;
+    if (!Number.isInteger(day) || !Number.isFinite(flow.amount)) return { percent: null, status: "insufficient-data" };
+    grouped.set(day, (grouped.get(day) ?? 0) + flow.amount);
   }
-  const result=Math.expm1((lo+hi)/2)*100;
-  return Number.isFinite(result)?result:null;
+  const ordered = [...grouped].filter(([, amount]) => amount !== 0).sort(([a], [b]) => a - b);
+  if (ordered.length < 2 || ordered.some(([, amount]) => !Number.isFinite(amount))) return { percent: null, status: "insufficient-data" };
+  const scale = Math.max(...ordered.map(([, amount]) => Math.abs(amount)));
+  const terms = ordered.map(([day, amount]) => ({ day: (day - ordered[0][0]) / 365, amount: amount / scale }));
+  if (terms.some(term => term.amount === 0)) return { percent: null, status: "unresolved" };
+  const roots = cashRoots(terms);
+  if (roots === null) return { percent: null, status: "unresolved" };
+  if (roots.length === 0) return { percent: null, status: "no-solution" };
+  if (roots.length > 1) return { percent: null, status: "multiple-solutions" };
+  const percent = Math.expm1(-roots[0]) * 100;
+  return Number.isFinite(percent) && percent > -100 ? { percent, status: "unique" } : { percent: null, status: "unresolved" };
+}
+
+export function xirr(flows: DatedCashFlow[]): number | null {
+  return calculateXirr(flows).percent;
 }
 
 export function dailyOpenGain(holdings: { units: number; oldUnits: number; currentPrice: number | null; previousPrice: number | null; newUnits: number; newPrincipal: number | null }[]) {
@@ -50,7 +114,11 @@ export function overviewPerformanceMetrics(observations:TwrObservation[],asOf:st
   const twr=timeWeightedReturns(points).at(-1)?.percent??null;
   const flows=points.filter(p=>p.flow!==0).map(p=>({day:p.day,amount:-(p.flow??0)}));
   if(last?.value!==null&&last?.value!==undefined)flows.push({day:last.day,amount:last.value});
-  const annualized=last?.value==null||points.some(p=>p.flow===null)?null:xirr(flows);
-  return {asOf:last?.day??null,dailyUsd:last?.dailyGainUsd??null,dailyPercent:last?.dailyGainPercent??null,totalPercent:twr,annualizedPercent:annualized};
+  const first = points[0];
+  if (first?.value && first.flow === 0) flows.push({ day: first.day, amount: -first.value });
+  const annualized = last?.value == null || points.some(p => p.flow === null)
+    ? { percent: null, status: "insufficient-data" as const }
+    : calculateXirr(flows);
+  return {asOf:last?.day??null,dailyUsd:last?.dailyGainUsd??null,dailyPercent:last?.dailyGainPercent??null,totalPercent:twr,annualizedPercent:annualized.percent,annualizedStatus:annualized.status};
 }
 export type OverviewPerformanceMetrics=ReturnType<typeof overviewPerformanceMetrics>;

@@ -358,7 +358,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
       const existingUsd = await transaction.dailyQuote.findFirst({ where: { symbol: "USD", quoteDate: { lte: purchase.date, gte: usdDate } }, orderBy: { quoteDate: "desc" }, select: { valueBrl: true } });
       const usd = existingUsd?.valueBrl ?? new Prisma.Decimal(purchase.usd.value);
       const nativeFx = purchase.input.currency === "USD" ? usd : new Prisma.Decimal(purchase.native.value);
-      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side, purchase.input.amountInvested), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) };
+      purchase = { ...purchase, cost: purchaseCost(parseNonNegative(addition.value).toFixed(), purchase.input.price, purchase.input.commission, nativeFx.toString(), purchase.input.side, purchase.input.amountInvested), note: purchaseNote(purchase.input, addition.value, nativeFx.toString()) + purchase.reportingNote };
       await transaction.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: usdDate, instrumentType: "FIAT", baseCurrency: "USD", valueBrl: usd, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
     }
     if (purchase && asset.quoteSymbol && !quoteBySymbol.has(asset.quoteSymbol)) {

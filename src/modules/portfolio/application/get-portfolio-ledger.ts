@@ -5,6 +5,8 @@ import { automaticIncome, readTransactions, type PositionTransactionView } from 
 import type { PortfolioMonthSummary } from "./get-portfolio-months";
 import { buildHistorySlots } from "../domain/position-history";
 import { emptyRecordedMonth, recordedByMonth } from "../domain/position-transactions";
+import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-fx";
+import { recordedTradeAmounts } from "../domain/purchase-cost";
 import { datedFx, type MoneyCurrency } from "../domain/position-money";
 import { portfolioLedgerRows, type PortfolioLedgerFrame } from "../domain/portfolio-ledger";
 import { positionTitle } from "../presentation/position-display";
@@ -19,7 +21,7 @@ export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise
  const [positions,stored,series,daily]=await Promise.all([
   db.position.findMany({select:{id:true,accountId:true,assetId:true,portfolioMonthId:true,quantity:true,openingQuantity:true,totalBrl:true,unitPriceBrl:true,strategy:true,calculationStartDate:true,calculatedIncomeBrl:true,incomeCalculatedThrough:true,portfolioMonth:{select:{referenceDate:true}},asset:{select:{name:true,ticker:true,assetType:true,quoteSymbol:true,baseCurrency:true}},allocations:{select:{assetClass:true,subclass:true,duration:true,weight:true}}}}),
   readTransactions(),readQuoteSeries(db,["USD","EUR"]),
-  db.dailyQuote.findMany({where:{symbol:{in:["USD","EUR"]}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true}}),
+  db.dailyQuote.findMany({where:{symbol:{in:["USD","EUR"]}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,provider:true,fetchedAt:true}}),
  ]);
  const monthly=(currency:string)=>new Map(series.filter(q=>q.symbol===currency).map(q=>[q.referenceDate.toISOString().slice(0,7),q.valueBrl.toNumber()]));
  const rates={USD:monthly("USD"),EUR:monthly("EUR")};
@@ -30,7 +32,18 @@ export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise
   const fx=currency==="BRL"?{rate:1,estimated:false}:datedFx(entry.occurredOn,entry.note,currency,days[currency],rates[currency]);
   return {...entry,amountBrl:fx?entry.amountBrl/fx.rate:entry.amountBrl,unitPriceBrl:fx&&entry.unitPriceBrl!==null?entry.unitPriceBrl/fx.rate:null,moneyUnavailable:!fx};
  };
- const transactions=originals.map(t=>convert(t,"USD"));
+ const reportingRates = reportingFxSeries(daily);
+ const transactions = originals.map(entry => {
+  const fx = tradeReportingFx(entry.occurredOn, entry.note, "USD", reportingRates);
+  if (!fx) return { ...entry, unitPriceBrl: null, moneyUnavailable: true };
+  const unitPrice = entry.unitPriceBrl === null ? null : new Prisma.Decimal(entry.unitPriceBrl);
+  const exact = recordedTradeAmounts({
+   ...entry, quantity: new Prisma.Decimal(entry.quantity), amountBrl: new Prisma.Decimal(entry.amountBrl), unitPriceBrl: unitPrice,
+  });
+  const netWithdrawal = /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(entry.note ?? "")?.[1];
+  return { ...entry, amountBrl: new Prisma.Decimal(netWithdrawal ?? exact?.amountBrl ?? entry.amountBrl).div(fx.divisor).toNumber(),
+   unitPriceBrl: unitPrice?.div(fx.divisor).toNumber() ?? null, moneyUnavailable: false };
+ });
  const editEntries=originals.map(t=>convert(t,transactionCurrency(t)));
  const totals=new Map<string,Prisma.Decimal>();
  const targets:Record<string,TransactionTarget>={};
@@ -57,7 +70,7 @@ export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise
    if(entries.some(t=>t.moneyUnavailable)){f.flow=null;f.opening=null;continue;}
    if(slot.source==="mixed"){f.flow=null;f.opening=null;continue;}
    if(slot.recorded){const ledger=usdMonths.get(slot.month)??emptyRecordedMonth();if(f.flow!==null)f.flow+=ledger.netFlowBrl;if(f.opening!==null)f.opening+=ledger.openingBrl;
-    const source=raw.filter(t=>t.month===slot.month);f.estimated ||= source.some(t=>datedFx(t.occurredOn,t.note,"USD",days.USD,rates.USD)?.estimated);
+    const source=raw.filter(t=>t.month===slot.month);f.estimated ||= source.some(t=>{const fx=tradeReportingFx(t.occurredOn,t.note,"USD",reportingRates);return fx?.reference != null && fx.reference.day !== t.occurredOn;});
     if(slot.month===first && slot.month!==months[0].month && slot.openingQuantity && ledger.openingBrl===0){f.opening=null;f.estimated=true;}
    }else {const inferred=slot.entryBrl??(slot.month===first&&slot.month!==months[0].month?slot.valueBrl:slot.step?.flowBrl);if(inferred!==null&&inferred!==undefined){if(!rate)f.flow=null;else if(f.flow!==null)f.flow+=inferred/rate;f.estimated=true;}else if(slot.month!==months[0].month){f.flow=null;}}
   }

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/product/app-shell";
 import { getUserDb } from "@/lib/user-db";
 import { getEditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import { getMonthContext } from "@/modules/portfolio/application/get-month-context";
+import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import { getMonthPositions } from "@/modules/portfolio/application/get-month-positions";
 import { getPositionHistory, type PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
 import { formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
@@ -72,6 +73,15 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       }
     : null;
 
+  const allAccounts = Boolean(history?.all) && query.contas === "todas";
+  const valuations = month?.positions.filter(position =>
+    position.assetId === assetId && !position.liquidated && (allAccounts || position.accountId === accountId)) ?? [];
+  const composition = month && history && valuations.length > 0
+    ? (await getPortfolioGains(month.referenceDate, month.usdRate, "USD", {
+        assetId, accountId: allAccounts ? undefined : accountId, valuations,
+      })).composition
+    : undefined;
+
   return (
     <AppShell
       active="positions"
@@ -79,7 +89,7 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       selectedMonth={selected?.month ?? null}
       context={history ? { kind: "position", label: history.assetName } : undefined}
     >
-      <PositionDetail history={history} editing={editing} />
+      <PositionDetail history={history} editing={editing} composition={composition} />
     </AppShell>
   );
 }

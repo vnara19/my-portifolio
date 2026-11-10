@@ -230,7 +230,8 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     })).sort((a,b)=>b.valueBrl-a.valueBrl);
 
     const dollarGains = await getPortfolioGains(selected.referenceDate, usdRate, "USD");
-    const {byAsset:assetGains,realizedHistory,...referenceGains}=dollarGains;
+    const {byAsset:assetGains,realizedHistory,unrealizedUsd,unrealizedPercent,realizedUsd,realizedPercent,totalUsd,issue}=dollarGains;
+    const referenceGains = {unrealizedUsd,unrealizedPercent,realizedUsd,realizedPercent,totalUsd,issue};
     const gainByAsset = new Map(assetGains.map(row=>[row.assetId,row.unrealizedUsd]));
     const bondLabels=bondChartLabels(positionsView?.positions??[]);
     const uniqueHoldings = new Map<string,{assetId:string;label:string;assetClass:string;currency:string;valueUsd:number;unrealizedGainUsd:number|null}>();

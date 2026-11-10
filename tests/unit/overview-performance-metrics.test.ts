@@ -32,3 +32,12 @@ test("summary cutoffs cannot include future months and do not guess missing cash
 test("XIRR rejects ambiguous annualized yields rather than selecting a convenient root",()=>{
  assert.equal(xirr([{day:"2023-01-01",amount:-100},{day:"2024-01-01",amount:230},{day:"2024-12-31",amount:-132}]),null);
 });
+
+test("XIRR finds a repeated root and rejects multiple nearby roots", async () => {
+  const { calculateXirr } = await import("../../src/modules/portfolio/domain/overview-performance-metrics");
+  const annual = (amounts: number[]) => amounts.map((amount, i) => ({ day: `202${i + 1}-01-01`, amount }));
+  assert.equal(calculateXirr(annual([-1000, 3670, -4466, 1803.2])).status, "multiple-solutions");
+  assert.equal(calculateXirr(annual([-100, 220, -121])).percent?.toFixed(6), "10.000000");
+  assert.equal(calculateXirr(annual([-100, 200, -110])).status, "no-solution");
+  assert.equal(calculateXirr(annual([-100, 110])).status, "unique");
+});
