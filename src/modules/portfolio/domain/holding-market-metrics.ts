@@ -41,3 +41,10 @@ export function holdingMarketMetrics(points:MarketPoint[],asOf:string,benchmark:
  const volumes=history.filter(p=>last&&p.day<last.day).slice(-10);
  return {last:last?.value??null,change:last&&previous?last.value-previous.value:null,changePercent:last&&previous?(last.value/previous.value-1)*100:null,volume:last?.volume??null,averageVolume:volumes.length===10&&volumes.every(p=>p.volume!=null)?mean(volumes.map(p=>p.volume!)):null,marketCap:null,exchange:null,performance,beta:Object.fromEntries([1,3,5].map(y=>[String(y),holdingBeta(history,benchmark,asOf,y)])),volatility:volatilitySource==='close'?{'1d':closeMovement(1),'1w':closeMovement(7),'1m':closeMovement(30)}:{'1d':daily,'1w':range(7),'1m':range(30)}};
 }
+
+
+/** Use the first official quote and a distinct, current valuation observation. */
+export function allTimePriceChange(first: MarketPoint | undefined, latest: MarketPoint | undefined, lastPrice: number | null) {
+ if (!first || !latest || first.day >= latest.day || first.value <= 0 || lastPrice === null || lastPrice <= 0) return null;
+ return (lastPrice / first.value - 1) * 100;
+}

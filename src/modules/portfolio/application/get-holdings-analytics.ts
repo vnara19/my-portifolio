@@ -1,3 +1,5 @@
+import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { treasurySeriesOf, type TreasuryBook } from "@/modules/quotes/domain/treasury";
 import { getUserDb } from "@/lib/user-db";
 import { getPortfolioGains } from "./get-portfolio-gains";
 import { fetchCoinGeckoMarketCap, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
@@ -5,7 +7,7 @@ import { fetchYahooHoldingHistory } from '@/modules/quotes/infrastructure/yahoo'
 import { portfolioGains } from '../domain/portfolio-gains';
 import { timeWeightedReturns, type TwrObservation } from '../domain/time-weighted-return';
 import { xirr } from '../domain/overview-performance-metrics';
-import { holdingMarketMetrics, type HoldingMarketMetrics, type MarketPoint } from '../domain/holding-market-metrics';
+import { allTimePriceChange, holdingMarketMetrics, type HoldingMarketMetrics, type MarketPoint } from '../domain/holding-market-metrics';
 import { getMonthPositions, type MonthPositions } from './get-month-positions';
 import type { PortfolioLedger } from './get-portfolio-ledger';
 export type HoldingAnalytics=HoldingMarketMetrics&{invested:number|null;average:number|null;unrealized:number|null;unrealizedPercent:number|null;daily:number|null;dailyPercent:number|null;totalGain:number|null;totalPercent:number|null;annualized:number|null};
@@ -14,6 +16,17 @@ function cryptoCap(symbol:string,currency:"USD"|"EUR"|"BRL"){const key=`${symbol
 type Listing=Awaited<ReturnType<typeof fetchYahooHoldingHistory>>;
 const cache=new Map<string,{until:number;value:Promise<Listing|null>}>();
 function listing(symbol:string){const cached=cache.get(symbol);if(cached&&cached.until>Date.now())return cached.value;const value=fetchYahooHoldingHistory(symbol).catch(()=>null);if(cache.size>100)cache.delete(cache.keys().next().value!);cache.set(symbol,{until:Date.now()+300000,value});return value;}
+async function readTreasuryOrigins(): Promise<TreasuryBook | null> {
+ let timer: ReturnType<typeof setTimeout> | undefined;
+ try {
+  return await Promise.race([
+   readTreasuryBook().catch(() => null),
+   new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 8_000); }),
+  ]);
+ } finally {
+  clearTimeout(timer);
+ }
+}
 /** Read-only enrichment. Public requests contain listing symbols only, never balances or trades. */
 export async function getHoldingsAnalytics(month:MonthPositions,ledger:PortfolioLedger|null){
  const asOf=month.referenceDay;
@@ -31,6 +44,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  const treasurySymbols = [...new Set(positions.flatMap(p =>
   p.quoteSymbol?.startsWith("TD:") ? [p.quoteSymbol] : [],
  ))];
+ const treasuryOrigins = treasurySymbols.length ? readTreasuryOrigins() : null;
  const treasuryHistory = new Map<string, MarketPoint[]>();
  const db = treasurySymbols.length ? await getUserDb() : null;
  const treasuryFilter = { symbol: { in: treasurySymbols }, baseCurrency: "BRL", instrumentType: "TESOURO" };
@@ -59,7 +73,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  const symbols=[...new Set(positions.flatMap(p=>p.quoteSymbol&&!p.quoteSymbol.startsWith("TD:")?[symbolFor(p)!]:[]))];
  const results=new Map<string,Listing|null>();
  for(let i=0;i<symbols.length;i+=4){const batch=symbols.slice(i,i+4);await Promise.all(batch.map(async symbol=>results.set(symbol,await listing(symbol))));}
- const [benchmark,eurUsd,usdBrl]=await Promise.all([listing('^GSPC'),listing('EURUSD=X'),listing('BRL=X')]);
+ const [benchmark,eurUsd,usdBrl,treasuryBook]=await Promise.all([listing('^GSPC'),listing('EURUSD=X'),listing('BRL=X'),treasuryOrigins]);
  const rateAt=(rows:MarketPoint[],day:string)=>{let lo=0,hi=rows.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>>1;if(rows[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}const p=rows[index];return p&&Date.parse(day)-Date.parse(p.day)<=7*86400000?p.value:null;};
  const { byHolding } = await reportingGains;
  const data:Record<string,HoldingAnalytics>={};
@@ -73,7 +87,12 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   if(!treasury&&!p.liquidated&&p.unitPriceNative!=null&&history.length){const index=history.length-1;history[index]={...history[index],value:p.unitPriceNative};}
   const nativeBenchmark=(benchmark?.points??[]).flatMap(point=>{const u=rateAt(usdBrl?.points??[],point.day),e=rateAt(eurUsd?.points??[],point.day);const factor=p.valueCurrency==='USD'?1:p.valueCurrency==='BRL'?u:e?1/e:null;return factor?[{day:point.day,value:point.value*factor}]:[];});
   const market=holdingMarketMetrics(history,asOf,nativeBenchmark,treasury ? "close" : "range");
-  if(!source?.allTimeAvailable)market.performance.all=null;
+  if (treasury) {
+   const firstQuote = treasuryBook ? treasurySeriesOf(treasuryBook, { symbol: p.quoteSymbol! })?.points[0] : undefined;
+   market.performance.all = allTimePriceChange(firstQuote, history.at(-1), market.last);
+  } else if (!source?.allTimeAvailable) {
+   market.performance.all = null;
+  }
   market.exchange=source?.exchange??null;
   market.marketCap=month.isCurrent&&source?.currency===p.valueCurrency?source.marketCap??null:null;
   if(month.isCurrent&&p.assetType==='crypto'&&market.marketCap===null&&p.ticker)market.marketCap=await cryptoCap(p.ticker,p.valueCurrency);

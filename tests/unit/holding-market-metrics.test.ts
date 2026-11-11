@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {holdingMarketMetrics,holdingBeta,holdingCutoff,type MarketPoint} from '../../src/modules/portfolio/domain/holding-market-metrics';
+import {allTimePriceChange,holdingMarketMetrics,holdingBeta,holdingCutoff,type MarketPoint} from '../../src/modules/portfolio/domain/holding-market-metrics';
 test('holding price performance ignores purchases, uses trailing 30-day 1M offsets and rejects short histories',()=>{
  const points=[{day:'2026-01-30',value:100},{day:'2026-02-27',value:110},{day:'2026-03-02',value:121},{day:'2026-03-30',value:133.1}];
  assert.equal(holdingCutoff('2026-03-31','1m'),'2026-03-01');
@@ -45,4 +45,13 @@ test("Treasury redemption prices support movements without exchange volume or ra
  assert.equal(result.volume, null);
  assert.equal(result.averageVolume, null);
  assert.equal(result.beta["1"], null);
+});
+
+test("Treasury All Time uses the first official redemption quote rather than the first local record", () => {
+ const first = { day: "2023-01-30", value: 160.32 };
+ const latest = { day: "2026-11-11", value: 156.64 };
+ assert.ok(Math.abs(allTimePriceChange(first, latest, latest.value)! + 2.29540918163672) < 1e-10);
+ assert.equal(allTimePriceChange(undefined, latest, latest.value), null);
+ assert.equal(allTimePriceChange(first, first, first.value), null);
+ assert.equal(allTimePriceChange(first, latest, null), null);
 });
