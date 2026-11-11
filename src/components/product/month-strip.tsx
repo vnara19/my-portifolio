@@ -113,8 +113,8 @@ const yearTick = tv({
       absent: "bg-muted-foreground/15",
       selected: "bg-foreground",
       none: "bg-muted-foreground/45",
-      up: "bg-chart-up",
-      down: "bg-chart-down",
+      up: "bg-muted-foreground/45",
+      down: "bg-muted-foreground/45",
     },
   },
 });

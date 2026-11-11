@@ -89,9 +89,9 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
       native: valuation?.nativeValue != null ? { currency: valuation.valueCurrency, total: valuation.nativeValue } : undefined,
     };
   });
-  let composition: GainComposition | null = null;
+  const breakdown: { composition: GainComposition | null } = { composition: null };
   const realizedHistory: {day:string;value:number}[]=[];
-  const gains=portfolioGains(movements, snapshots,reason=>{issue=reason;},(index,value)=>realizedHistory.push({day:transactions[index].occurredOn.toISOString().slice(0,10),value}), scope ? result => { composition = result; } : undefined, scope?.accountId ? holding({ accountId: scope.accountId, assetId: scope.assetId }) : undefined);
+  const gains=portfolioGains(movements, snapshots,reason=>{issue=reason;},(index,value)=>realizedHistory.push({day:transactions[index].occurredOn.toISOString().slice(0,10),value}), scope ? result => { breakdown.composition = result; } : undefined, scope?.accountId ? holding({ accountId: scope.accountId, assetId: scope.assetId }) : undefined);
   const byAsset=[...new Set([...positions.map(p=>p.assetId),...transactions.map(t=>t.position.assetId)])].map(assetId=>{
     const keys=new Set([...positions.filter(p=>p.assetId===assetId).map(holding),...transactions.filter(t=>t.position.assetId===assetId).map(t=>holding(t.position))]);
     const entries=movements.filter(m=>keys.has(m.holding));
@@ -123,5 +123,5 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
       }
     }
   }
-  return {...gains, composition, byHolding,...(issue?{issue}: {}),byAsset,realizedHistory:issue?[]:realizedHistory};
+  return {...gains, ...breakdown, byHolding,...(issue?{issue}: {}),byAsset,realizedHistory:issue?[]:realizedHistory};
 }

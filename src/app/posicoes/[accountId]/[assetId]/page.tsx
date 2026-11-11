@@ -82,6 +82,15 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       })).composition
     : undefined;
 
+  const breakdown = composition ? {
+    totalUsd: composition.totalUsd,
+    percent: composition.percent,
+    costUsd: composition.costUsd,
+    priceUsd: composition.priceUsd,
+    fxUsd: composition.fxUsd,
+    adjustmentUsd: composition.adjustmentUsd,
+  } : composition;
+
   return (
     <AppShell
       active="positions"
@@ -89,7 +98,7 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       selectedMonth={selected?.month ?? null}
       context={history ? { kind: "position", label: history.assetName } : undefined}
     >
-      <PositionDetail history={history} editing={editing} composition={composition} />
+      <PositionDetail history={history} editing={editing} composition={breakdown} />
     </AppShell>
   );
 }

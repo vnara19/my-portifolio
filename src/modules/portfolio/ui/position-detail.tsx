@@ -69,7 +69,7 @@ export type PositionEditing = {
   catalog: EditingCatalog;
 };
 
-export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null; composition?: GainComposition | null}) {
+export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null; composition?: Omit<GainComposition, "historicalReferences"> | null}) {
   return <PositionMoneyProvider currency={props.history?.displayCurrency ?? "BRL"}><PositionDetailContent {...props} /></PositionMoneyProvider>;
 }
 function PositionDetailContent({
@@ -79,7 +79,7 @@ function PositionDetailContent({
 }: {
   history: PositionHistoryView | null;
   editing: PositionEditing | null;
-  composition?: GainComposition | null;
+  composition?: Omit<GainComposition, "historicalReferences"> | null;
 }) {
 
   const history = storedHistory && storedHistory.native ? {...storedHistory,account:storedHistory.native.account,all:storedHistory.all?storedHistory.native.all:null,prices:storedHistory.native.prices} : storedHistory;

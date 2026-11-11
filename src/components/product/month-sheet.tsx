@@ -42,8 +42,8 @@ export const monthMarker = tv({
   },
   compoundVariants: [
     { selected: true, marker: ["up", "down"], class: "bg-primary-foreground/50" },
-    { selected: false, marker: "up", class: "bg-chart-up/70" },
-    { selected: false, marker: "down", class: "bg-chart-down/70" },
+    { selected: false, marker: "up", class: "bg-muted-foreground/45" },
+    { selected: false, marker: "down", class: "bg-muted-foreground/45" },
   ],
   defaultVariants: { marker: "none", selected: false },
 });
