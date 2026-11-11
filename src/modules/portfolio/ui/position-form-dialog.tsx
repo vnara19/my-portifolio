@@ -857,7 +857,7 @@ function PositionForm({
                   </div></details> : null}
                 </> : null}
 
-                {purchaseEntry && (identity || kind === "crypto") ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
+                {purchaseEntry && kind !== "crypto" && identity ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
                   <summary className="cursor-pointer text-muted-foreground">Details</summary>
                   <div className="mt-3 flex flex-col gap-4">
                     {identity ? <>

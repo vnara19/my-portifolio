@@ -21,14 +21,14 @@ export function GainCompositionCard({ composition }: { composition: Omit<GainCom
   const components = [
     { label: "Asset Price Change", value: priceUsd, color: "bg-primary", explanation: "Change in the asset price measured at the purchase exchange rates." },
     { label: "Currency Impact", value: fxUsd, color: "bg-chart-up", explanation: "Gain or loss from exchange rate changes since purchase." },
-    { label: "Fees and Adjustments", value: adjustmentUsd, color: "bg-muted-foreground", explanation: "Remaining purchase commissions and any other cost-basis adjustments." },
+    { label: "Purchase Costs", value: adjustmentUsd, color: "bg-muted-foreground", explanation: "Purchase commissions attributable to the units you still hold, plus any difference from rounding or recorded cost basis." },
   ];
   const positive = components.reduce((sum, part) => sum + Math.max(0, part.value), 0);
   const negative = components.reduce((sum, part) => sum + Math.max(0, -part.value), 0);
   const divergent = positive > 0.005 && negative > 0.005;
   const scale = positive + negative;
   const ordered = [...components.filter(part => part.value < 0).reverse(), ...components.filter(part => part.value > 0)];
-  const contribution = (value: number) => `${points.format(value / costUsd * 100)} percentage points`;
+  const contribution = (value: number) => `${points.format(value / costUsd * 100)}%`;
 
   return (
     <section className="mt-6" aria-label="Gain Breakdown" data-testid="gain-composition">
@@ -48,7 +48,7 @@ export function GainCompositionCard({ composition }: { composition: Omit<GainCom
                       <Tooltip.Trigger
                         type="button"
                         aria-label={`${part.label} ${formatCurrency(part.value, "USD", true)}`}
-                        className={`min-w-1 cursor-help hover:brightness-125 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${part.color} ${index === 0 ? "rounded-l-full" : ""} ${index === ordered.length - 1 ? "rounded-r-full" : ""}`}
+                        className={`min-w-1 cursor-default hover:brightness-125 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${part.color} ${index === 0 ? "rounded-l-full" : ""} ${index === ordered.length - 1 ? "rounded-r-full" : ""}`}
                         style={{ flexGrow: Math.abs(part.value), flexBasis: 0 }}
                       />
                       <Tooltip.Portal>
@@ -76,12 +76,11 @@ export function GainCompositionCard({ composition }: { composition: Omit<GainCom
                 <dt className="flex items-center gap-1.5"><span aria-hidden="true" className={`size-2 rounded-full ${part.color}`} />{part.label}</dt>
                 <dd className="mt-1 space-y-1">
                   <span className={`block font-mono text-base ${part.value >= 0.005 ? "text-primary" : part.value <= -0.005 ? "text-destructive" : "text-foreground"}`}>{formatCurrency(Math.abs(part.value) < 0.005 ? 0 : part.value, "USD", true)}</span>
-                  {costUsd > 0 && <span className="block">{contribution(part.value)}</span>}
+                  {costUsd > 0 && <span className="block">{contribution(part.value)} of remaining cost</span>}
                 </dd>
               </div>
             ))}
           </dl>
-          {costUsd > 0 && <p className="mt-3">Each percentage-point contribution is measured against the remaining cost. Together they make up the unrealized return.</p>}
         </>}
       />
     </section>

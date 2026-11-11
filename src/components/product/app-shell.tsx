@@ -11,6 +11,12 @@ import { MainTabs, NavTrail, type NavContext, type TabKey } from "@/components/p
 import { MonthTimeline } from "@/components/product/month-timeline";
 import { QuoteRefreshIndicator } from "@/components/product/quote-refresh-indicator";
 import { cn } from "@/lib/utils";
+import { getPortfolioMonths } from "@/modules/portfolio/application/get-portfolio-months";
+import { getPortfolioLedger } from "@/modules/portfolio/application/get-portfolio-ledger";
+import { getOverviewData } from "@/modules/portfolio/application/get-overview-data";
+import { getOverviewPerformance } from "@/modules/portfolio/application/get-overview-performance";
+import { monthlyProfitability } from "@/modules/portfolio/domain/overview-analytics";
+import type { TwrObservation } from "@/modules/portfolio/domain/time-weighted-return";
 import type { PortfolioMonthSummary } from "@/modules/portfolio/application/get-portfolio-months";
 import { getRequestQuoteRefreshSummary } from "@/modules/quotes/application/quote-refresh-summary";
 
@@ -20,10 +26,11 @@ type AppShellProps = {
   selectedMonth: string | null;
 
   context?: NavContext;
+  performance?: TwrObservation[];
   children: ReactNode;
 };
 
-export async function AppShell({ active, months, selectedMonth, context, children }: AppShellProps) {
+export async function AppShell({ active, months, selectedMonth, context, performance, children }: AppShellProps) {
   const user = await getSessionUser();
   return (
     <AppFrame
@@ -73,7 +80,9 @@ export async function AppShell({ active, months, selectedMonth, context, childre
           {context ? <NavTrail context={context} /> : null}
 
           {selectedMonth ? (
-            <MonthTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} />
+            <Suspense fallback={<MonthTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} />}>
+              <ReturnTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} performance={performance} />
+            </Suspense>
           ) : null}
         </header>
       )}
@@ -85,4 +94,24 @@ export async function AppShell({ active, months, selectedMonth, context, childre
 
 async function QuoteStatus() {
   return <QuoteRefreshIndicator summary={await getRequestQuoteRefreshSummary()} />;
+}
+
+async function ReturnTimeline({ months, selectedMonth, scoped, performance }: {
+  months: PortfolioMonthSummary[];
+  selectedMonth: string;
+  scoped: boolean;
+  performance?: TwrObservation[];
+}) {
+  if (performance === undefined) {
+    const allMonths = await getPortfolioMonths();
+    const [overview, ledger] = await Promise.all([
+      getOverviewData(allMonths.at(-1)?.referenceDate),
+      getPortfolioLedger(allMonths),
+    ]);
+    performance = await getOverviewPerformance(overview, ledger);
+  }
+  const last = performance.at(-1);
+  const returns = last ? monthlyProfitability(performance, [], last.day) : [];
+  const monthlyReturns = Object.fromEntries(returns.map(row => [row.month, row.portfolio]));
+  return <MonthTimeline months={months} selectedMonth={selectedMonth} scoped={scoped} monthlyReturns={monthlyReturns} />;
 }

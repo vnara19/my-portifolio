@@ -29,7 +29,7 @@ export default async function Home({
   const reportingBenchmark = await getOverviewBenchmark(benchmark, returnBaselineDay(performance), performance.at(-1)?.day, "USD");
 
   return (
-    <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null}>
+    <AppShell active="overview" months={months} selectedMonth={selected?.month ?? null} performance={selected?.month === months.at(-1)?.month ? performance : undefined}>
       <OverviewDashboard overview={overview} selic={selic} performance={performance} marketStrip={marketStrip} benchmark={reportingBenchmark} riskFreeRate={riskFreeRate} assetLabels={Object.fromEntries((ledger?.originals??[]).filter(t=>t.assetId).map(t=>[t.assetId!,overviewAssetLabel(t.assetName??"Asset",t.ticker??null)]))} />
     </AppShell>
   );

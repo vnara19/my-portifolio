@@ -17,10 +17,11 @@ type MonthTimelineProps = {
 
 
   scoped?: boolean;
+  monthlyReturns?: Record<string, number | null>;
 };
 
 
-export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTimelineProps) {
+export function MonthTimeline({ months, selectedMonth, scoped = false, monthlyReturns }: MonthTimelineProps) {
   const [isPending, startTransition] = useTransition();
   const [monthParam, setMonth] = useQueryState("mes", { shallow: false, startTransition });
   const calendarSeen=useRef<string|null>(null);
@@ -41,7 +42,7 @@ export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTi
     document.addEventListener("visibilitychange",followCalendar);
     return ()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",followCalendar);};
   }, [months,monthParam,setMonth]);
-  const items = useMemo(() => months.map(toItem), [months]);
+  const items = useMemo(() => months.map(month => toItem(month, monthlyReturns?.[month.month] ?? null)), [months, monthlyReturns]);
 
 
   const activeMonth =
@@ -83,13 +84,13 @@ export function MonthTimeline({ months, selectedMonth, scoped = false }: MonthTi
   );
 }
 
-function toItem(month: PortfolioMonthSummary): MonthStripItem {
+function toItem(month: PortfolioMonthSummary, monthlyReturn: number | null): MonthStripItem {
   return {
     month: month.month,
     name: formatMonth(month.referenceDate),
     short: formatMonthLabel(month.referenceDate),
-    description: month.changePercent === null ? undefined : `${formatPercent(month.changePercent)} monthly balance change (BRL)`,
-    marker: month.changeBrl === null ? "none" : month.changeBrl >= 0 ? "up" : "down",
+    description: monthlyReturn === null ? undefined : `${formatPercent(monthlyReturn)} monthly return (USD)`,
+    marker: monthlyReturn === null || Math.abs(monthlyReturn) < 0.005 ? "none" : monthlyReturn > 0 ? "up" : "down",
   };
 }
 
