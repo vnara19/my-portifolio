@@ -13,7 +13,6 @@ export type EditingCatalog = {
     quoteSymbol: string | null;
     baseCurrency: string;
     maturityDate: string | null;
-    liquidity: string | null;
     appliedOn?: string | null;
 
 
@@ -54,7 +53,6 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
           quoteSymbol: true,
           baseCurrency: true,
           maturityDate: true,
-          liquidity: true,
           appliedOn: true,
         },
       }),

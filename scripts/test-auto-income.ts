@@ -94,7 +94,7 @@ async function main() {
       edit: {
         positionId,
         strategy: null,
-        asset: { name, liquidity: null, maturityDate: "2027-10-01", autoIncome } satisfies PositionEdit["asset"],
+        asset: { name, maturityDate: "2027-10-01", autoIncome } satisfies PositionEdit["asset"],
         allocations: [{ assetClass: "Renda Fixa", subclass, duration: "Curto", weightPercent: "100", ratePercent }],
       },
     });

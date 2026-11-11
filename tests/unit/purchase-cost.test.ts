@@ -3,7 +3,6 @@ import { afterEach, test } from "node:test";
 import { purchaseCost, purchaseNote, recordedBondAcquisition, recordedTradeAmounts } from "@/modules/portfolio/domain/purchase-cost";
 import { Prisma } from "@/generated/prisma/client";
 import { portfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
-import { automaticLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { preparePurchase } from "@/modules/portfolio/application/prepare-purchase";
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -46,16 +45,6 @@ test("invalid prices, fees and quantities cannot create acquisition cost", () =>
   for (const [quantity, price, fee] of [["0", "100", "3"], ["1", "-100", "3"], ["1", "100", "-3"], ["1", "100", "NaN"], ["0.0000000000001", "100", "0"]]) {
     assert.throws(() => purchaseCost(quantity, price, fee, 6));
   }
-});
-test("settlement defaults distinguish US, Europe, B3 bond ETFs and crypto", () => {
-  assert.equal(automaticLiquidity("us-market"), "D+1");
-  assert.equal(automaticLiquidity("eu-market", "equity", "2026-10-16"), "D+2");
-  assert.equal(automaticLiquidity("eu-market", "equity", "2027-10-11"), "D+1");
-  assert.equal(automaticLiquidity("br-market", "equity"), "D+2");
-  assert.equal(automaticLiquidity("br-market", "bond"), "D+1");
-  assert.equal(automaticLiquidity("crypto"), "24/7 · platform-dependent");
-  assert.equal(automaticLiquidity("fixed-income"), null);
-  assert.equal(automaticLiquidity("treasury"), null);
 });
 test("historical purchases use acquisition-date FX, not the current market quote", async () => {
   const seen: string[] = [];

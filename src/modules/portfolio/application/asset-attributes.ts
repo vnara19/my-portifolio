@@ -2,7 +2,6 @@ import { LEGACY_DEBT_PRODUCTS, reviewedDebtProduct } from "../presentation/asset
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@/generated/prisma/client";
 import { cleanName, normalizeKey, USD_SYMBOL } from "@/modules/portfolio/domain/asset-kinds";
-import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { assetTypeOf, isAssetType } from "@/modules/portfolio/domain/classification";
 import { supportsAutoIncome } from "@/modules/portfolio/domain/fixed-income-policy";
 
@@ -24,7 +23,6 @@ export class AssetAttributeError extends Error {
 
 export type AssetAttributes = {
   name: string;
-  liquidity: string | null;
   /** YYYY-MM-DD */
   maturityDate: string | null;
 
@@ -46,7 +44,6 @@ export type AssetState = {
   id: string;
   name: string;
   normalizedKey: string;
-  liquidity: string | null;
   maturityDate: Date | null;
   cashAccount: boolean;
   autoIncome: boolean;
@@ -65,7 +62,6 @@ export async function applyAssetAttributes(
       id: true,
       name: true,
       normalizedKey: true,
-      liquidity: true,
       maturityDate: true,
       quoteSymbol: true,
       cashAccount: true,
@@ -88,12 +84,6 @@ export async function applyAssetAttributes(
 
   if (!normalizedName || name.length > MAX_ASSET_NAME_LENGTH) {
     throw new AssetAttributeError(`Enter a name with up to ${MAX_ASSET_NAME_LENGTH} characters.`);
-  }
-
-  const liquidity = normalizeLiquidity(next.liquidity);
-
-  if (liquidity && liquidity.length > MAX_LIQUIDITY_LENGTH) {
-    throw new AssetAttributeError(`Liquidity accepts up to ${MAX_LIQUIDITY_LENGTH} characters.`);
   }
 
   const maturity = next.maturityDate;
@@ -142,7 +132,6 @@ export async function applyAssetAttributes(
 
   if (
     asset.name === name &&
-    asset.liquidity === liquidity &&
     currentMaturity === maturity &&
     asset.cashAccount === cashAccount &&
     asset.autoIncome === autoIncome &&
@@ -176,7 +165,6 @@ export async function applyAssetAttributes(
     data: {
       name,
       normalizedKey,
-      liquidity,
       maturityDate: maturity ? new Date(`${maturity}T00:00:00.000Z`) : null,
       cashAccount,
       autoIncome,
@@ -189,7 +177,6 @@ export async function applyAssetAttributes(
     id: asset.id,
     name: asset.name,
     normalizedKey: asset.normalizedKey,
-    liquidity: asset.liquidity,
     maturityDate: asset.maturityDate,
     cashAccount: asset.cashAccount,
     autoIncome: asset.autoIncome,
@@ -215,7 +202,6 @@ export async function restoreAssetState(transaction: Prisma.TransactionClient, s
     data: {
       name: state.name,
       normalizedKey: state.normalizedKey,
-      liquidity: state.liquidity,
       maturityDate: state.maturityDate,
       cashAccount: state.cashAccount,
       autoIncome: state.autoIncome,

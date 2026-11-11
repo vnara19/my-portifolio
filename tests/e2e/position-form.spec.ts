@@ -255,11 +255,11 @@ test("existing assets are reused; another maturity creates a new identity", asyn
   const existing = dialog.locator("[data-asset-existing]");
   await expect(existing).toContainText("Time Deposit already exists");
   await expect(dialog.getByRole("textbox", { name: "Ticker" })).toHaveCount(0);
-  await expect(dialog.getByText("Asset liquidity")).toBeVisible();
+  await expect(dialog.getByText("Asset liquidity")).toHaveCount(0);
 
   await dialog.getByRole("textbox", { name: "Maturity", exact: true }).fill("15/01/2027");
   await expect(existing).toHaveCount(0);
-  await expect(dialog.getByRole("combobox", { name: "Liquidity" })).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Liquidity" })).toHaveCount(0);
   await closeForm(dialog);
 });
 
@@ -319,7 +319,7 @@ test("row editing opens the same populated position form", async ({ page }) => {
   await expect(dialog.getByRole("textbox", { name: "Ticker" })).toHaveCount(0);
   await expect(dialog.getByText("BTC", { exact: true }).first()).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "Maturity", exact: true })).toHaveCount(0);
-  await expect(dialog.getByRole("combobox", { name: "Liquidity" })).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Liquidity" })).toHaveCount(0);
 
   await formTab(dialog, "Allocation").click();
   await expect(dialog.getByRole("combobox", { name: "Class of allocation 1", exact: true })).toHaveValue("Crypto");

@@ -10,7 +10,6 @@ import { nativeUnitPrice } from "../presentation/position-display";
 
 /** Investment table and responsive filters. Sort columns and filter using the classifications stored by the position form. */
 
-import { liquidityLabel } from "@/lib/liquidity-labels";
 import { englishLabel } from "@/lib/english-labels";
 
 import {
@@ -107,7 +106,6 @@ export function PositionsWorkspace({
       tipo: list,
       moeda: list,
       venc: list,
-      liq: list,
       q: parseAsString.withDefault(""),
       ordem: parseAsString.withDefault("totalBrl.desc"),
     },
@@ -158,7 +156,6 @@ export function PositionsWorkspace({
     types: query.tipo.map(normalizeTypeFilter).filter(Boolean),
     currencies: query.moeda.map((currency) => ["BTC", "Altcoins"].includes(currency) ? "USD" : currency),
     maturities: query.venc,
-    liquidities: [...new Set(query.liq.map(liquidityLabel))],
     search: query.q,
   };
   const positions = (month?.positions ?? []).filter((position) => displaySold || !position.liquidated);
@@ -195,7 +192,6 @@ export function PositionsWorkspace({
     filters.types.length +
     filters.currencies.length +
     filters.maturities.length +
-    filters.liquidities.length +
     (filters.search ? 1 : 0);
   const occupied = new Set(month.positions.filter(position=>!position.historicalSold).map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
@@ -204,7 +200,6 @@ export function PositionsWorkspace({
     { key: "mercado", label: "Market", options: options.markets, selected: filters.markets ?? [], onChange: (next) => void setQuery({ mercado: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
     { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
-    { key: "liq", label: "Liquidity", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
   ];
   const activeCount = month.positions.length - liquidatedCount;
 
@@ -232,7 +227,7 @@ export function PositionsWorkspace({
     });
 
   const clearFilters = () =>
-    void setQuery({ classe: null, subclasse: null, mercado: null, tipo: null, moeda: null, venc: null, liq: null, q: null });
+    void setQuery({ classe: null, subclasse: null, mercado: null, tipo: null, moeda: null, venc: null, q: null });
 
 
   const openPosition = (position: MonthPosition, href: string) => {
@@ -350,7 +345,6 @@ export function PositionsWorkspace({
             <MultiSelectFilter label="Market" options={options.markets} selected={filters.markets ?? []} onChange={(next) => void setQuery({ mercado: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
             <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
-            <MultiSelectFilter label="Liquidity" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
 
             {activeFilterCount > 0 ? (
               <button
@@ -564,7 +558,6 @@ function PositionDetails({
       value: <span className="font-mono">{position.unitPriceNative == null ? "Not Specified" : formatUnitPrice(position.unitPriceNative, position.valueCurrency)}</span>,
     }] : []),
     ...(position.securityQuantity !== null ? [{ label: "Quantity", value: <QuantityText position={position} /> }] : []),
-    { label: "Liquidity", value: liquidityLabel(position.liquidity) },
     {
       label: "Maturity",
       value: position.maturityDate ? (

@@ -39,7 +39,7 @@ export function compileTradeImport(trades:ImportedTrade[],listings:ImportListing
  const assetIds=new Map<string,string>();
  const used=listings.filter(l=>trades.some(t=>t.symbol===l.source));
  if(used.length!==new Set(trades.map(t=>t.symbol)).size)throw new Error("Every source ticker needs a verified listing and currency");
- for(const l of used){const id=randomUUID();assetIds.set(l.source,id);tables.assets.push({id,normalizedKey:`${l.kind}|${l.symbol}`,name:l.name,ticker:l.ticker,quoteSymbol:l.symbol,baseCurrency:l.kind==="crypto"?"BTC":l.currency,assetType:l.kind,maturityDate:null,liquidity:l.kind==="crypto"?"Same Day":"D+1",cashAccount:false,autoIncome:false,createdAt:stamp});}
+ for(const l of used){const id=randomUUID();assetIds.set(l.source,id);tables.assets.push({id,normalizedKey:`${l.kind}|${l.symbol}`,name:l.name,ticker:l.ticker,quoteSymbol:l.symbol,baseCurrency:l.kind==="crypto"?"BTC":l.currency,assetType:l.kind,maturityDate:null,cashAccount:false,autoIncome:false,createdAt:stamp});}
  const after=new Date(`${asOf.slice(0,7)}-01`);after.setUTCMonth(after.getUTCMonth()+1);
  const months=monthsBetween(trades[0].day.slice(0,7),after.toISOString().slice(0,7));
  const quantity=new Map<string,Prisma.Decimal>();

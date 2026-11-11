@@ -5,7 +5,7 @@ import { applyAssetAttributes, restoreAssetState } from "@/modules/portfolio/app
 import { reviewedDebtProduct } from "@/modules/portfolio/presentation/asset-classification";
 
 test("confirming a legacy product changes metadata only and Undo restores a missing contract", async () => {
-  const asset = { id: "legacy", name: "Deposit", normalizedKey: "private:fixed-income:deposit", liquidity: null, maturityDate: null, quoteSymbol: null, cashAccount: false, autoIncome: false, assetType: "fixed-income", baseCurrency: "BRL", fixedIncomeContract: null as unknown };
+  const asset = { id: "legacy", name: "Deposit", normalizedKey: "private:fixed-income:deposit", maturityDate: null, quoteSymbol: null, cashAccount: false, autoIncome: false, assetType: "fixed-income", baseCurrency: "BRL", fixedIncomeContract: null as unknown };
   let written: Record<string, unknown> = {};
   const transaction = { asset: {
     findUnique: async () => ({ ...asset }),
@@ -13,7 +13,7 @@ test("confirming a legacy product changes metadata only and Undo restores a miss
     update: async ({ data }: { data: Record<string, unknown> }) => { written = data; Object.assign(asset, data); },
     updateMany: async ({ data }: { data: Record<string, unknown> }) => { written = data; },
   } } as unknown as Prisma.TransactionClient;
-  const state = await applyAssetAttributes(transaction, asset.id, { name: "Deposit", liquidity: null, maturityDate: null, displayProduct: "LCI" });
+  const state = await applyAssetAttributes(transaction, asset.id, { name: "Deposit", maturityDate: null, displayProduct: "LCI" });
   assert.ok(state);
   assert.equal(reviewedDebtProduct(written.fixedIncomeContract), "LCI");
   assert.equal("cdiPercent" in written, false);
@@ -26,6 +26,6 @@ test("confirming a legacy product changes metadata only and Undo restores a miss
 });
 
 test("a recorded contract cannot be relabeled as another debt product", async () => {
-  const transaction = { asset: { findUnique: async () => ({ id: "contract", name: "Deposit", normalizedKey: "private:fixed-income:deposit", liquidity: null, maturityDate: null, quoteSymbol: null, cashAccount: false, autoIncome: false, assetType: "fixed-income", baseCurrency: "BRL", fixedIncomeContract: { product: "CDB", rate: "100", indexer: "CDI" } }) } } as unknown as Prisma.TransactionClient;
-  await assert.rejects(applyAssetAttributes(transaction, "contract", { name: "Deposit", liquidity: null, maturityDate: null, displayProduct: "LCA" }), /contract determines/);
+  const transaction = { asset: { findUnique: async () => ({ id: "contract", name: "Deposit", normalizedKey: "private:fixed-income:deposit", maturityDate: null, quoteSymbol: null, cashAccount: false, autoIncome: false, assetType: "fixed-income", baseCurrency: "BRL", fixedIncomeContract: { product: "CDB", rate: "100", indexer: "CDI" } }) } } as unknown as Prisma.TransactionClient;
+  await assert.rejects(applyAssetAttributes(transaction, "contract", { name: "Deposit", maturityDate: null, displayProduct: "LCA" }), /contract determines/);
 });

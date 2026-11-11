@@ -27,7 +27,7 @@ test("product and market facets cascade without mixing geographic exposure or ca
     { ...base, assetType: "us-etf", productType: "ETF", market: "United States", valueCurrency: "USD" },
     { ...base, assetType: "eur-balance", productType: "Cash Account", market: "Europe", allocations: [{ ...base.allocations[0], assetClass: "Caixa" }] },
   ] as MonthPosition[];
-  const filters = { classes: [], subclasses: [], types: ["ETF"], markets: ["Europe"], currencies: [], maturities: [], liquidities: [], search: "" };
+  const filters = { classes: [], subclasses: [], types: ["ETF"], markets: ["Europe"], currencies: [], maturities: [], search: "" };
   assert.deepEqual(filterPositions(positions, filters), [positions[0]]);
   assert.deepEqual(filterOptions(positions, { ...filters, markets: [] }).markets, ["Brazil", "Europe", "Global", "United States"]);
   assert.deepEqual(filterOptions(positions, filters).currencies, ["BRL", "EUR", "USD"]);

@@ -186,7 +186,7 @@ test("clicking a cash-position row opens its detail", async ({ page }) => {
 
 
   await expect(page.getByTestId("position-maturity")).toHaveCount(0);
-  await expect(page.getByTestId("position-chips").getByTestId("position-liquidity")).toContainText("Liquidity");
+  await expect(page.getByTestId("position-chips").getByTestId("position-liquidity")).toHaveCount(0);
   await expect(page.getByTestId("position-presence")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Renomear ativo" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit position" })).toBeVisible();

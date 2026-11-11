@@ -78,7 +78,6 @@ const newAssetSchema = z.object({
   kind: z.enum(ASSET_KINDS),
   ticker: z.string().trim().max(120).nullable(),
   maturityDate: day.nullable(),
-  liquidity: z.string().trim().max(30).nullable().optional(),
   quoteCheckToken: z.string().min(1).max(4096).nullable(),
   manualPriceBrl: value.nullable(),
   cashAccount: z.boolean().optional(),
@@ -115,7 +114,6 @@ const editSchema = z.object({
     allocations: allocationsSchema,
     asset: z.object({
       name: label(120),
-      liquidity: z.string().trim().max(60).nullable(),
       maturityDate: day.nullable(),
       cashAccount: z.boolean().optional(),
       autoIncome: z.boolean().optional(),

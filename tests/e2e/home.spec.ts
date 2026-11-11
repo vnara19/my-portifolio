@@ -89,7 +89,7 @@ test("the table shows class, subclass and redemption term and expands its rows",
     await expect(headers.filter({ hasText: removed })).toHaveCount(0);
   }
   await expect(page.getByRole("combobox", { name: "Currency", exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Liquidity", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Liquidity", exact: true })).toHaveCount(0);
 
   const row = (asset: string) => page.getByTestId("position-row").filter({ hasText: asset }).first();
   await expect(row("LCD BNDES LIQUIDEZ").getByTestId("position-classes")).toHaveText("Cash · Floating-rate · Short-term");

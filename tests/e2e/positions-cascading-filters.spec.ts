@@ -105,11 +105,12 @@ test("touch fields use 16 px text to prevent Safari zoom", async ({ page }, test
   expect(size).toBe(coarse ? "16px" : "12px");
 });
 
-test("liquidity is a filter without a table column", async ({ page }) => {
+test("legacy liquidity URLs no longer filter holdings", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/posicoes?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
-  expect(await optionsOf(page, "Liquidity")).toContain("Liquidity not specified");
+  await page.goto("/posicoes?mes=2026-09&liq=__invalid__");
+  await expect(page.getByRole("heading", { level: 1, name: "Holdings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Liquidity", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("row").nth(1)).toBeVisible();
 
   await expect(page.getByRole("columnheader", { name: "Liquidity" })).toHaveCount(0);
 });

@@ -50,7 +50,6 @@ export type PositionHistoryView = {
 
   maturityDate: string | null;
 
-  liquidity: string | null;
   selectedMonth: string;
   monthStatus: PortfolioMonthStatus;
 
@@ -160,7 +159,6 @@ export async function getPositionHistory({
           baseCurrency: true,
           assetType: true,
           maturityDate: true,
-          liquidity: true,
           autoIncome: true,
         },
       }),
@@ -313,7 +311,6 @@ export async function getPositionHistory({
       quoteSymbol: asset.quoteSymbol,
       baseCurrency: asset.baseCurrency,
       maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,
-      liquidity: asset.liquidity,
       selectedMonth,
       monthStatus: selected.status,
       referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),

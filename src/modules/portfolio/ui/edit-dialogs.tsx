@@ -1,6 +1,5 @@
 "use client";
 
-import { liquidityLabel } from "@/lib/liquidity-labels";
 
 import { englishLabel } from "@/lib/english-labels";
 
@@ -11,7 +10,6 @@ import { cn } from "@/lib/utils";
 
 import { headerButton } from "@/components/product/page-controls";
 import { Picker } from "@/components/ui/picker";
-import { LIQUIDITY_SUGGESTIONS } from "@/modules/portfolio/domain/liquidity";
 import { isRedemption, redemptionLabel, REDEMPTION_VALUES } from "@/modules/portfolio/domain/redemption";
 
 
@@ -90,40 +88,6 @@ export function RedemptionPicker({
       onValueChange={onChange}
       placeholder={disabled ? "Choose the class" : "Choose"}
       disabled={disabled}
-    />
-  );
-}
-
-const NO_LIQUIDITY_VALUE = "__sem_liquidez__";
-
-
-export function LiquidityPicker({
-  label = "Liquidity",
-  value,
-  onChange,
-}: {
-  label?: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const candidates = [
-    { value: NO_LIQUIDITY_VALUE, label: liquidityLabel(null) },
-    ...(value ? [{ value, label: liquidityLabel(value) }] : []),
-    ...LIQUIDITY_SUGGESTIONS.map((entry) => ({ value: entry, label: liquidityLabel(entry) })),
-  ];
-  const options = candidates.filter((entry, index) => candidates.findIndex((other) => other.label === entry.label) === index);
-
-
-  return (
-    <Picker
-      aria-label={englishLabel(label)}
-      options={options}
-      value={value ? options.find((entry) => entry.label === liquidityLabel(value))?.value ?? value : null}
-      placeholder="Optional"
-      onValueChange={(next) => onChange(next === NO_LIQUIDITY_VALUE ? "" : next)}
-      onCreate={(text) => onChange(text)}
-      createLabel={(text) => `Use “${text}”`}
-      emptyMessage="Type to use a different term"
     />
   );
 }

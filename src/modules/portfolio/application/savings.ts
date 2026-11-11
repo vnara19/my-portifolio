@@ -121,7 +121,7 @@ export async function createSavings(input: {
             account = await tx.account.create({ data: { userId: SCOPED_USER, institutionId: inst.id, name: "Main" } });
             created.accountIds.push(account.id);
         }
-        const asset = await tx.asset.create({ data: { userId: SCOPED_USER, name, normalizedKey: `savings:${randomUUID()}`, assetType: "savings", baseCurrency: terms.currency, appliedOn: new Date(terms.startDate), autoIncome: false, liquidity: terms.product === "FLEXIBLE" ? "D+2" : "D+0", fixedIncomeContract: terms } });
+        const asset = await tx.asset.create({ data: { userId: SCOPED_USER, name, normalizedKey: `savings:${randomUUID()}`, assetType: "savings", baseCurrency: terms.currency, appliedOn: new Date(terms.startDate), autoIncome: false, fixedIncomeContract: terms } });
         created.assetIds.push(asset.id);
         await valueSavings(tx, asset.id);
         return { created };

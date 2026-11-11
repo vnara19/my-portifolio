@@ -31,7 +31,6 @@ export type MonthPosition = {
 
   maturityDate: string | null;
 
-  liquidity: string | null;
 
   cashAccount: boolean;
 
@@ -132,7 +131,6 @@ export async function getMonthPositions(
                   quoteSymbol: true,
                   baseCurrency: true,
                   maturityDate: true,
-                  liquidity: true,
                   cashAccount: true,
                   fixedIncomeContract: true,
                   autoIncome: true,
@@ -231,7 +229,6 @@ export async function getMonthPositions(
             strategy: position.strategy,
             baseCurrency: position.asset.baseCurrency,
             maturityDate: position.asset.maturityDate ? toDateKey(position.asset.maturityDate) : null,
-            liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
             assetType,
             productType: displayProduct,

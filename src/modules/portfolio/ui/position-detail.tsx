@@ -7,7 +7,6 @@ import { investmentMonthReturn } from "../domain/position-money";
 import { usePositionMoney } from "./position-money-context";
 
 import { PositionMoneyProvider } from "./position-money-context";
-import { liquidityLabel } from "@/lib/liquidity-labels";
 import { bondCostReturn } from "../domain/international-bond";
 
 import { englishLabel } from "@/lib/english-labels";
@@ -243,13 +242,6 @@ function PositionDetailContent({
               >
                 <span className="text-foreground/85">{ratesLabel(history.rate.parts)}</span>
                 {history.rate.automatic ? <span className="text-primary">· automatic</span> : null}
-              </span>
-            ) : null}
-            {history.liquidity ? (
-              <span
-                data-testid="position-liquidity"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
-              >Liquidity · <span className="whitespace-nowrap text-foreground/85">{liquidityLabel(history.liquidity)}</span>
               </span>
             ) : null}
           </div>

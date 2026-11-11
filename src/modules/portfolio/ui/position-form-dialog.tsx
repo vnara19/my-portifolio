@@ -1,6 +1,5 @@
 "use client";
 
-import { liquidityLabel } from "@/lib/liquidity-labels";
 
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
@@ -52,7 +51,6 @@ import {
   classificationIssue,
   type AssetType,
 } from "@/modules/portfolio/domain/classification";
-import { automaticLiquidity, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { treasuryYieldLabel, treasuryIndexerLabel } from "@/modules/portfolio/domain/treasury-purchase";
 import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
@@ -62,7 +60,6 @@ import {
   backdropClass,
   Field,
   inputClass,
-  LiquidityPicker,
   primaryButtonClass,
   secondaryButtonClass,
 } from "@/modules/portfolio/ui/edit-dialogs";
@@ -197,7 +194,6 @@ function PositionForm({
 
   const [valueKind, setValueKind] = useState<"quantity" | "amount">("quantity");
   const [maturity, setMaturity] = useState(editing?.maturityDate ?? "");
-  const [liquidity, setLiquidity] = useState(editing?.liquidity ?? "");
 
 
   const [assetType, setAssetType] = useState<AssetType | null>(editing?.assetType ?? null);
@@ -231,7 +227,7 @@ function PositionForm({
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
     setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
-    setValueKind("quantity"); setMaturity(""); setLiquidity("");
+    setValueKind("quantity"); setMaturity("");
     setAssetType(null); setRows(null); setAutoIncome(false);
     setAppliedOn(defaultAppliedOn()); setTab("geral");
     setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
@@ -240,7 +236,7 @@ function PositionForm({
     if (next === kind) return;
     resetFields();
     setKind(next as AssetKind);
-    if (next === "fixed-income") { setAutoIncome(true); setLiquidity("No vencimento"); }
+    if (next === "fixed-income") setAutoIncome(true);
     if (next === "treasury") void prefetchTreasuryCatalog().catch(() => undefined);
   };
 
@@ -280,7 +276,6 @@ function PositionForm({
   const treasuryUnits = parseLocaleNumber(value);
   const purchaseUnit = kind === "treasury" ? enteredPurchaseAmount !== null && treasuryUnits !== null && treasuryUnits > 0 ? enteredPurchaseAmount / treasuryUnits : null : enteredPurchaseAmount;
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
-  const autoLiquidity = kind ? automaticLiquidity(kind, identity?.exposure ?? null) : null;
   const fixedIncomeEntry = !editing && kind === "fixed-income";
   const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252" } : null;
   const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
@@ -503,7 +498,6 @@ function PositionForm({
             allocations,
             asset: {
               name: typedName,
-              liquidity: normalizeLiquidity(liquidity),
               maturityDate,
               ...(assetType ? { assetType } : {}),
               ...(assetType === "fixed-income" && reviewProduct ? { displayProduct: reviewProduct } : {}),
@@ -524,7 +518,6 @@ function PositionForm({
                     kind,
                     ticker: symbol,
                     maturityDate,
-                    liquidity: fixedIncomeEntry ? "No vencimento" : autoLiquidity ?? normalizeLiquidity(liquidity),
                     quoteCheckToken:
                       response?.status === "found" || response?.status === "unavailable" ? response.token : null,
                     manualPriceBrl: needsManualPrice || ownTreasuryPrice ? manualPrice.trim() : null,
@@ -865,7 +858,6 @@ function PositionForm({
                       {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
                       {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Fund information</a> : null}
                     </> : null}
-                    <ReadOnly label="Settlement" value={autoLiquidity?.replace("D+", "T+") ?? "Not specified"} />
                     {response?.status === "found" ? <p className="text-xs text-muted-foreground">Quote: {response.quoteDate} · {providerLabel(response.provider)}</p> : null}
                   </div>
                 </details> : null}
@@ -909,13 +901,6 @@ function PositionForm({
                 ) : null}
                 {treasuryMaturity && !purchaseEntry ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || (isNewAsset && !autoLiquidity && kind !== "treasury" && !fixedIncomeEntry) ? (
-                  <Field label="Liquidity (optional)">
-                    <LiquidityPicker value={liquidity} onChange={setLiquidity} />
-                  </Field>
-                ) : catalogAsset && !autoLiquidity && kind !== "treasury" && !fixedIncomeEntry ? (
-                  <ReadOnly label="Asset liquidity" value={liquidityLabel(catalogAsset.liquidity)} />
-                ) : null}
               </>
             )}
           </PositionSection>

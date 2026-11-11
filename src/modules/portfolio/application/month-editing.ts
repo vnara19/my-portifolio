@@ -31,11 +31,10 @@ import {
   USD_SYMBOL,
   type AssetKind,
 } from "@/modules/portfolio/domain/asset-kinds";
-import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity, automaticLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { autoIncomeParts, indexerOfSubclass, supportsAutoIncome } from "@/modules/portfolio/domain/fixed-income-policy";
 import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import { classificationIssue } from "@/modules/portfolio/domain/classification";
-import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
+import { MARKET_KINDS, isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { primeFixedIncomeRates, valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
 import { readVerifiedTicker } from "@/modules/quotes/application/check-ticker";
 import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
@@ -54,6 +53,8 @@ import { purchaseCost, purchaseNote, type PurchaseInput } from "../domain/purcha
 import { newInternationalBondSchema, bondAllocation, bondName, bondValue, type InternationalBond } from "@/modules/portfolio/domain/international-bond";
 
 type Transaction = Prisma.TransactionClient;
+
+const MARKET_PURCHASE_KINDS = new Set<string>([...MARKET_KINDS, "us-etf", "us-stock", "br-etf", "br-stock", "crypto", "treasury"]);
 
 export class MonthEditError extends Error {
   constructor(message: string) {
@@ -76,8 +77,6 @@ export type NewAssetInput = {
   kind: AssetKind;
   ticker: string | null;
   maturityDate: string | null;
-  /** Optional liquidity period (spec 039). */
-  liquidity?: string | null;
   quoteCheckToken: string | null;
   manualPriceBrl: string | null;
 
@@ -255,7 +254,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const purchaseKind = newAsset?.kind ?? existingAsset?.assetType;
   const purchaseCurrency = identity?.currency ?? (purchaseKind === "crypto" ? "USD" : purchaseKind === "treasury" ? "BRL" : existingAsset?.baseCurrency);
   const ownedMonth = input.addition.purchase ? await db?.portfolioMonth.findUnique({ where: { id: datedMonth.id }, select: { referenceDate: true } }) : null;
-  if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || (!automaticLiquidity(purchaseKind) && purchaseKind !== "treasury"))) throw new MonthEditError("This asset cannot use the market purchase form.");
+  if (input.addition.purchase && (!purchaseCurrency || !ownedMonth || !purchaseKind || !MARKET_PURCHASE_KINDS.has(purchaseKind))) throw new MonthEditError("This asset cannot use the market purchase form.");
   let purchase: Awaited<ReturnType<typeof preparePurchase>> | null = null;
   if (input.addition.purchase) {
     let purchaseInput = input.addition.purchase;
@@ -930,7 +929,6 @@ async function resolveAdditionAsset(
       quoteSymbol: symbol,
       baseCurrency: input.bondContract?.currency ?? identity?.currency ?? baseCurrencyOf(input.kind, symbol),
       maturityDate,
-      liquidity: input.kind === "fixed-income" ? "No vencimento" : automaticLiquidity(input.kind, identity?.exposure ?? null) ?? normalizeLiquidity(input.liquidity)?.slice(0, MAX_LIQUIDITY_LENGTH) ?? null,
       quoteProviderId,
       cashAccount: Boolean(input.cashAccount) && (input.kind === "brl-cash" || input.kind === "usd-balance" || input.kind === "eur-balance"),
 
