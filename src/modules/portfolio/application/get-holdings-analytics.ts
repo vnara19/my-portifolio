@@ -1,3 +1,4 @@
+import { getPortfolioGains } from "./get-portfolio-gains";
 import { fetchCoinGeckoMarketCap, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
 import { fetchYahooHoldingHistory } from '@/modules/quotes/infrastructure/yahoo';
 import { portfolioGains } from '../domain/portfolio-gains';
@@ -15,6 +16,7 @@ function listing(symbol:string){const cached=cache.get(symbol);if(cached&&cached
 /** Read-only enrichment. Public requests contain listing symbols only, never balances or trades. */
 export async function getHoldingsAnalytics(month:MonthPositions,ledger:PortfolioLedger|null){
  const asOf=month.referenceDay;
+ const reportingGains = getPortfolioGains(month.referenceDate, month.usdRate);
  const symbolFor=(p:MonthPositions["positions"][number])=>p.assetType==='crypto'?`${(p.ticker??p.quoteSymbol??'').replace(/(?:-?USD|-?EUR|-?BRL)$/,'')}-${p.valueCurrency}`:p.quoteSymbol;
  const positions=[...month.positions];
  if(ledger){
@@ -30,6 +32,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  for(let i=0;i<symbols.length;i+=4){const batch=symbols.slice(i,i+4);await Promise.all(batch.map(async symbol=>results.set(symbol,await listing(symbol))));}
  const [benchmark,eurUsd,usdBrl]=await Promise.all([listing('^GSPC'),listing('EURUSD=X'),listing('BRL=X')]);
  const rateAt=(rows:MarketPoint[],day:string)=>{let lo=0,hi=rows.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>>1;if(rows[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}const p=rows[index];return p&&Date.parse(day)-Date.parse(p.day)<=7*86400000?p.value:null;};
+ const { byHolding } = await reportingGains;
  const data:Record<string,HoldingAnalytics>={};
  for(const p of positions){
   const source=p.quoteSymbol?results.get(symbolFor(p)!):null;
@@ -57,7 +60,8 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const observations:TwrObservation[]=[];let quantity=0,index=0;
   const days=[...new Set([...history.map(t=>t.day),...entries.map(t=>t.occurredOn)])].filter(day=>day>=entries[0]?.occurredOn&&day<=asOf).sort();
   for(const day of days){let inflow=0,outflow=0;while(index<entries.length&&entries[index].occurredOn<=day){const t=entries[index++];quantity+=(t.kind==='WITHDRAWAL'?-1:1)*t.quantity;if(t.kind==='CONTRIBUTION'||t.kind==='OPENING')inflow+=t.amountBrl;else if(t.kind==='WITHDRAWAL'||t.kind==='INCOME'&&t.quantity===0)outflow+=t.amountBrl;}const price=rateAt(history,day);observations.push({day,value:Math.abs(quantity)<1e-8?0:price===null?null:quantity*price,flow:inflow-outflow,inflow,outflow});}
-  data[p.id]={...market,invested,average:invested!==null&&p.quantity>0?invested/p.quantity:null,unrealized:gains?.unrealizedUsd??null,unrealizedPercent:gains?.unrealizedPercent??null,daily,dailyPercent:daily!==null&&dailyBase>0?daily/dailyBase*100:null,totalGain:gains?.totalUsd??null,totalPercent:valid&&gains?.unrealizedUsd!=null&&history.length?timeWeightedReturns(observations).at(-1)?.percent??null:null,annualized:valid&&gains?.unrealizedUsd!=null&&p.nativeValue!==null?xirr([...flows,{day:asOf,amount:p.nativeValue}]):null};
+  const reporting = byHolding.get(`${p.accountId}:${p.assetId}`);
+  data[p.id]={...market,invested,average:invested!==null&&p.quantity>0?invested/p.quantity:null,unrealized:reporting?.unrealizedUsd??null,unrealizedPercent:reporting?.unrealizedPercent??null,daily,dailyPercent:daily!==null&&dailyBase>0?daily/dailyBase*100:null,totalGain:reporting?.totalUsd??null,totalPercent:valid&&gains?.unrealizedUsd!=null&&history.length?timeWeightedReturns(observations).at(-1)?.percent??null:null,annualized:valid&&gains?.unrealizedUsd!=null&&p.nativeValue!==null?xirr([...flows,{day:asOf,amount:p.nativeValue}]):null};
  }
  return {positions,data};
 }

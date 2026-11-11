@@ -718,3 +718,9 @@ in the same native currency for attribution.
 Portfolio annualized yield uses dated XIRR. The solver groups same-day flows
 and checks for multiple roots, including roots close together. Ambiguous,
 insufficient and unresolved series carry a distinct unavailable status.
+
+The Positions table reports unrealized and total monetary gains in USD from
+the same account-level replay as the Overview and open gain composition.
+Execution prices, quantities and the native valuation keep their listing
+currency. The composition rounds price and FX to cents, with any display
+rounding difference included in the costs and adjustments component.

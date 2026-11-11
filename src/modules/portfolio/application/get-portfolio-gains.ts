@@ -1,5 +1,5 @@
 import { historicalClosingValues } from "./historical-closing-values";
-import { recordedTradeAmounts, recordedTradeFeeBrl } from "../domain/purchase-cost";
+import { recordedBondAcquisition, recordedTradeAmounts, recordedTradeFeeBrl } from "../domain/purchase-cost";
 import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-fx";
 import type { GainComposition, GainIssue, GainMovement, GainSnapshot } from "../domain/portfolio-gains";
 import { Prisma } from "@/generated/prisma/client";
@@ -14,8 +14,8 @@ type PositionScope = { assetId: string; accountId?: string; valuations: MonthPos
 /** Read only the selected user's ledger, including closed holdings, through the selected month. */
 export async function getPortfolioGains(referenceDate: Date, currentUsdRate: number | null, currency: "USD" | "EUR" = "USD", scope?: PositionScope) {
   const db = await getUserDb();
-  if (!db) return { ...unavailableGains(), composition: null, byAsset: [], realizedHistory: [] as {day:string;value:number}[] };
-  const filter = scope ? { assetId: scope.assetId, ...(scope.accountId ? { accountId: scope.accountId } : {}) } : {};
+  if (!db) return { ...unavailableGains(), composition: null, byHolding: new Map<string, ReturnType<typeof portfolioGains>>(), byAsset: [], realizedHistory: [] as {day:string;value:number}[] };
+  const filter = scope ? { assetId: scope.assetId } : {};
   const end = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 1));
   const [transactions, positions, rates, bondAssets] = await Promise.all([
     db.positionTransaction.findMany({
@@ -41,15 +41,14 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   const movements = transactions.map((row): GainMovement => {
     const key = holding(row.position);
     const exact = recordedTradeAmounts(row);
+    const bond = bonds.get(row.position.assetId);
+    const acquisition = bond ? recordedBondAcquisition(row) : null;
     const fx = tradeReportingFx(row.occurredOn.toISOString().slice(0,10), row.note, currency, dailyRates);
     const usdRate = fx?.divisor ?? null;
-    const movement: GainMovement = { holding: key, kind: row.kind, quantity: row.quantity, amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note ?? "")?.[1] ?? exact?.amountBrl ?? row.amountBrl, usdRate, transferId: row.transferId, feeBrl: exact?.feeBrl ?? recordedTradeFeeBrl(row.note), costRecoveryUsd: 0 };
-    const bond = bonds.get(row.position.assetId);
+    const movement: GainMovement = { holding: key, kind: row.kind, quantity: row.quantity, amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note ?? "")?.[1] ?? exact?.amountBrl ?? acquisition?.amountBrl ?? row.amountBrl, usdRate, transferId: row.transferId, assetId: row.position.assetId, day: row.occurredOn.toISOString().slice(0, 10), feeBrl: exact?.feeBrl ?? recordedTradeFeeBrl(row.note), costRecoveryUsd: 0 };
     if (scope && fx?.nativeRate && row.kind === "CONTRIBUTION") {
       const nativePurchase = exact ? { currency: exact.currency, price: exact.price }
-        : bond && row.note?.startsWith("Bond acquisition:") && row.quantity.gt(0)
-          ? { currency: bond.currency, price: new Prisma.Decimal(bond.totalPaid).div(row.quantity) }
-          : null;
+        : acquisition;
       if (nativePurchase) movement.nativePurchase = {
         ...nativePurchase, usdPerUnit: fx.nativeRate,
         reference: fx.reference ? { day: fx.reference.day, provider: fx.reference.provider } : undefined,
@@ -58,7 +57,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     if (!bond || !usdRate) return movement;
     let state = interest.get(key);
     if (!state && (row.kind === "CONTRIBUTION" || row.kind === "OPENING")) {
-      state = { remaining: new Prisma.Decimal(bond.accruedInterestPaid), usdPerNative: row.amountBrl.div(usdRate).div(bond.totalPaid), units: new Prisma.Decimal(0) };
+      state = { remaining: new Prisma.Decimal(bond.accruedInterestPaid), usdPerNative: (acquisition?.amountBrl ?? row.amountBrl).div(usdRate).div(bond.totalPaid), units: new Prisma.Decimal(0) };
       interest.set(key, state);
     }
     if (!state) return movement;
@@ -92,7 +91,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   });
   let composition: GainComposition | null = null;
   const realizedHistory: {day:string;value:number}[]=[];
-  const gains=portfolioGains(movements, snapshots,reason=>{issue=reason;},(index,value)=>realizedHistory.push({day:transactions[index].occurredOn.toISOString().slice(0,10),value}), scope ? result => { composition = result; } : undefined);
+  const gains=portfolioGains(movements, snapshots,reason=>{issue=reason;},(index,value)=>realizedHistory.push({day:transactions[index].occurredOn.toISOString().slice(0,10),value}), scope ? result => { composition = result; } : undefined, scope?.accountId ? holding({ accountId: scope.accountId, assetId: scope.assetId }) : undefined);
   const byAsset=[...new Set([...positions.map(p=>p.assetId),...transactions.map(t=>t.position.assetId)])].map(assetId=>{
     const keys=new Set([...positions.filter(p=>p.assetId===assetId).map(holding),...transactions.filter(t=>t.position.assetId===assetId).map(t=>holding(t.position))]);
     const entries=movements.filter(m=>keys.has(m.holding));
@@ -100,5 +99,29 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     const identity=bondAssets.find(a=>a.id===assetId);
     return {assetId,name:identity?.name??"",ticker:identity?.ticker??null,assetType:identity?.assetType??null,quoteSymbol:identity?.quoteSymbol??null, sold:!positions.some(p=>p.assetId===assetId), principal, ...portfolioGains(movements.filter(m=>keys.has(m.holding)),snapshots.filter(p=>keys.has(p.holding)))};
   });
-  return {...gains, composition,...(issue?{issue}: {}),byAsset,realizedHistory:issue?[]:realizedHistory};
+  const byHolding = new Map<string, ReturnType<typeof portfolioGains>>();
+  if (!scope && currency === "USD") {
+    const entriesByHolding = new Map<string, GainMovement[]>();
+    for (const movement of movements) {
+      const entries = entriesByHolding.get(movement.holding) ?? [];
+      entries.push(movement);
+      entriesByHolding.set(movement.holding, entries);
+    }
+    const valuationByHolding = new Map(snapshots.map(snapshot => [snapshot.holding, snapshot]));
+    for (const key of new Set([...entriesByHolding.keys(), ...valuationByHolding.keys()])) {
+      const snapshot = valuationByHolding.get(key);
+      const entries = entriesByHolding.get(key) ?? [];
+      if (entries.some(entry => entry.transferId)) {
+        const assetId = entries[0].assetId;
+        byHolding.set(key, portfolioGains(
+          movements.filter(entry => entry.assetId === assetId),
+          snapshots.filter(row => row.holding.endsWith(`:${assetId}`)),
+          undefined, undefined, undefined, key,
+        ));
+      } else {
+        byHolding.set(key, portfolioGains(entries, snapshot ? [snapshot] : []));
+      }
+    }
+  }
+  return {...gains, composition, byHolding,...(issue?{issue}: {}),byAsset,realizedHistory:issue?[]:realizedHistory};
 }

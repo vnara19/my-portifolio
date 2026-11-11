@@ -1,3 +1,4 @@
+import { custodyTransferPair } from "../domain/custody-transfer";
 import { readInternationalBond } from "../domain/international-bond";
 import { bondReportingUnitPrice } from "../domain/bond-performance";
 import { dailyOpenGain } from "../domain/overview-performance-metrics";
@@ -8,7 +9,7 @@ import { datedFx } from "../domain/position-money";
 import { historyThroughMonth, type TwrObservation } from "../domain/time-weighted-return";
 import { Prisma } from "@/generated/prisma/client";
 import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-fx";
-import { recordedTradeAmounts } from "../domain/purchase-cost";
+import { recordedBondAcquisition, recordedTradeAmounts } from "../domain/purchase-cost";
 
 /** Values at every external-flow boundary are mandatory; absent coverage is never interpolated. */
 export async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null,currency:"USD"|"EUR"="USD"):Promise<TwrObservation[]> {
@@ -35,7 +36,17 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
   const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
-  const flowDays=tx.filter(t=>t.occurredOn<=end&&!t.transferId).map(t=>t.occurredOn);
+  const linked = new Map<string, typeof tx>();
+  for (const entry of tx) {
+    if (!entry.transferId || entry.occurredOn > end) continue;
+    const legs = linked.get(entry.transferId) ?? [];
+    legs.push(entry);
+    linked.set(entry.transferId, legs);
+  }
+  const ambiguousTransfers = new Set([...linked].filter(([, legs]) => !custodyTransferPair(legs.map(leg => ({
+    ...leg, account: leg.accountId, day: leg.occurredOn,
+  })))).map(([id]) => id));
+  const flowDays=tx.filter(t=>t.occurredOn<=end).map(t=>t.occurredOn);
   const firstDay=tx[0]?.occurredOn??[...snapshots.keys()].sort()[0];
   const days=[...new Set([...snapshots.keys(),...flowDays,...quotes.map(q=>q.quoteDate.toISOString().slice(0,10)).filter(day=>day>=firstDay&&day<=end)])].sort();
   const assetMap=new Map(assets.map(a=>[a.id,a]));
@@ -74,11 +85,21 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     while(cursor<tx.length && tx[cursor].occurredOn<=day){
       const entry=tx[cursor++];
       const id=entry.assetId;
-      const exact=recordedTradeAmounts({ ...entry, quantity:new Prisma.Decimal(entry.quantity), amountBrl:new Prisma.Decimal(entry.amountBrl), unitPriceBrl:entry.unitPriceBrl===null?null:new Prisma.Decimal(entry.unitPriceBrl) });
+      const stored = { ...entry, quantity:new Prisma.Decimal(entry.quantity), amountBrl:new Prisma.Decimal(entry.amountBrl), unitPriceBrl:entry.unitPriceBrl===null?null:new Prisma.Decimal(entry.unitPriceBrl) };
+      const exact = recordedTradeAmounts(stored);
+      const acquisition = id && bonds.has(id) ? recordedBondAcquisition(stored) : null;
       const netWithdrawal = /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(entry.note ?? "")?.[1];
-      const paid = new Prisma.Decimal(netWithdrawal ?? exact?.amountBrl ?? entry.amountBrl);
+      const paid = new Prisma.Decimal(netWithdrawal ?? exact?.amountBrl ?? acquisition?.amountBrl ?? entry.amountBrl);
       if (id) holdings.set(id,(holdings.get(id)??0)+(entry.kind==="WITHDRAWAL"||(entry.kind==="INCOME"&&entry.amountBrl<0)?-1:1)*entry.quantity);
-      if(entry.occurredOn!==day || entry.transferId)continue;
+      if (entry.occurredOn !== day) continue;
+      if (entry.transferId) {
+        if (ambiguousTransfers.has(entry.transferId)) {
+          flow = null;
+          inflow = null;
+          outflow = null;
+        }
+        continue;
+      }
       if(id && entry.kind==="WITHDRAWAL")sold.set(id,(sold.get(id)??0)+entry.quantity);
       if(id && (entry.kind==="CONTRIBUTION"||entry.kind==="OPENING")){
         const previous=bought.get(id)??{units:0,principal:0};

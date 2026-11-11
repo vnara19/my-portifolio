@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { purchaseCost, purchaseNote, recordedTradeAmounts } from "@/modules/portfolio/domain/purchase-cost";
+import { purchaseCost, purchaseNote, recordedBondAcquisition, recordedTradeAmounts } from "@/modules/portfolio/domain/purchase-cost";
 import { Prisma } from "@/generated/prisma/client";
 import { portfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { automaticLiquidity } from "@/modules/portfolio/domain/liquidity";
@@ -104,4 +104,20 @@ test("Treasury statement principal preserves rounded unit-price differences and 
   assert.equal(cost.unitPriceBrl.toString(), "170.56");
   assert.throws(() => purchaseCost("59.05", "170.56", "0", 1, "BUY", "9000"), /does not match/);
   assert.throws(() => purchaseCost("59.05", "170.56", "0", 1, "SELL", "10071.56"), /does not match/);
+});
+
+
+test("USD bond basis and external cash flow preserve the executed all-in payment", () => {
+  const stored = {
+    kind: "CONTRIBUTION",
+    quantity: new Prisma.Decimal(10000),
+    unitPriceBrl: null,
+    amountBrl: new Prisma.Decimal("55260.12"),
+    note: "Bond acquisition: USD 9951.40 total paid including accrued interest and fees; FX 5.553 BRL/USD.",
+  };
+  const acquisition = recordedBondAcquisition(stored);
+  assert.ok(acquisition);
+  assert.equal(acquisition.amountBrl.div("5.553").toString(), "9951.4");
+  assert.equal(acquisition.price.toString(), "0.99514");
+  assert.equal(recordedBondAcquisition({ ...stored, amountBrl: stored.amountBrl.plus("0.01") }), null);
 });

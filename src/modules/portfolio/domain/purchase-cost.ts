@@ -54,6 +54,17 @@ export function recordedTradeAmounts(input: {
   return { amountBrl: amount, feeBrl: fee.mul(fx), currency: match[3] as PurchaseInput["currency"], price };
 }
 
+/** Recover the original all-in bond payment without BRL storage rounding. */
+export function recordedBondAcquisition(input: Parameters<typeof recordedTradeAmounts>[0]) {
+  const match = /^Bond acquisition: (USD|EUR) (\d+(?:\.\d+)?) total paid including accrued interest and fees; FX (\d+(?:\.\d+)?) BRL\/\1\./.exec(input.note ?? "");
+  if (!match || input.kind !== "CONTRIBUTION" || !input.quantity.gt(0)) return null;
+  const paid = new Prisma.Decimal(match[2]);
+  const rate = new Prisma.Decimal(match[3]);
+  const amountBrl = paid.mul(rate);
+  if (!paid.gt(0) || !rate.gt(0) || !amountBrl.toDecimalPlaces(2).eq(input.amountBrl)) return null;
+  return { amountBrl, currency: match[1] as "USD" | "EUR", price: paid.div(input.quantity) };
+}
+
 /** Derive the execution unit price server-side, retaining the exact entered principal. */
 export function treasuryUnitPriceFromTotal(total:string,quantity:string):string {
   for(const raw of [total,quantity]) {

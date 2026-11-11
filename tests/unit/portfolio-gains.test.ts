@@ -71,3 +71,29 @@ test("composition reconciles multiple FX lots and fees after a partial sale", ()
   assert.equal(row.percent, gains.unrealizedPercent);
   assert.equal(gains.realizedUsd, 14);
 });
+
+test("displayed composition reconciles to the displayed unrealized gain at cent precision", () => {
+  const parts: import("@/modules/portfolio/domain/portfolio-gains").GainComposition[] = [];
+  const gains = portfolioGains([
+    { ...movement("CONTRIBUTION", 1, 500), nativePurchase: { currency: "EUR", price: 100, usdPerUnit: 1 } },
+  ], [{ ...snapshot(1, 100.008)[0], native: { currency: "EUR", total: 100.004 } }],
+  undefined, undefined, result => parts.push(result));
+  assert.equal(gains.unrealizedUsd, 0.01);
+  assert.equal(parts[0].totalUsd, 0.01);
+  assert.equal(parts[0].priceUsd + parts[0].fxUsd + parts[0].adjustmentUsd, 0.01);
+});
+
+test("paired custody movements retain historical basis and do not realize proceeds", () => {
+  const source = movement("CONTRIBUTION", 10, 500);
+  const shared = { transferId: "move-1", assetId: "etf", day: "2026-11-11" };
+  const debit = { ...movement("WITHDRAWAL", 4, 1000, null), ...shared };
+  const credit = { ...movement("CONTRIBUTION", 4, 1000, null), ...shared, holding: "other:account" };
+  const sale = { ...movement("WITHDRAWAL", 1, 75), holding: credit.holding };
+  const held = [...snapshot(6, 90), { holding: credit.holding, quantity: 3, valueUsd: 45 }];
+  const gains = portfolioGains([source, credit, debit, sale], held);
+  assert.equal(gains.unrealizedUsd, 45);
+  assert.equal(gains.realizedUsd, 5);
+  assert.equal(gains.totalUsd, 50);
+  assert.equal(portfolioGains([source, debit, { ...credit, assetId: "different" }], held).totalUsd, null);
+  assert.equal(portfolioGains([source, debit], held).totalUsd, null);
+});
