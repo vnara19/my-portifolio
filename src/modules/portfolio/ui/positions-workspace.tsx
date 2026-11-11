@@ -1,5 +1,5 @@
 "use client";
-import { VIEW_COLUMNS, POSITION_COLUMNS, DEFAULT_POSITION_COLUMNS, holdingCellText, type HoldingColumn, type HoldingView } from "./holding-table-columns";
+import { VIEW_COLUMNS, POSITION_COLUMNS, DEFAULT_POSITION_COLUMNS, holdingCellText, holdingMetricDescription, type HoldingColumn, type HoldingView } from "./holding-table-columns";
 import type { HoldingAnalytics } from "../application/get-holdings-analytics";
 import { SavingsMovementButton } from "./savings-movement-dialog";
 import { PortfolioLedgerPanel } from "./portfolio-ledger";
@@ -534,7 +534,7 @@ function PositionRow({
           </p>
           {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
-        {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={column.description??(["volume","averageVolume","marketCap"].includes(column.id)&&typeof value==='number'?value.toLocaleString("en-GB",{maximumFractionDigits:2}):undefined)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
+        {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={holdingMetricDescription(column,position,value)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>
       {expanded ? (
         <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">

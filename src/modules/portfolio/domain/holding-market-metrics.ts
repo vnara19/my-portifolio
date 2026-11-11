@@ -22,11 +22,22 @@ export function holdingBeta(points:MarketPoint[],benchmark:MarketPoint[],asOf:st
  const pm=mean(returns.map(r=>r[0])),bm=mean(returns.map(r=>r[1])),variance=mean(returns.map(r=>(r[1]-bm)**2));
  return variance>1e-14?mean(returns.map(r=>(r[0]-pm)*(r[1]-bm)))/variance:null;
 }
-export function holdingMarketMetrics(points:MarketPoint[],asOf:string,benchmark:MarketPoint[]=[]):HoldingMarketMetrics{
+export function holdingMarketMetrics(points:MarketPoint[],asOf:string,benchmark:MarketPoint[]=[],volatilitySource:"range"|"close"="range"):HoldingMarketMetrics{
  const history=points.filter(p=>p.day<=asOf),last=at(history,asOf),previous=last?history.filter(p=>p.day<last.day).at(-1):undefined;
  const performance=Object.fromEntries(PERFORMANCE_PERIODS.map(([period])=>{const cutoff=holdingCutoff(asOf,period),base=cutoff?at(history,cutoff):history[0];return [period,last&&base?(last.value/base.value-1)*100:null];}));
  const range=(days:number)=>{if(!last)return null;const window=history.filter(p=>p.day>key(new Date(Date.parse(last.day)-days*86400000)));if(!window.length||!at(history,key(new Date(Date.parse(last.day)-days*86400000)))||window.some(p=>!p.low||p.high==null))return null;return mean(window.map(p=>(p.high!-p.low!)/Math.abs(p.low!)*100));};
  const daily=last?.high!=null&&last.low&&previous?Math.max(last.high-last.low,Math.abs(last.high-previous.value),Math.abs(last.low-previous.value))/Math.abs(last.low)*100:null;
+ const closeMovement = (days: number) => {
+  if (!last) return null;
+  const cutoff = key(new Date(Date.parse(last.day) - days * 86400000));
+  const base = days === 1 ? previous : at(history, cutoff);
+  if (!base || base.value <= 0) return null;
+  const observations = history.filter(point => point.day > base.day);
+  if (!observations.length) return null;
+  return mean(observations.map((point, index) =>
+   Math.abs(point.value / (observations[index - 1] ?? base).value - 1) * 100,
+  ));
+ };
  const volumes=history.filter(p=>last&&p.day<last.day).slice(-10);
- return {last:last?.value??null,change:last&&previous?last.value-previous.value:null,changePercent:last&&previous?(last.value/previous.value-1)*100:null,volume:last?.volume??null,averageVolume:volumes.length===10&&volumes.every(p=>p.volume!=null)?mean(volumes.map(p=>p.volume!)):null,marketCap:null,exchange:null,performance,beta:Object.fromEntries([1,3,5].map(y=>[String(y),holdingBeta(history,benchmark,asOf,y)])),volatility:{'1d':daily,'1w':range(7),'1m':range(30)}};
+ return {last:last?.value??null,change:last&&previous?last.value-previous.value:null,changePercent:last&&previous?(last.value/previous.value-1)*100:null,volume:last?.volume??null,averageVolume:volumes.length===10&&volumes.every(p=>p.volume!=null)?mean(volumes.map(p=>p.volume!)):null,marketCap:null,exchange:null,performance,beta:Object.fromEntries([1,3,5].map(y=>[String(y),holdingBeta(history,benchmark,asOf,y)])),volatility:volatilitySource==='close'?{'1d':closeMovement(1),'1w':closeMovement(7),'1m':closeMovement(30)}:{'1d':daily,'1w':range(7),'1m':range(30)}};
 }

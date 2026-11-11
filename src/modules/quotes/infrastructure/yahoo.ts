@@ -21,6 +21,7 @@ const chartSchema = z.object({
             regularMarketVolume: z.number().nullable().optional(),
             firstTradeDate: z.number().nullable().optional(),
             marketCap: z.number().nullable().optional(),
+            sharesOutstanding: z.number().nullable().optional(),
           }),
           timestamp: z.array(z.number()).optional(),
           indicators: z.object({
@@ -152,9 +153,21 @@ export async function fetchYahooHoldingHistory(symbol:string){
  }
  const allTimeAvailable=firstTrade!=null&&(origin!==null||Math.abs((result.timestamp?.[0]??0)-firstTrade)<7*86400);
  return {currency:result.meta.currency??null,exchange:result.meta.fullExchangeName??null,
-  marketCap:result.meta.marketCap??null,allTimeAvailable,
+  marketCap: listingCapitalization(result.meta), allTimeAvailable,
   points:[...(origin?[{...origin,high:null,low:null,volume:null}]:[]),...(result.timestamp??[]).flatMap((time,i)=>{
    const value=quote.close?.[i],day=yahooQuoteDay(time,result.meta.exchangeTimezoneName);
    return value&&value>0&&usableHistoricalClose(symbol,day,value)?[{day,value,high:quote.high?.[i]??null,low:quote.low?.[i]??null,volume:quote.volume?.[i]??null}]:[];
   })]};
+}
+
+
+export function listingCapitalization({ marketCap, sharesOutstanding, regularMarketPrice }: {
+  marketCap?: number | null;
+  sharesOutstanding?: number | null;
+  regularMarketPrice?: number | null;
+}): number | null {
+  if (marketCap != null && Number.isFinite(marketCap) && marketCap > 0) return marketCap;
+  if (sharesOutstanding == null || sharesOutstanding <= 0 || regularMarketPrice == null || regularMarketPrice <= 0) return null;
+  const capitalization = sharesOutstanding * regularMarketPrice;
+  return Number.isFinite(capitalization) ? capitalization : null;
 }

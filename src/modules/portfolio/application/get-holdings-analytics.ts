@@ -1,3 +1,4 @@
+import { getUserDb } from "@/lib/user-db";
 import { getPortfolioGains } from "./get-portfolio-gains";
 import { fetchCoinGeckoMarketCap, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
 import { fetchYahooHoldingHistory } from '@/modules/quotes/infrastructure/yahoo';
@@ -27,7 +28,35 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const dates=[...new Set(missing.map(([,entries])=>entries.map(t=>t.month).sort().at(-1)!))];
   for(const date of dates){const old=await getMonthPositions(new Date(`${date}-01T00:00:00Z`));for(const [id] of missing){const p=old?.positions.find(p=>`${p.accountId}:${p.assetId}`===id);if(p&&!positions.some(row=>row.accountId===p.accountId&&row.assetId===p.assetId))positions.push({...p,historicalSold:true,liquidated:true,quantity:0,quantityText:'0',securityQuantity:p.securityQuantity===null?null:'0',nativeValue:0,totalBrl:0,totalUsd:0,share:0});}}
  }
- const symbols=[...new Set(positions.flatMap(p=>p.quoteSymbol?[symbolFor(p)!]:[]))];
+ const treasurySymbols = [...new Set(positions.flatMap(p =>
+  p.quoteSymbol?.startsWith("TD:") ? [p.quoteSymbol] : [],
+ ))];
+ const treasuryHistory = new Map<string, MarketPoint[]>();
+ const db = treasurySymbols.length ? await getUserDb() : null;
+ const treasuryFilter = { symbol: { in: treasurySymbols }, baseCurrency: "BRL", instrumentType: "TESOURO" };
+ const [treasuryQuotes, latestTreasuryQuotes] = db ? await Promise.all([
+  db.dailyQuote.findMany({
+   where: { ...treasuryFilter, quoteDate: { lte: new Date(asOf) } },
+   orderBy: { quoteDate: "asc" },
+   select: { symbol: true, quoteDate: true, valueBrl: true },
+  }),
+  month.isCurrent ? db.marketQuote.findMany({
+   where: { ...treasuryFilter, referenceDate: month.referenceDate, carriedFrom: null, quoteDate: { lte: new Date(asOf) } },
+   select: { symbol: true, quoteDate: true, valueBrl: true },
+  }) : [],
+ ]) : [[], []];
+ for (const quote of [...treasuryQuotes, ...latestTreasuryQuotes]) {
+  const points = treasuryHistory.get(quote.symbol) ?? [];
+  const value = quote.valueBrl.toNumber();
+  if (!quote.quoteDate || value <= 0) continue;
+  const day = quote.quoteDate.toISOString().slice(0, 10);
+  const existing = points.findIndex(point => point.day === day);
+  if (existing === -1) points.push({ day, value });
+  else points[existing] = { day, value };
+  treasuryHistory.set(quote.symbol, points);
+ }
+ for (const points of treasuryHistory.values()) points.sort((a, b) => a.day.localeCompare(b.day));
+ const symbols=[...new Set(positions.flatMap(p=>p.quoteSymbol&&!p.quoteSymbol.startsWith("TD:")?[symbolFor(p)!]:[]))];
  const results=new Map<string,Listing|null>();
  for(let i=0;i<symbols.length;i+=4){const batch=symbols.slice(i,i+4);await Promise.all(batch.map(async symbol=>results.set(symbol,await listing(symbol))));}
  const [benchmark,eurUsd,usdBrl]=await Promise.all([listing('^GSPC'),listing('EURUSD=X'),listing('BRL=X')]);
@@ -36,11 +65,14 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  const data:Record<string,HoldingAnalytics>={};
  for(const p of positions){
   const source=p.quoteSymbol?results.get(symbolFor(p)!):null;
-  const history=source?.currency===p.valueCurrency?source.points.filter(point=>point.day<=asOf):[];
+  const treasury = p.quoteSymbol?.startsWith("TD:") ?? false;
+  const history = treasury && p.valueCurrency === "BRL"
+   ? treasuryHistory.get(p.quoteSymbol!) ?? []
+   : source?.currency===p.valueCurrency?source.points.filter(point=>point.day<=asOf):[];
   // Reuse the app's current native quote, so price changes and held value share one terminal price.
-  if(!p.liquidated&&p.unitPriceNative!=null&&history.length){const index=history.length-1;history[index]={...history[index],value:p.unitPriceNative};}
+  if(!treasury&&!p.liquidated&&p.unitPriceNative!=null&&history.length){const index=history.length-1;history[index]={...history[index],value:p.unitPriceNative};}
   const nativeBenchmark=(benchmark?.points??[]).flatMap(point=>{const u=rateAt(usdBrl?.points??[],point.day),e=rateAt(eurUsd?.points??[],point.day);const factor=p.valueCurrency==='USD'?1:p.valueCurrency==='BRL'?u:e?1/e:null;return factor?[{day:point.day,value:point.value*factor}]:[];});
-  const market=holdingMarketMetrics(history,asOf,nativeBenchmark);
+  const market=holdingMarketMetrics(history,asOf,nativeBenchmark,treasury ? "close" : "range");
   if(!source?.allTimeAvailable)market.performance.all=null;
   market.exchange=source?.exchange??null;
   market.marketCap=month.isCurrent&&source?.currency===p.valueCurrency?source.marketCap??null:null;
@@ -52,9 +84,14 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const invested=gains?.unrealizedUsd!=null&&p.nativeValue!==null?p.nativeValue-gains.unrealizedUsd:null;
   const lastDay=history.at(-1)?.day,previous=history.filter(t=>lastDay&&t.day<lastDay).at(-1);
   const same=entries.filter(t=>t.occurredOn===lastDay);
+  const treasuryDailyAvailable = !treasury || (
+   market.last !== null && market.last === p.unitPriceNative &&
+   lastDay !== undefined && entries.every(entry => entry.occurredOn <= lastDay) &&
+   previous !== undefined && entries.every(entry => entry.occurredOn <= previous.day || entry.occurredOn === lastDay)
+  );
   const todayUnits=same.reduce((q,t)=>q+(t.kind==='WITHDRAWAL'?-t.quantity:t.quantity),0);
   const todayFlow=same.reduce((q,t)=>q+(t.kind==='WITHDRAWAL'?-t.amountBrl:t.kind==='INCOME'?0:t.amountBrl),0);
-  const daily=valid&&gains?.unrealizedUsd!=null&&!p.liquidated&&previous&&p.nativeValue!==null?p.nativeValue-(p.quantity-todayUnits)*previous.value-todayFlow:null;
+  const daily=treasuryDailyAvailable&&valid&&gains?.unrealizedUsd!=null&&!p.liquidated&&previous&&p.nativeValue!==null?p.nativeValue-(p.quantity-todayUnits)*previous.value-todayFlow:null;
   const dailyBase=previous?(p.quantity-todayUnits)*previous.value+same.filter(t=>t.kind==='CONTRIBUTION').reduce((s,t)=>s+t.amountBrl,0):0;
   const flows=entries.filter(t=>t.kind!=='INCOME'||t.quantity===0).map(t=>({day:t.occurredOn,amount:t.kind==='WITHDRAWAL'||t.kind==='INCOME'?t.amountBrl:-t.amountBrl}));
   const observations:TwrObservation[]=[];let quantity=0,index=0;

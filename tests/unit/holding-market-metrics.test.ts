@@ -29,3 +29,20 @@ test('beta requires full aligned monthly history and equals one for the benchmar
 test("holding 1M performance uses exactly 30 trailing days",()=>{
  assert.equal(holdingCutoff("2026-11-05","1m"),"2026-10-06");
 });
+
+test("Treasury redemption prices support movements without exchange volume or ranges", () => {
+ const points = [
+  { day: "2026-11-02", value: 100 },
+  { day: "2026-11-06", value: 110 },
+  { day: "2026-11-09", value: 99 },
+ ];
+ const result = holdingMarketMetrics(points, "2026-11-09", [], "close");
+ assert.equal(result.change, -11);
+ assert.ok(Math.abs(result.changePercent! + 10) < 1e-10);
+ assert.ok(Math.abs(result.volatility["1d"]! - 10) < 1e-10);
+ assert.ok(Math.abs(result.volatility["1w"]! - 10) < 1e-10);
+ assert.equal(result.volatility["1m"], null);
+ assert.equal(result.volume, null);
+ assert.equal(result.averageVolume, null);
+ assert.equal(result.beta["1"], null);
+});

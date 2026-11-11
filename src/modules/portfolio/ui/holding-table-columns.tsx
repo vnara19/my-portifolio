@@ -24,6 +24,23 @@ export const VIEW_COLUMNS:Record<HoldingView,HoldingColumn[]>={
  performance:[['1w','1 Week'],['1m','1 Month'],['3m','3 Months'],['ytd','Year to Date'],['1y','1 Year'],['5y','5 Years'],['all','All Time']].map(([key,label])=>({id:`perf-${key}`,label,format:'percent',get:(_p,m)=>m?.performance[key]??null})),
  risk:[...[1,3,5].map(y=>({id:`beta-${y}`,label:`Beta (${y} ${y===1?"Year":"Years"})`,format:'number' as const,get:(_p:MonthPosition,m:HoldingAnalytics|undefined)=>m?.beta[String(y)]??null,description:`${y} years of completed monthly returns against S&P 500 in the same currency.`})),...[['1d','1 Day'],['1w','1 Week'],['1m','1 Month']].map(([key,label])=>({id:`vol-${key}`,label:`Volatility ${label}`,format:'percent' as const,get:(_p:MonthPosition,m:HoldingAnalytics|undefined)=>m?.volatility[key]??null,description:key==='1d'?'Daily true range divided by the low.':'Average daily high–low range divided by the low, over this period.'}))],
 };
+export function holdingMetricDescription(column: HoldingColumn, position: MonthPosition, value: number | string | null) {
+ const treasury = position.quoteSymbol?.startsWith("TD:");
+ if (treasury && column.id.startsWith("vol-")) {
+  return column.id === "vol-1d" ? "Absolute change between the last two published redemption prices."
+   : "Average absolute change between consecutive published redemption prices over this period.";
+ }
+ if (treasury && ["volume", "averageVolume", "marketCap"].includes(column.id)) {
+  return "Tesouro Direto price history does not provide this exchange-trading metric.";
+ }
+ if (value === null && column.id === "marketCap" && /^(ETF|ETC|ETN)$/.test(position.productType ?? "")) {
+  return "Market capitalization is unavailable for this listing. Fund net assets are a separate metric.";
+ }
+ if (column.description) return column.description;
+ if (["volume", "averageVolume", "marketCap"].includes(column.id) && typeof value === "number") {
+  return value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+ }
+}
 export function holdingCellText(column:HoldingColumn,p:MonthPosition,m:HoldingAnalytics|undefined){const value=column.get(p,m);if(value===null)return '—';if(typeof value==='string'){if(column.id==='maturityDate')return new Intl.DateTimeFormat('en-GB',{timeZone:'UTC'}).format(new Date(value));return value;}if(column.id==='marketCap'&&Math.abs(value)>=1000)return `${p.valueCurrency} ${compactHoldingNumber(value)}`;if(column.format==='money')return formatCurrency(value,column.id==='unrealized'||column.id==='totalGain'?'USD':p.valueCurrency,['unrealized','daily','totalGain','change'].includes(column.id));if(['volume','averageVolume'].includes(column.id)&&Math.abs(value)>=10000)return compactHoldingNumber(value);if(column.format==='percent')return `${value>0&&column.id!=='share'&&!column.id.startsWith('vol-')?'+':''}${value.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}%`;return (Math.abs(value)<0.005&&column.id.startsWith('beta-')?0:value).toLocaleString('en-GB',{minimumFractionDigits:column.id.startsWith('beta-')?2:0,maximumFractionDigits:column.id==='quantity'?8:2});}
 
 /** Compact only display text; numeric values remain unchanged for sorting and calculations. */
