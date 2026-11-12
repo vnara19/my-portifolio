@@ -96,6 +96,7 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
         </ComposedChart>
       </ResponsiveContainer>
     </div>
+    {mode==="value" ? <p className="mt-4 text-xs text-muted-foreground">Gain or loss in USD for each period, excluding net contributions and withdrawals.</p> : null}
     <div role="group" aria-label="Chart period" className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
       {CHART_PERIODS.map(p=>{
         const through=new Date(end).toISOString().slice(0,10);

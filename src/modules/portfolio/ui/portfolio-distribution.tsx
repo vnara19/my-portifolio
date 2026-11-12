@@ -34,7 +34,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
             return <g key={row.key}>
               {hover===row.key?<circle cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="90" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
               <circle data-distribution-slice={row.key} cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="64" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
-              {row.share>=4?<text x={label.x} y={label.y} dy="0.35em" textAnchor={label.x<240?"end":label.x>280?"start":"middle"} fill="var(--muted-foreground)" fontSize="13" fontWeight="600" pointerEvents="none"><title>{row.label}</title>{/ \w{3} \d{4}$/.test(row.label)?<><tspan x={label.x} dy="-0.3em">{row.label.replace(/ \w{3} \d{4}$/, "").slice(0,18)}</tspan><tspan x={label.x} dy="1.2em">{row.label.slice(-8)}</tspan></>:row.label.length>18?`${row.label.slice(0,17)}…`:row.label}</text>:null}
+              {row.share >= 4 ? <DistributionLabel label={row.label} x={label.x} y={label.y} /> : null}
               {row.share>=6?<text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500" pointerEvents="none">{Math.round(row.share)}%</text>:null}
             </g>;
           })}
@@ -57,4 +57,20 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
       </div>
     </div>}
   </section>;
+}
+
+function DistributionLabel({ label, x, y }: { label: string; x: number; y: number }) {
+  const width = 144;
+  const height = 64;
+  const left = x < 240;
+  const right = x > 280;
+  const boxX = Math.min(610 - width, Math.max(-90, left ? x - width : right ? x : x - width / 2));
+  const boxY = Math.min(520 - height, Math.max(0, y - height / 2));
+  return (
+    <foreignObject x={boxX} y={boxY} width={width} height={height} pointerEvents="none" aria-hidden="true">
+      <div className={cn("flex h-full items-center text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]", left ? "justify-end text-right" : right ? "text-left" : "justify-center text-center")}>
+        <span className="min-w-0">{label}</span>
+      </div>
+    </foreignObject>
+  );
 }

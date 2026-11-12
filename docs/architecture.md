@@ -718,3 +718,5 @@ the same account-level replay as the Overview and open gain composition.
 Execution prices, quantities and the native valuation keep their listing
 currency. The composition rounds price and FX to cents, with any display
 rounding difference included in the costs and adjustments component.
+
+Settings supports backup export. Backup restoration is available through the maintenance CLI.
