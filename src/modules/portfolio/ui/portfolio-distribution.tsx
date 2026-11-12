@@ -9,9 +9,10 @@ const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"types",label:"
 const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
-const CHART_LEFT = -90;
-const CHART_WIDTH = 700;
-const CHART_HEIGHT = 520;
+const CHART_LEFT = -118;
+const CHART_TOP = -32;
+const CHART_WIDTH = 756;
+const CHART_HEIGHT = 584;
 
 export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) {
   const [view,setView]=useState<typeof VIEWS[number]["key"]>("assets");
@@ -26,25 +27,14 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     if (!chart) return;
     const measure = () => {
       const occupied: DOMRect[] = [];
-      for (const group of chart.querySelectorAll<SVGGElement>("[data-label-pair]")) {
-        const [percent, name] = group.querySelectorAll("text");
-        const box = name.getBBox();
-        const percentage = percent.getBBox();
-        const angle = Number(group.dataset.angle);
-        const halfSlice = Number(group.dataset.share) * Math.PI / 100;
-        const percentFits = [percentage.x, percentage.x + percentage.width].every(x =>
-          [percentage.y, percentage.y + percentage.height].every(y => {
-            const radius = Math.hypot(x - 260, y - 260);
-            const offset = Math.atan2(y - 260, x - 260) - angle;
-            return radius >= 160 && radius <= 220 && Math.abs(Math.atan2(Math.sin(offset), Math.cos(offset))) <= halfSlice;
-          }),
-        );
-        const fits = percentFits && box.x >= CHART_LEFT + 4 && box.x + box.width <= CHART_LEFT + CHART_WIDTH - 4 &&
-          box.y >= 4 && box.y + box.height <= CHART_HEIGHT - 4 &&
-          !occupied.some(other => box.x < other.x + other.width + 4 && box.x + box.width + 4 > other.x &&
-            box.y < other.y + other.height + 4 && box.y + box.height + 4 > other.y);
-        group.style.visibility = fits ? "visible" : "hidden";
-        if (fits) occupied.push(box);
+      for (const label of chart.querySelectorAll<SVGForeignObjectElement>("[data-slice-label]")) {
+        const box = label.getBoundingClientRect();
+        const name = label.querySelector("span")!.getBoundingClientRect();
+        const fits = name.height <= box.height && name.width <= box.width &&
+          !occupied.some(other => name.left < other.right + 3 && name.right + 3 > other.left &&
+            name.top < other.bottom + 3 && name.bottom + 3 > other.top);
+        label.style.visibility = fits ? "visible" : "hidden";
+        if (fits) occupied.push(name);
       }
     };
     measure();
@@ -62,7 +52,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     </div>
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
       <div className="relative mx-auto w-full" onMouseLeave={()=>setHover(null)}>
-        <svg ref={chartRef} viewBox={`${CHART_LEFT} 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
+        <svg ref={chartRef} viewBox={`${CHART_LEFT} ${CHART_TOP} ${CHART_WIDTH} ${CHART_HEIGHT}`} className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
           <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="29" fontWeight="600">{data.assetCount}</text>
           <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="16" fontWeight="500">Total Assets</text>
           {slices.map(({row,start})=>{
@@ -74,7 +64,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
           })}
           {[...slices].sort((a, b) => b.row.share - a.row.share).map(({ row, middle }) => <DistributionLabel key={row.key} row={row} angle={middle} />)}
         </svg>
-        {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x-CHART_LEFT)/CHART_WIDTH*100}%`,top:`${tooltipAnchor.y/CHART_HEIGHT*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
+        {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x-CHART_LEFT)/CHART_WIDTH*100}%`,top:`${(tooltipAnchor.y-CHART_TOP)/CHART_HEIGHT*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
           <div className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:active.color}}/><span className="min-w-0 break-words">{active.label}</span></div>
           <div className="mt-1 pl-4 font-mono whitespace-nowrap">{formatCurrency(active.valueUsd,"USD")} ({formatSharePercent(active.share)})</div>
         </div>:null}
@@ -95,15 +85,29 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
 }
 
 function DistributionLabel({ row, angle }: { row: DistributionRow; angle: number }) {
-  const percent = point(angle, 190);
-  const left = Math.cos(angle) < 0;
-  const innerY = Math.max(0, Math.abs(percent.y - 260) - 12);
-  const outsideRing = Math.sqrt(241 ** 2 - innerY ** 2);
-  const nameX = 260 + (left ? -outsideRing : outsideRing);
+  const percentage = point(angle, 190);
+  const anchor = point(angle, 243);
+  const nearVertical = Math.abs(Math.cos(angle)) < 0.35;
+  const left = anchor.x < 260;
+  const width = 128;
+  const height = 52;
+  const closestY = Math.max(0, Math.abs(anchor.y - 260) - height / 2);
+  const outsideRing = Math.sqrt(237 ** 2 - closestY ** 2);
+  const x = nearVertical ? anchor.x - width / 2 : 260 + (left ? -outsideRing - width : outsideRing);
+  const y = nearVertical ? (anchor.y < 260 ? 22 - height : 498) : anchor.y - height / 2;
+
   return (
-    <g data-label-pair="" data-angle={angle} data-share={row.share} visibility="hidden" pointerEvents="none" aria-hidden="true">
-      <text x={percent.x} y={percent.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500">{Math.round(row.share)}%</text>
-      <text x={nameX} y={percent.y} dy="0.35em" textAnchor={left ? "end" : "start"} fill="var(--muted-foreground)" fontSize="13" fontWeight="600">{row.label}</text>
+    <g pointerEvents="none" aria-hidden="true">
+      {row.share >= 4 ? (
+        <text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500">{Math.round(row.share)}%</text>
+      ) : null}
+      <foreignObject data-slice-label="" x={x} y={y} width={width} height={height} visibility="hidden">
+        <div className={cn("flex h-full text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]",
+          nearVertical ? cn("justify-center text-center", anchor.y < 260 ? "items-end" : "items-start") :
+            cn("items-center", left ? "justify-end text-right" : "text-left"))}>
+          <span className="min-w-0">{row.label}</span>
+        </div>
+      </foreignObject>
     </g>
   );
 }
