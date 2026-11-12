@@ -9,12 +9,42 @@ const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"types",label:"
 const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
+const LABEL_HEIGHT = 68;
+const LABEL_GAP = 6;
+const LABEL_WIDTH = 144;
+const CHART_LEFT = -132;
+const CHART_WIDTH = 784;
+
+function placeLabels(slices: { row: DistributionRow; middle: number }[]) {
+  const labels = slices.filter(({ row }) => row.share >= 4).map(({ row, middle }) => ({
+    row,
+    anchor: point(middle, 235),
+    left: Math.cos(middle) < 0,
+  }));
+  const sides = [labels.filter(label => label.left), labels.filter(label => !label.left)];
+  const spacing = LABEL_HEIGHT + LABEL_GAP;
+  const height = Math.max(520, Math.max(...sides.map(side => side.length)) * spacing);
+  const top = (520 - height) / 2;
+  const first = top + spacing / 2;
+  const last = top + height - spacing / 2;
+  const placed = sides.flatMap(side => {
+    let previous = first - spacing;
+    return side.sort((a, b) => a.anchor.y - b.anchor.y).map((label, index) => {
+      const y = Math.min(last - (side.length - 1 - index) * spacing, Math.max(previous + spacing, label.anchor.y));
+      previous = y;
+      return { ...label, y };
+    });
+  });
+  return { placed, top, height };
+}
+
 export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) {
   const [view,setView]=useState<typeof VIEWS[number]["key"]>("assets");
   const [hover,setHover]=useState<string|null>(null);
   const rows=data[view], active=rows.find(row=>row.key===hover);
   const selected=VIEWS.find(item=>item.key===view)!;
   const slices=rows.map((row,index)=>{const start=-Math.PI/2+rows.slice(0,index).reduce((sum,item)=>sum+item.share,0)/100*Math.PI*2;return {row,start,middle:start+row.share/100*Math.PI};});
+  const labels = placeLabels(slices);
   const activeSlice=slices.find(slice=>slice.row.key===hover);
   const tooltipAnchor=activeSlice?point(activeSlice.middle,165):null;
   const activate=(row:DistributionRow)=>setHover(row.key);
@@ -25,21 +55,21 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     </div>
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
       <div className="relative mx-auto w-full" onMouseLeave={()=>setHover(null)}>
-        <svg viewBox="-90 0 700 520" className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
+        <svg viewBox={`${CHART_LEFT} ${labels.top} ${CHART_WIDTH} ${labels.height}`} className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
           <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="29" fontWeight="600">{data.assetCount}</text>
           <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="16" fontWeight="500">Total Assets</text>
           {slices.map(({row,start,middle})=>{
             const circumference=2*Math.PI*190, length=row.share/100*circumference;
-            const label=point(middle,235),percentage=point(middle,190);
+            const percentage=point(middle,190);
             return <g key={row.key}>
               {hover===row.key?<circle cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="90" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
               <circle data-distribution-slice={row.key} cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="64" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
-              {row.share >= 4 ? <DistributionLabel label={row.label} x={label.x} y={label.y} /> : null}
               {row.share>=6?<text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500" pointerEvents="none">{Math.round(row.share)}%</text>:null}
             </g>;
           })}
+          {labels.placed.map(label => <DistributionLabel key={label.row.key} {...label} />)}
         </svg>
-        {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x+90)/700*100}%`,top:`${tooltipAnchor.y/520*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
+        {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x-CHART_LEFT)/CHART_WIDTH*100}%`,top:`${(tooltipAnchor.y-labels.top)/labels.height*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
           <div className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:active.color}}/><span className="min-w-0 break-words">{active.label}</span></div>
           <div className="mt-1 pl-4 font-mono whitespace-nowrap">{formatCurrency(active.valueUsd,"USD")} ({formatSharePercent(active.share)})</div>
         </div>:null}
@@ -59,18 +89,17 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
   </section>;
 }
 
-function DistributionLabel({ label, x, y }: { label: string; x: number; y: number }) {
-  const width = 144;
-  const height = 64;
-  const left = x < 240;
-  const right = x > 280;
-  const boxX = Math.min(610 - width, Math.max(-90, left ? x - width : right ? x : x - width / 2));
-  const boxY = Math.min(520 - height, Math.max(0, y - height / 2));
+function DistributionLabel({ row, anchor, left, y }: ReturnType<typeof placeLabels>["placed"][number]) {
+  const elbow = left ? 24 : 496;
+  const edge = left ? 12 : 508;
   return (
-    <foreignObject x={boxX} y={boxY} width={width} height={height} pointerEvents="none" aria-hidden="true">
-      <div className={cn("flex h-full items-center text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]", left ? "justify-end text-right" : right ? "text-left" : "justify-center text-center")}>
-        <span className="min-w-0">{label}</span>
-      </div>
-    </foreignObject>
+    <g pointerEvents="none" aria-hidden="true">
+      <path d={`M ${anchor.x} ${anchor.y} H ${elbow} L ${edge} ${y}`} fill="none" stroke={row.color} strokeOpacity="0.55" />
+      <foreignObject x={left ? edge - LABEL_WIDTH : edge} y={y - LABEL_HEIGHT / 2} width={LABEL_WIDTH} height={LABEL_HEIGHT}>
+        <div className={cn("flex h-full items-center px-1.5 text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]", left ? "justify-end text-right" : "text-left")}>
+          <span className="min-w-0">{row.label}</span>
+        </div>
+      </foreignObject>
+    </g>
   );
 }
