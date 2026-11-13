@@ -27,7 +27,7 @@ export function treasuryRedemptionRows(movements: Movement[], asOf: string, pric
     // Indicative early-sale custody based on the marked value. The exchange's actual balance is private.
     const custodyRate = renda ? (years <= 10 ? 0.5 : years <= 20 ? 0.2 : 0.1) : null;
     const custody = taxes && gross && custodyRate !== null ? gross.mul(custodyRate).mul(days).div(36500).toDecimalPlaces(2) : null;
-    const contracted = / Treasury (IPCA|IGPM|Selic|Fixed) (-?\d+(?:\.\d+)?)% p\.a\.$/.exec(entry.note ?? "");
+    const contracted = / Treasury (IPCA|IGPM|Selic|Fixed) (-?\d+(?:\.\d+)?)% p\.a\.(?=\s|$)/.exec(entry.note ?? "");
     const accumulated = gross ? gross.div(entry.amountBrl).minus(1).mul(100).toNumber() : null;
     return {
       id: entry.id, day: entry.occurredOn, quantity: entry.quantity, invested: entry.amountBrl,
@@ -35,9 +35,9 @@ export function treasuryRedemptionRows(movements: Movement[], asOf: string, pric
       contracted: contracted ? { indexer: contracted[1], rate: Number(contracted[2]) } : null,
       days, gross: gross?.toNumber() ?? null, accumulated,
       annualized: gross && days > 0 ? (Math.pow(gross.div(entry.amountBrl).toNumber(), 365 / days) - 1) * 100 : null,
-      taxRate: taxes ? brazilianIncomeTaxRate(days) : null, ir: taxes?.ir.toNumber() ?? null,
+      taxRate: brazilianIncomeTaxRate(days), ir: taxes?.ir.toNumber() ?? null,
       iof: taxes?.iof.toNumber() ?? null, custody: custody?.toNumber() ?? null,
-      netBeforeInstitution: custody && taxes ? taxes.net.minus(custody).toNumber() : null,
+      net: custody && taxes ? taxes.net.minus(custody).toNumber() : null,
     };
   });
 }

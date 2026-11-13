@@ -18,13 +18,13 @@ export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, mat
   if (!rows.length) return null;
   const headers = ["Purchase Date", "Quantity", "Purchase Price", "Invested Amount", "Contracted Return",
     "Annualized Return (Nominal)", "Accumulated Return", "Gross Value", "Days Held", "Income Tax Rate",
-    "Income Tax", "IOF", "B3 Custody (Est.)", "Institution Fee", "Net Before Institution Fee (Est.)"];
+    "Income Tax", "IOF", "B3 Custody (Est.)", "Institution Fee", "Estimated Net Value"];
 
   return (
     <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="treasury-redemption-title">
       <h2 id="treasury-redemption-title" className="text-base font-semibold">Tesouro Direto · Early Redemption</h2>
       <p className="mt-2 text-xs text-muted-foreground">
-        {maturity ? `Maturity ${date(maturity)} · ` : ""}As of {date(asOf)} · {quote ? `Market quote ${date(quote.day)}` : "Market quote unavailable"}
+        {maturity ? `Maturity ${date(maturity)} · ` : ""}{quote ? `Market Quote ${date(quote.day)}` : "Market Quote unavailable"}
       </p>
       <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Tesouro Direto purchase details">
         <table className="w-full min-w-[1150px] text-right text-xs">
@@ -38,16 +38,12 @@ export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, mat
                 number.format(row.quantity), money(row.price), money(row.invested),
                 row.contracted ? `${row.contracted.indexer === "Fixed" ? "" : `${row.contracted.indexer} + `}${percent(row.contracted.rate)}` : "—",
                 percent(row.annualized), percent(row.accumulated), money(row.gross), row.days,
-                percent(row.taxRate), money(row.ir), money(row.iof), money(row.custody), "—", money(row.netBeforeInstitution),
+                percent(row.taxRate), money(row.ir), money(row.iof), money(row.custody), money(0), money(row.net),
               ].map((value, index) => <td key={index} className="whitespace-nowrap px-3 py-3 font-mono">{value}</td>)}
             </tr>
           ))}</tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Estimates use recorded purchase dates. Actual tax uses settlement dates. The annualized return shown is nominal. Institution fees and any unavailable custody charges are shown as a dash.
-        B3 custody is indicative for RendA+. Missing quotes, sales, transfers or payments can prevent lot-level estimates.
-      </p>
     </section>
   );
 }

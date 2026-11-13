@@ -15,10 +15,24 @@ test("reconciles a RendA+ purchase from recorded cost and a BRL quote", () => {
   assert.equal(row.ir, 47.06);
   assert.equal(row.iof, 0);
   assert.equal(row.contracted?.rate, 7.23);
-  assert.equal(row.netBeforeInstitution, 12537.54);
+  assert.equal(row.net, 12537.54);
 });
 
 test("avoids inventing the remaining value when the quote or lot history is incomplete", () => {
-  assert.equal(calculate(null).netBeforeInstitution, null);
+  assert.equal(calculate(null).net, null);
   assert.equal(calculate(156.64, [purchase, { ...purchase, kind: "WITHDRAWAL" }]).gross, null);
+});
+
+test("reads the recorded contracted rate even when FX audit metadata follows it", () => {
+  const note = purchase.note + " USD valuation FX: 0.18 USD/BRL on 2025-03-27.";
+  assert.deepEqual(calculate(156.64, [{ ...purchase, note }]).contracted, { indexer: "IPCA", rate: 7.23 });
+});
+
+test("a loss has no income tax while custody still applies", () => {
+  const row = calculate(150);
+  assert.equal(row.taxRate, 17.5);
+  assert.equal(row.ir, 0);
+  assert.equal(row.iof, 0);
+  assert.ok(row.custody! > 0);
+  assert.equal(row.net, 12051.14);
 });
