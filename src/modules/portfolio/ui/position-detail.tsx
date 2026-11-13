@@ -31,6 +31,7 @@ import { categoryColor } from "@/modules/portfolio/presentation/category-colors"
 import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
 import { formatQuantity, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
 import { AssetPriceChart } from "@/modules/portfolio/ui/asset-price-chart";
+import { TreasuryRedemptionTable } from "./treasury-redemption-table";
 import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, handOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
@@ -395,6 +396,10 @@ function PositionDetailContent({
 
 
 
+      {history.quoteSymbol?.startsWith("TD:") ? (
+        <TreasuryRedemptionTable transactions={transactions} asOf={history.referenceDay} quote={history.treasuryQuote}
+          symbol={history.quoteSymbol} maturity={history.maturityDate} />
+      ) : null}
       {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} /> : null}
       {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
 

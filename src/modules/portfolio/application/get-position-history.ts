@@ -54,6 +54,7 @@ export type PositionHistoryView = {
   monthStatus: PortfolioMonthStatus;
 
   referenceDay: string;
+  treasuryQuote?: { day: string; price: number } | null;
 
   usdRate: number | null;
 
@@ -287,6 +288,8 @@ export async function getPositionHistory({
 
     const today = calendarDay(new Date());
     const lastDay = lastDayOf(selected.referenceDate);
+    const referenceDay = toDateKey(today < lastDay ? today : lastDay);
+    const treasuryQuote = treasuryPrices.findLast(point => toDateKey(point.quoteDate) <= referenceDay);
     const usdQuote = (await readMonthQuoteValues(prisma, selected.referenceDate, ["USD"])).get("USD");
 
     const displayCurrency: MoneyCurrency = asset.assetType === "crypto" ? "USD" : asset.baseCurrency === "EUR" ? "EUR" : asset.baseCurrency === "USD" ? "USD" : "BRL";
@@ -313,7 +316,9 @@ export async function getPositionHistory({
       maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,
       selectedMonth,
       monthStatus: selected.status,
-      referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
+      referenceDay,
+      treasuryQuote: treasuryQuote && Date.parse(referenceDay) - +treasuryQuote.quoteDate <= 7 * 86400000
+        ? { day: toDateKey(treasuryQuote.quoteDate), price: treasuryQuote.valueBrl.toNumber() } : null,
       usdRate: usdQuote?.valueBrl.toNumber() ?? null,
       classTotals,
       otherAccounts: [...others.values()],
