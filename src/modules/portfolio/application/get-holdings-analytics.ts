@@ -72,8 +72,16 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  for (const points of treasuryHistory.values()) points.sort((a, b) => a.day.localeCompare(b.day));
  const symbols=[...new Set(positions.flatMap(p=>p.quoteSymbol&&!p.quoteSymbol.startsWith("TD:")?[symbolFor(p)!]:[]))];
  const results=new Map<string,Listing|null>();
- for(let i=0;i<symbols.length;i+=4){const batch=symbols.slice(i,i+4);await Promise.all(batch.map(async symbol=>results.set(symbol,await listing(symbol))));}
- const [benchmark,eurUsd,usdBrl,treasuryBook]=await Promise.all([listing('^GSPC'),listing('EURUSD=X'),listing('BRL=X'),treasuryOrigins]);
+ const publicSymbols = [...new Set([...symbols, "^GSPC", "EURUSD=X", "BRL=X"])];
+ for (let index = 0; index < publicSymbols.length; index += 4) {
+  await Promise.all(publicSymbols.slice(index, index + 4).map(async symbol => {
+   results.set(symbol, await listing(symbol));
+  }));
+ }
+ const benchmark = results.get("^GSPC");
+ const eurUsd = results.get("EURUSD=X");
+ const usdBrl = results.get("BRL=X");
+ const treasuryBook = await treasuryOrigins;
  const rateAt=(rows:MarketPoint[],day:string)=>{let lo=0,hi=rows.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>>1;if(rows[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}const p=rows[index];return p&&Date.parse(day)-Date.parse(p.day)<=7*86400000?p.value:null;};
  const { byHolding } = await reportingGains;
  const data:Record<string,HoldingAnalytics>={};

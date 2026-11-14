@@ -8,8 +8,13 @@ export function datedFx(day: string, note: string | null, currency: MoneyCurrenc
   if(currency === "BRL")return {rate:1, estimated:false};
   const contract = new RegExp(`FX (\\d+(?:\\.\\d+)?) BRL/${currency}\\.`).exec(note ?? "");
   if(contract && Number(contract[1])>0)return {rate:Number(contract[1]),estimated:false};
-  const point=[...daily].reverse().find(p=>p.day<=day && Date.parse(day)-Date.parse(p.day)<=7*86400000 && p.rate>0);
-  if(point)return {rate:point.rate,estimated:false};
+  const earliest = Date.parse(day) - 7 * 86400000;
+  for (let index = daily.length - 1; index >= 0; index--) {
+    const point = daily[index];
+    if (point.day <= day && Date.parse(point.day) >= earliest && point.rate > 0) {
+      return {rate:point.rate,estimated:false};
+    }
+  }
   const rate=monthly.get(day.slice(0,7));
   return rate && rate>0 ? {rate,estimated:true} : null;
 }

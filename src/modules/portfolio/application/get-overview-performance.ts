@@ -18,8 +18,10 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const history=historyThroughMonth(overview.history,overview.referenceDate);
   if (!history.length) return [];
   const tx=[...ledger.originals].sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn)||a.id.localeCompare(b.id));
-  const assets=await db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true,fixedIncomeContract:true}});
-  const monthlyPositions=await db.position.findMany({select:{assetId:true,quantity:true,portfolioMonth:{select:{referenceDate:true}}}});
+  const [assets, monthlyPositions] = await Promise.all([
+    db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true,fixedIncomeContract:true}}),
+    db.position.findMany({select:{assetId:true,quantity:true,portfolioMonth:{select:{referenceDate:true}}}}),
+  ]);
   const invalidMonths=new Set<string>();
   for(const h of history){
     const end=h.day??`${h.month}-31`;
@@ -33,7 +35,7 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true,provider:true,fetchedAt:true}});
   const operationRates = reportingFxSeries(quotes);
   const usd=quotes.filter(q=>q.symbol==="USD").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
-  const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
+  const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency})).reverse()]));
   const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
   const linked = new Map<string, typeof tx>();
@@ -53,24 +55,37 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const bonds=new Map(assets.flatMap(asset=>{const bond=readInternationalBond(asset.fixedIncomeContract);return bond?[[asset.id,bond] as const]:[];}));
   const eur=quotes.filter(q=>q.symbol==="EUR").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const reportingRates=currency==="EUR"?eur:usd;
-  const unitReporting=(id:string,on:string)=>{
+  const emptyMonthlyRates = new Map<string, number>();
+  const readUnitReporting=(id:string,on:string)=>{
     const asset=assetMap.get(id),symbol=asset?.quoteSymbol;
     const bond=bonds.get(id);
     if(bond){
-      const nativeFx=datedFx(on,null,bond.currency,bond.currency==="EUR"?eur:usd,new Map());
-      const reportingFx=datedFx(on,null,currency,reportingRates,new Map());
+      const nativeFx=datedFx(on,null,bond.currency,bond.currency==="EUR"?eur:usd,emptyMonthlyRates);
+      const reportingFx=datedFx(on,null,currency,reportingRates,emptyMonthlyRates);
       return bondReportingUnitPrice(bond,on,nativeFx?.rate??null,reportingFx?.rate??null);
     }
-    const price=symbol?[...(prices.get(symbol)??[])].reverse().find(p=>p.day<=on&&Date.parse(on)-Date.parse(p.day)<=7*86400000):null;
+    const price=symbol?prices.get(symbol)?.find(p=>p.day<=on&&Date.parse(on)-Date.parse(p.day)<=7*86400000):null;
     if(!price)return null;
     const nativeCurrency=asset?.assetType==="crypto"?"USD":price.currency;
     if(!["USD","EUR","BRL"].includes(nativeCurrency))return null;
     const native=nativeCurrency as "USD"|"EUR"|"BRL";
     const rates=native==="EUR"?eur:usd;
-    const observed=datedFx(price.day,null,native,rates,new Map());
-    const current=datedFx(on,null,native,rates,new Map());
-    const reporting=datedFx(on,null,currency,reportingRates,new Map());
+    const observed=datedFx(price.day,null,native,rates,emptyMonthlyRates);
+    const current=datedFx(on,null,native,rates,emptyMonthlyRates);
+    const reporting=datedFx(on,null,currency,reportingRates,emptyMonthlyRates);
     return observed&&current&&reporting?price.rate/observed.rate*current.rate/reporting.rate:null;
+  };
+  // Keep only the current and previous valuation dates. They are shared by
+  // the portfolio value, daily gain and the next observation.
+  const unitPricesByDay = new Map<string, Map<string, number | null>>();
+  const unitReporting = (id: string, day: string) => {
+    let byAsset = unitPricesByDay.get(day);
+    if (!byAsset) {
+      byAsset = new Map();
+      unitPricesByDay.set(day, byAsset);
+    }
+    if (!byAsset.has(id)) byAsset.set(id, readUnitReporting(id, day));
+    return byAsset.get(id) ?? null;
   };
   const holdings=new Map<string,number>();
   const observations:TwrObservation[]=[];
@@ -132,6 +147,9 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     if(invalidMonths.has(day.slice(0,7)))value=null;
     const previousDay=new Date(Date.parse(day)-86400000).toISOString().slice(0,10);
     const daily=dailyOpenGain([...holdings].map(([id,units])=>({units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitReporting(id,day),previousPrice:unitReporting(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null})));
+    for (const cachedDay of unitPricesByDay.keys()) {
+      if (cachedDay !== day) unitPricesByDay.delete(cachedDay);
+    }
     observations.push({day,value,flow,inflow,outflow,dailyGainUsd:invalidMonths.has(day.slice(0,7))?null:daily.amount,dailyGainPercent:invalidMonths.has(day.slice(0,7))?null:daily.percent});
   }
   return observations;
