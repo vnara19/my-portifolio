@@ -2,6 +2,7 @@
 
 /** Record a contribution, withdrawal, opening balance or return. Cash amounts and market values are distinct; infer only a missing quantity, price or amount. */
 
+import { brazilianFixedIncomeSchema } from "../domain/brazilian-fixed-income";
 import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
@@ -28,6 +29,7 @@ import {
   formatMonthCompact,
   formatPriceBrl,
   parseLocaleNumber,
+  normalizeLocaleNumberInput,
 } from "@/modules/portfolio/presentation/portfolio-format";
 import {
   backdropClass,
@@ -55,6 +57,7 @@ export type TransactionTarget = {
 export type TransactionEdit = {
   id: string;
   kind: StoredTransactionKind;
+  fixedIncomePurchase?: { quantity: string | null };
   occurredOn: string;
   quantity: number;
   unitPriceBrl: number | null;
@@ -162,6 +165,10 @@ function TransactionForm({
         )
       : [],
   );
+  const [purchaseUnitPrice, setPurchaseUnitPrice] = useState<string | null>(null);
+  const [purchaseQuantity, setPurchaseQuantity] = useState(edit?.fixedIncomePurchase?.quantity ?? "");
+  const normalizedQuantity = normalizeLocaleNumberInput(purchaseQuantity);
+  const quantityValid = normalizedQuantity !== null && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(normalizedQuantity).success;
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
@@ -216,7 +223,7 @@ function TransactionForm({
         note: edit?.note ?? null,
       };
       const result = edit
-        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction })
+        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction, ...(edit.fixedIncomePurchase ? { purchaseQuantity: normalizedQuantity } : {}) })
         : await addTransactionAction({ monthId: month.id, transaction });
 
       if (result.ok) {
@@ -226,7 +233,7 @@ function TransactionForm({
       }
     });
 
-  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && day >= month.firstDay && day <= month.lastDay && !isSaving;
+  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && day >= month.firstDay && day <= month.lastDay && (!edit?.fixedIncomePurchase || quantityValid) && !isSaving;
   const showIssue = plan.issue !== null && (order.length > 0 || texts.total.trim() !== "");
 
   return (
@@ -370,8 +377,27 @@ function TransactionForm({
                     : "Contribution amount (BRL)"
             }
           >
-            <NumberInput label="Transaction amount" value={texts.amount} onChange={(text) => type("amount", text)} />
+            <NumberInput label="Transaction amount" value={texts.amount} onChange={(text) => { setPurchaseUnitPrice(null); type("amount", text); }} />
           </Field>
+        ) : null}
+
+        {edit?.fixedIncomePurchase ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Quantity Purchased">
+              <NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={(text) => { setPurchaseUnitPrice(null); setPurchaseQuantity(text); }} />
+            </Field>
+            <Field label="Purchase Price per Unit (BRL)">
+              <NumberInput
+                label="Purchase Price per Unit"
+                value={purchaseUnitPrice ?? (quantityValid && typed.amount ? formatNumber(typed.amount / Number(normalizedQuantity), 8) : "")}
+                onChange={(text) => {
+                  setPurchaseUnitPrice(text);
+                  const price = parseLocaleNumber(text);
+                  if (quantityValid) type("amount", price === null ? "" : (price * Number(normalizedQuantity)).toFixed(2));
+                }}
+              />
+            </Field>
+          </div>
         ) : null}
 
         {quoted && plan.kind === "INCOME" && mode === "operation" ? (

@@ -432,6 +432,7 @@ function PositionDetailContent({
             target: { positionId: entry.positionId!, assetName: history.assetName, quoteSymbol: history.quoteSymbol, quantity: storedHistory?.account.slots.find((s): s is PresentSlot=>s.kind==="present" && s.month===entry.month)?.quantity ?? entry.quantity, unitPriceBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.unitPriceBrl ?? null, totalBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl },
             edit: {
               id: entry.id,
+              fixedIncomePurchase: entry.fixedIncomePurchase,
               kind: entry.kind,
               occurredOn: entry.occurredOn,
               quantity: entry.quantity,

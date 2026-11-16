@@ -20,13 +20,12 @@ import { CollapsibleSection } from "@/modules/portfolio/ui/collapsible-section";
 
 const QUANTITY = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 8 });
 
-type KindFilter = "all" | PositionTransactionView["kind"] | "AUTO_INCOME";
+type KindFilter = "all" | PositionTransactionView["kind"];
 
 
 const FILTERS: { key: KindFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "CONTRIBUTION", label: "Contributions" },
-  { key: "AUTO_INCOME", label: "Automatic accrual" },
   { key: "WITHDRAWAL", label: "Withdrawals" },
   { key: "OPENING", label: "Opening Balance" },
 ];
@@ -37,7 +36,7 @@ function isAutomaticIncome(entry: PositionTransactionView) {
 }
 
 function filterKey(entry: PositionTransactionView): KindFilter {
-  return isAutomaticIncome(entry) ? "AUTO_INCOME" : entry.kind;
+  return entry.kind;
 }
 
 function dayLabel(day: string) {
@@ -73,7 +72,8 @@ export function PositionTransactions({
 
   const [toRemove, setToRemove] = useState<PositionTransactionView | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
-  const inPeriod = transactions;
+  const inPeriod = transactions.filter(entry => !isAutomaticIncome(entry));
+  const showTradeDetails = quoted || inPeriod.some(entry => entry.fixedIncomePurchase);
   const kinds = new Set(inPeriod.map(filterKey));
   const shown = filter === "all" ? inPeriod : inPeriod.filter((entry) => filterKey(entry) === filter);
 
@@ -81,14 +81,14 @@ export function PositionTransactions({
     <CollapsibleSection
       id="position-transactions"
       title="Transactions"
-      summary={`${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"}`}
+      summary={`${inPeriod.length} ${inPeriod.length === 1 ? "transaction" : "transactions"}`}
       icon={<ArrowsDownUpIcon aria-hidden="true" className="text-primary" size={16} weight="bold" />}
       testId="position-transactions-section"
     >
       <div className="px-5 pt-1 pb-5 sm:px-6">
       {inPeriod.length > 0 ? <RecordedTotals transactions={inPeriod} /> : null}
 
-      {transactions.length > 0 ? (
+      {inPeriod.length > 0 ? (
         <div role="group" aria-label="Transaction type" className="mt-4 flex flex-wrap items-center gap-1.5">
           {FILTERS.filter((option) => option.key === "all" || kinds.has(option.key)).map((option) => (
             <button
@@ -125,8 +125,8 @@ export function PositionTransactions({
                 <th className="py-2 pr-3">Day</th>
                 {showAssets ? <th className="py-2 pr-3">Asset</th> : null}
                 <th className="py-2 pr-3">Type</th>
-                {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantity"}</th> : null}
-                {quoted ? <th className="py-2 pr-3 text-right">{showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"}</th> : null}
+                {showTradeDetails ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantity"}</th> : null}
+                {showTradeDetails ? <th className="py-2 pr-3 text-right">{showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"}</th> : null}
                 <th className="py-2 pr-3 text-right">{showAssets ? "Value (USD)" : "Value"}</th>
                 <th className="py-2" aria-label="Actions" />
               </tr>
@@ -156,7 +156,7 @@ export function PositionTransactions({
                               : "bg-white/[0.06] text-muted-foreground",
                         )}
                       >
-                        {isAutomaticIncome(entry) ? "Automatic accrual" : TRANSACTION_LABELS[entry.kind]}
+                        {TRANSACTION_LABELS[entry.kind]}
                       </span>
                       {entry.transferId ? (
                         <span className="ml-1.5 text-[10px] text-muted-foreground">internal transfer</span>
@@ -165,14 +165,14 @@ export function PositionTransactions({
                         <p className="mt-1 text-[10px] text-muted-foreground">{entry.accountLabel}</p>
                       ) : null}
                     </td>
-                    {quoted ? (
+                    {showTradeDetails ? (
                       <td className="py-2.5 pr-3 text-right font-mono">
-                        {entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.bondPurchase?.faceValuePerBond ? entry.quantity / Number(entry.bondPurchase.faceValuePerBond) : entry.quantity)}
+                        {entry.fixedIncomePurchase ? entry.fixedIncomePurchase.quantity ? QUANTITY.format(Number(entry.fixedIncomePurchase.quantity)) : "—" : entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.bondPurchase?.faceValuePerBond ? entry.quantity / Number(entry.bondPurchase.faceValuePerBond) : entry.quantity)}
                       </td>
                     ) : null}
-                    {quoted ? (
+                    {showTradeDetails ? (
                       <td title={entry.bondPurchase ? "Cost per bond, including purchase interest and fees" : undefined} className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
-                        {entry.moneyUnavailable ? "—" : entry.bondPurchase?.faceValuePerBond && entry.quantity > 0 ? formatPriceBrl(entry.amountBrl / (entry.quantity / Number(entry.bondPurchase.faceValuePerBond))) : entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
+                        {entry.moneyUnavailable ? "—" : entry.bondPurchase?.faceValuePerBond && entry.quantity > 0 ? formatPriceBrl(entry.amountBrl / (entry.quantity / Number(entry.bondPurchase.faceValuePerBond))) : entry.fixedIncomePurchase?.quantity ? formatPriceBrl(entry.amountBrl / Number(entry.fixedIncomePurchase.quantity)) : entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
                       </td>
                     ) : null}
                     <td className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>

@@ -72,7 +72,7 @@ const newAccountSchema = z
   .refine((account) => (account.institutionId === null) !== (account.institutionName === null));
 
 const newAssetSchema = z.object({
-  fixedIncomeContract: brazilianFixedIncomeSchema.optional(),
+  fixedIncomeContract: brazilianFixedIncomeSchema.required({ purchaseQuantity: true }).optional(),
   bondContract: newInternationalBondSchema.optional(),
   name: label(80),
   kind: z.enum(ASSET_KINDS),
@@ -196,7 +196,7 @@ const transactionSchema = z.object({
 });
 
 const transactionRemovalSchema = z.object({ ...monthScope, transactionId: z.string().uuid() });
-const transactionUpdateSchema = transactionSchema.extend({ transactionId: z.string().uuid(), nativeTrade: z.object({ currency: z.enum(["BRL", "USD", "EUR"]), price: value, commission: value, fxBrl: value }).optional() });
+const transactionUpdateSchema = transactionSchema.extend({ transactionId: z.string().uuid(), purchaseQuantity: brazilianFixedIncomeSchema.shape.purchaseQuantity, nativeTrade: z.object({ currency: z.enum(["BRL", "USD", "EUR"]), price: value, commission: value, fxBrl: value }).optional() });
 
 const TRANSACTION_DONE: Record<(typeof TRANSACTION_KINDS)[number], string> = {
   CONTRIBUTION: "Contribution recorded.",

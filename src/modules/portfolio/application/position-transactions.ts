@@ -1,7 +1,7 @@
 import { executionFxNote } from "../domain/trade-reporting-fx";
 import { purchaseCost, purchaseNote, recordedTradeAmounts } from "../domain/purchase-cost";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
-import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
+import { brazilianFixedIncomeSchema, readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 
 /** Apply or undo transactions atomically to the open month. Reject negative balances and mismatched ownership. */
 import { PositionTransactionKind, Prisma } from "@/generated/prisma/client";
@@ -71,6 +71,7 @@ export async function updateTransaction(input: {
   monthId: string;
   transactionId: string;
   transaction: TransactionInput;
+  purchaseQuantity?: string;
   nativeTrade?: { currency: "BRL" | "USD" | "EUR"; price: string; commission: string; fxBrl: string };
 }) {
   return withUndo(input.monthId, async (transaction, month) => {
@@ -94,6 +95,18 @@ export async function updateTransaction(input: {
 
     const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
     if ((contract && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
+    if (input.purchaseQuantity !== undefined) {
+      if (!contract || entry.kind !== "CONTRIBUTION" || kind !== "CONTRIBUTION" || entry.occurredOn.getTime() !== position.asset.appliedOn?.getTime()) throw new MonthEditError("This transaction is not a Brazilian fixed-income purchase.");
+      const purchaseQuantity = brazilianFixedIncomeSchema.shape.purchaseQuantity.parse(input.purchaseQuantity);
+      const values = parseValues(position, month.referenceDate, kind, input.transaction);
+      const asset = position.asset;
+      if (asset.maturityDate && values.occurredOn >= asset.maturityDate) throw new MonthEditError("The purchase must precede maturity.");
+      const updated = { ...contract, purchaseQuantity };
+      await transaction.asset.update({ where: { id: position.assetId }, data: { fixedIncomeContract: updated, appliedOn: values.occurredOn } });
+      await transaction.positionTransaction.update({ where: { id: entry.id }, data: { ...values, note: entry.note } });
+      await recomputePosition(transaction, position.id, "The correction would make the position negative.");
+      return { assets: [{ ...asset, fixedIncomeContract: contract, expectedFixedIncomeContract: updated }] };
+    }
     let values;
     if (input.nativeTrade) {
       if (!position.asset.quoteSymbol || (kind !== "CONTRIBUTION" && kind !== "WITHDRAWAL")) throw new MonthEditError("This transaction is not a trade.");
@@ -254,7 +267,7 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
       unitPriceBrl: true,
       totalBrl: true,
       calculationStartDate: true,
-      asset: { select: { quoteSymbol: true, name: true, autoIncome: true, assetType: true, fixedIncomeContract: true, appliedOn: true, maturityDate: true } },
+      asset: true,
     },
   });
 
@@ -270,7 +283,7 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
 async function findMonthTransaction(transaction: Transaction, monthId: string, transactionId: string) {
   const entry = await transaction.positionTransaction.findFirst({
     where: { id: transactionId, position: { portfolioMonthId: monthId } },
-    select: { id: true, kind: true, positionId: true, transferId: true, note: true, position: { select: { asset: { select: { assetType: true } } } } },
+    select: { id: true, kind: true, occurredOn: true, positionId: true, transferId: true, note: true, position: { select: { asset: { select: { assetType: true } } } } },
   });
 
   if (!entry) {

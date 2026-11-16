@@ -230,6 +230,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   if (newAsset?.kind === "fixed-income" && !newAsset.fixedIncomeContract) throw new MonthEditError("Enter the CDB, LCI or LCA contract terms and maturity date.");
   const fixed = newAsset?.kind === "fixed-income" && newAsset.fixedIncomeContract ? brazilianFixedIncomeSchema.parse(newAsset.fixedIncomeContract) : null;
   if (fixed) {
+    if (!fixed.purchaseQuantity) throw new MonthEditError("Enter the quantity purchased.");
     fixed.basis = "BUSINESS_252";
     newAsset!.fixedIncomeContract = fixed;
     if (!newAsset!.appliedOn || !newAsset!.maturityDate || newAsset!.maturityDate <= newAsset!.appliedOn) throw new MonthEditError("Enter a maturity date after the purchase date.");

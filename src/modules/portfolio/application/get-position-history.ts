@@ -1,3 +1,4 @@
+import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { nativeHistory, datedFx, type MoneyCurrency } from "../domain/position-money";
 import { readSavings, type Savings, type SavingsCalculation } from "../domain/savings";
 import { savingsState } from "./savings";
@@ -109,6 +110,7 @@ export type PositionTransactionView = {
   assetType?: string | null;
   baseCurrency?: string;
   moneyUnavailable?: boolean;
+  fixedIncomePurchase?: { quantity: string | null };
   bondPurchase?: InternationalBond | null;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
 
@@ -511,7 +513,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
       positionId: true,
       position: {
         select: {
-          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true } },
+          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true, appliedOn: true } },
           accountId: true,
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
@@ -520,30 +522,34 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
     },
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    positionId: row.positionId,
-    assetId: row.position.asset.id,
-    assetName: readInternationalBond(row.position.asset.fixedIncomeContract)?.issuer ?? row.position.asset.name,
-    ticker: row.position.asset.ticker,
-    quoteSymbol: row.position.asset.quoteSymbol,
-    assetType: row.position.asset.assetType,
-    baseCurrency: row.position.asset.baseCurrency,
-    accountId: row.position.accountId,
-    accountLabel: "",
-    kind: row.kind,
-    occurredOn: toDateKey(row.occurredOn),
-    quantity: row.quantity.toNumber(),
-    unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
-    amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
-    bondPurchase: row.kind === "CONTRIBUTION" ? readInternationalBond(row.position.asset.fixedIncomeContract) : null,
-    locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
-    automatic: row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
-    note: row.note,
-    transferId: row.transferId,
-    monthId: row.position.portfolioMonthId,
-    month: monthKey(row.position.portfolioMonth.referenceDate),
-  }));
+  return rows.map((row) => {
+    const terms = readFixedIncomeContract(row.position.asset.fixedIncomeContract);
+    return {
+      id: row.id,
+      positionId: row.positionId,
+      assetId: row.position.asset.id,
+      assetName: readInternationalBond(row.position.asset.fixedIncomeContract)?.issuer ?? row.position.asset.name,
+      ticker: row.position.asset.ticker,
+      quoteSymbol: row.position.asset.quoteSymbol,
+      assetType: row.position.asset.assetType,
+      baseCurrency: row.position.asset.baseCurrency,
+      accountId: row.position.accountId,
+      accountLabel: "",
+      kind: row.kind,
+      occurredOn: toDateKey(row.occurredOn),
+      quantity: row.quantity.toNumber(),
+      unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
+      amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
+      bondPurchase: row.kind === "CONTRIBUTION" ? readInternationalBond(row.position.asset.fixedIncomeContract) : null,
+      locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
+      fixedIncomePurchase: terms && row.kind === "CONTRIBUTION" && row.occurredOn.getTime() === row.position.asset.appliedOn?.getTime() ? { quantity: terms.purchaseQuantity ?? null } : undefined,
+      automatic: row.note === MATURITY_EXIT_NOTE || row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
+      note: row.note,
+      transferId: row.transferId,
+      monthId: row.position.portfolioMonthId,
+      month: monthKey(row.position.portfolioMonth.referenceDate),
+    };
+  });
 }
 
 async function readHistoryState(symbol: string): Promise<PositionHistoryView["history"]> {

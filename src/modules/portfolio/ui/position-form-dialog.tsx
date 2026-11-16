@@ -397,7 +397,7 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
-  const fixedQuantityValid = brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(fixedContract?.purchaseQuantity).success;
+  const fixedQuantityValid = Boolean(fixedContract?.purchaseQuantity) && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(fixedContract?.purchaseQuantity).success;
   if (fixedIncomeEntry && !fixedQuantityValid) issues.push({ tab: "ativo", message: "Enter a positive quantity with up to eight decimal places." });
   if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse({ ...fixedContract, purchaseQuantity: undefined }).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
@@ -565,7 +565,7 @@ function PositionForm({
   if (!editing && kind && !delegatedEntry) {
     if (fixedIncomeEntry) {
       requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
-      if (fiQuantity.trim()) requireField("Quantity Purchased", fixedQuantityValid);
+      requireField("Quantity Purchased", fixedQuantityValid);
       requireField("Amount invested", parsedValue !== null && parsedValue > 0);
       requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
       requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
@@ -815,7 +815,7 @@ function PositionForm({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
                     <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
-                    <Field label="Quantity Purchased (Optional)"><input aria-label="Quantity Purchased" inputMode="decimal" value={fiQuantity} onChange={(event) => setFiQuantity(event.target.value)} className={inputClass} /></Field>
+                    <Field label="Quantity Purchased"><input aria-label="Quantity Purchased" inputMode="decimal" value={fiQuantity} onChange={(event) => setFiQuantity(event.target.value)} className={inputClass} /></Field>
                     <Field label={"Amount invested (BRL)"}><input aria-label={"Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
                     <Field label={"Purchase date"}><DatePicker aria-label={"Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
                     <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>

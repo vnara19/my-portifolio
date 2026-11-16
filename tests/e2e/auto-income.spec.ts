@@ -125,7 +125,7 @@ test("each compatible allocation has its own rate and automatic accrual requires
   await closeForm(dialog);
 });
 
-test("rate-based returns appear as Automatic accrual with a dedicated filter", async ({ page }) => {
+test("rate-based returns stay out of recorded transactions", async ({ page }) => {
   await page.goto("/posicoes");
   await waitForHydration(page);
   const asset = await page
@@ -140,11 +140,6 @@ test("rate-based returns appear as Automatic accrual with a dedicated filter", a
   await positionRow(page, asset!.trim()).getByRole("link", { name: asset!.trim(), exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: asset!.trim() })).toBeVisible({ timeout: 15_000 });
   const section = await openMovements(page);
-  const automatic = section.getByTestId("position-transactions").locator('tbody tr[data-transaction-filter="AUTO_INCOME"]');
-  test.skip((await automatic.count()) === 0, "No automatic accrual in this position.");
-
-  await expect(automatic.first()).toContainText("Automatic accrual");
-  const chip = section.getByRole("group", { name: "Transaction type" }).getByRole("button", { name: /^Automatic accrual/ });
-  await chip.click();
-  await expect(section.getByTestId("position-transactions").locator("tbody tr")).toHaveCount(await chipCount(chip));
+  await expect(section.getByText("Automatic accrual", { exact: false })).toHaveCount(0);
+  await expect(section.locator('[data-transaction-kind="CONTRIBUTION"]').first()).toBeVisible();
 });
