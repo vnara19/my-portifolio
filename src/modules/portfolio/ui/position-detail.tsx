@@ -324,7 +324,7 @@ function PositionDetailContent({
       <div className="mt-7">
         <PositionKpis
           grossBalance={Boolean(history.cdi?.contract)}
-          netBalance={scope === "account" ? history.cdi?.lifetime?.netBrl : null}
+          lifetime={scope === "account" ? history.cdi?.lifetime : null}
           costReturn={costReturn}
           atCost={atCost}
           treasuryMaturity={history.quoteSymbol?.startsWith("TD:") ? history.maturityDate : null}
@@ -516,7 +516,7 @@ function PositionDetailContent({
 
 function PositionKpis({
   grossBalance,
-  netBalance,
+  lifetime,
   costReturn,
   atCost,
   treasuryMaturity,
@@ -530,7 +530,7 @@ function PositionKpis({
   dollarBalance,
 }: {
   grossBalance?: boolean;
-  netBalance?: number | null;
+  lifetime?: NonNullable<PositionHistoryView["cdi"]>["lifetime"];
   costReturn?: { gainBrl: number; contributionsBrl: number } | null;
   atCost?: boolean;
   treasuryMaturity?: string | null;
@@ -580,7 +580,7 @@ function PositionKpis({
         detail={
           absent ??
           liquidatedOn ??
-          (grossBalance ? `Estimated Net Value ${netBalance != null ? formatBrl(netBalance) : "—"}` : treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
+          (grossBalance ? `Estimated Net Value ${lifetime?.netBrl != null ? formatBrl(lifetime.netBrl) : "—"}` : treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
         }
       />
 
@@ -612,8 +612,13 @@ function PositionKpis({
       />
 
       <KpiCard
-        label="Total Gain"
+        label={grossBalance ? "Gross Gain" : "Total Gain"}
         testId="position-gain"
+        footer={current && gain !== null && lifetime?.netBrl != null ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Estimated Net Interest {formatSignedBrl(lifetime.netBrl - lifetime.investedBrl)}
+          </p>
+        ) : null}
         valueText={current && gain !== null ? formatSignedBrl(gain) : "—"}
         icon={
           gain !== null && gain < 0 ? (

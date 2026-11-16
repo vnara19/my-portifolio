@@ -97,7 +97,7 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       active="positions"
       months={positionMonths && positionMonths.size > 0 ? months.filter((month) => positionMonths.has(month.month)) : months}
       selectedMonth={selected?.month ?? null}
-      context={history ? { kind: "position", label: history.assetName } : undefined}
+      context={history ? { kind: "position", label: positionTitle(history.assetName, history.ticker) } : undefined}
     >
       <PositionDetail history={history} editing={editing} composition={breakdown} />
     </AppShell>

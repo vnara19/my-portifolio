@@ -23,20 +23,16 @@ export function CdiPanel({ cdi, maturity }: { cdi: CdiView; maturity: string | n
         </h2>
       </div>
 
-      {cdi.contract ? <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {cdi.contract ? <dl className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Item label="Product" value={cdi.contract.product} />
         <Item label="Issuer" value={cdi.contract.issuer} />
         <Item label="Contracted Rate" value={ratesLabel(cdi.parts)} />
         <Item label="Maturity Date" value={maturity ? day(maturity) : "—"} />
         <Item label="Invested Amount" value={cdi.lifetime ? formatBrl(cdi.lifetime.investedBrl) : "—"} />
-      </dl> : null}
-      {cdi.contract ? (
-        <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Item label="Gross Balance" value={formatBrl(cdi.balanceBrl)} />
-          <Item label="Estimated Net Balance" value={cdi.lifetime?.netBrl != null ? formatBrl(cdi.lifetime.netBrl) : "—"} />
-          <Item label="Gross Interest Since Purchase" value={cdi.lifetime ? formatBrl(cdi.lifetime.interestBrl) : "—"} />
-        </dl>
-      ) : <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Item label="Gross Balance" value={formatBrl(cdi.balanceBrl)} />
+        <Item label="Estimated Net Balance" value={cdi.lifetime?.netBrl != null ? formatBrl(cdi.lifetime.netBrl) : "—"} />
+        <Item label="Gross Interest Since Purchase" value={cdi.lifetime ? formatBrl(cdi.lifetime.interestBrl) : "—"} />
+      </dl> : <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Item label="Month opening balance" value={formatBrl(cdi.baseBrl)} />
         <Item label="Gross Accrual" value={formatBrl(cdi.incomeBrl)} />
         <Item label={cdi.parts.some((part) => part.indexer === "IPCA") ? "Gross reference balance" : "Gross balance"} value={formatBrl(cdi.balanceBrl)} />
