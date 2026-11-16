@@ -26,14 +26,19 @@ export function CdiPanel({ cdi }: { cdi: CdiView }) {
       {cdi.contract ? <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Item label="Product" value={cdi.contract.product} />
         <Item label="Issuer" value={cdi.contract.issuer} />
-        <Item label="Interest basis" value={cdi.contract.basis === "CALENDAR_365" ? "365 calendar days" : "252 business days"} />
       </dl> : null}
-      <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {cdi.contract ? (
+        <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Item label="Gross Balance" value={formatBrl(cdi.balanceBrl)} />
+          <Item label="Estimated Net Balance" value={cdi.lifetime?.netBrl != null ? formatBrl(cdi.lifetime.netBrl) : "—"} />
+          <Item label="Gross Interest Since Purchase" value={cdi.lifetime ? formatBrl(cdi.lifetime.interestBrl) : "—"} />
+        </dl>
+      ) : <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Item label="Month opening balance" value={formatBrl(cdi.baseBrl)} />
         <Item label="Gross Accrual" value={formatBrl(cdi.incomeBrl)} />
         <Item label={cdi.parts.some((part) => part.indexer === "IPCA") ? "Gross reference balance" : "Gross balance"} value={formatBrl(cdi.balanceBrl)} />
         <Item label="Accrued through" value={cdi.through ? day(cdi.through) : "—"} />
-      </dl>
+      </dl>}
 
       {cdi.parts.some((part) => part.indexer === "IPCA") ? <div className="mt-2"><Item label="Published IPCA through" value={cdi.inflationThrough ? cdi.inflationThrough.split("-").reverse().join("/") : "Unavailable"} /></div> : null}
       {cdi.error ? (
@@ -44,7 +49,7 @@ export function CdiPanel({ cdi }: { cdi: CdiView }) {
 
       {cdi.projection ? (
         <div className="mt-4 rounded-xl border border-dashed border-border px-3 py-2.5" data-testid="cdi-projection">
-          <p className="text-xs text-foreground">Projection {cdi.projection.toMaturity ? "no vencimento" : "over 12 months"}, {day(cdi.projection.until)}:{" "}
+          <p className="text-xs text-foreground">{cdi.projection.toMaturity ? "Projected Gross Value at Maturity" : "Projected Gross Value in 12 Months"}, {day(cdi.projection.until)}:{" "}
             <span className="font-mono">{formatBrl(cdi.projection.balanceBrl)}</span>
           </p>
         </div>

@@ -242,7 +242,7 @@ function PositionDetailContent({
                 className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
               >
                 <span className="text-foreground/85">{ratesLabel(history.rate.parts)}</span>
-                {history.rate.automatic ? <span className="text-primary">· automatic</span> : null}
+                {history.rate.automatic ? <span className="text-primary">· Automatic</span> : null}
               </span>
             ) : null}
           </div>
@@ -322,6 +322,8 @@ function PositionDetailContent({
       {storedHistory?.native?.error ? <p role="status" className="mt-5 text-sm text-warning-foreground">{storedHistory.native.error}</p> : null}
       <div className="mt-7">
         <PositionKpis
+          grossBalance={Boolean(history.cdi?.contract)}
+          netBalance={scope === "account" ? history.cdi?.lifetime?.netBrl : null}
           costReturn={costReturn}
           atCost={atCost}
           treasuryMaturity={history.quoteSymbol?.startsWith("TD:") ? history.maturityDate : null}
@@ -512,6 +514,8 @@ function PositionDetailContent({
 }
 
 function PositionKpis({
+  grossBalance,
+  netBalance,
   costReturn,
   atCost,
   treasuryMaturity,
@@ -524,6 +528,8 @@ function PositionKpis({
   firstEver,
   dollarBalance,
 }: {
+  grossBalance?: boolean;
+  netBalance?: number | null;
   costReturn?: { gainBrl: number; contributionsBrl: number } | null;
   atCost?: boolean;
   treasuryMaturity?: string | null;
@@ -555,7 +561,7 @@ function PositionKpis({
   return (
     <section aria-label="Position metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
-        label={atCost ? "Carrying Value at Cost" : "Value"}
+        label={atCost ? "Carrying Value at Cost" : grossBalance ? "Gross Value" : "Value"}
         testId="position-value"
         valueText={current ? formatBrl(current.valueBrl) : "—"}
         icon={<CoinsIcon aria-hidden="true" size={18} weight="duotone" />}
@@ -573,7 +579,7 @@ function PositionKpis({
         detail={
           absent ??
           liquidatedOn ??
-          (treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
+          (grossBalance ? `Estimated Net Value ${netBalance != null ? formatBrl(netBalance) : "—"}` : treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
         }
       />
 

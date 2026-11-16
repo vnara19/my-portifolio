@@ -1,3 +1,4 @@
+import { brazilianNetValue } from "../domain/brazilian-net-value";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
 import { nativeHistory, datedFx, type MoneyCurrency } from "../domain/position-money";
 import { readSavings, type Savings, type SavingsCalculation } from "../domain/savings";
@@ -87,6 +88,7 @@ export type CdiView = {
   parts: RatePart[];
 
   start: string;
+  lifetime: { interestBrl: number; netBrl: number | null } | null;
   baseBrl: number;
 
   incomeBrl: number;
@@ -331,7 +333,7 @@ export async function getPositionHistory({
       transactions: transactions.filter((entry) => entry.accountId === accountId),
       savings: readSavings(asset.fixedIncomeContract) ? await (async()=>{const terms=readSavings(asset.fixedIncomeContract)!;try{return {terms,state:await savingsState(prisma,terms,toDateKey(new Date(Math.min(+today,+lastDayOf(selected.referenceDate)))))};}catch(error){return{terms,state:null,error:error instanceof Error?error.message:"Savings could not be calculated."};}})() : undefined,
       bond: readInternationalBond(asset.fixedIncomeContract),
-      cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate) : null,
+      cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate, referenceDay, transactions) : null,
       rate: rateOf(positions, accountId, selected.id, asset.autoIncome),
     };
   } catch {
@@ -385,7 +387,7 @@ function rateParts(allocations: { subclass: string; weight: Prisma.Decimal | str
 }
 
 
-async function readCdi(accountId: string, assetId: string, monthId: string, maturity: Date | null): Promise<CdiView | null> {
+async function readCdi(accountId: string, assetId: string, monthId: string, maturity: Date | null, referenceDay: string, transactions: PositionTransactionView[]): Promise<CdiView | null> {
   const prisma = (await getUserDb())!;
   const position = await prisma.position.findFirst({
     where: { accountId, assetId, portfolioMonthId: monthId, calculationStartDate: { not: null } },
@@ -406,6 +408,19 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
     return null;
   }
 
+  const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
+  const movements = transactions.filter(entry => entry.accountId === accountId && !entry.automatic && entry.occurredOn <= referenceDay);
+  const purchase = movements.length === 1 && movements[0].kind === "CONTRIBUTION" && !movements[0].transferId && movements[0].amountBrl > 0
+    ? movements[0]
+    : null;
+  // A single known purchase gives an unambiguous remaining tax basis.
+  const principal = purchase ? new Prisma.Decimal(purchase.amountBrl) : null;
+  const lifetime = contract && principal && purchase && !position.incomeCalculationError && position.totalBrl.gt(0) ? {
+    interestBrl: position.totalBrl.minus(principal).toNumber(),
+    netBrl: contract.product === "CDB" || Date.parse(referenceDay) - Date.parse(purchase.occurredOn) >= 30 * 86400000
+      ? brazilianNetValue(position.totalBrl, principal, new Date(purchase.occurredOn), new Date(referenceDay), contract.product !== "CDB").net.toNumber()
+      : null,
+  } : null;
   const from = position.incomeCalculatedThrough ? addDay(toDateKey(position.incomeCalculatedThrough)) : toDateKey(calendarDay(new Date()));
   const twelve = new Date(`${from}T00:00:00.000Z`);
   twelve.setUTCFullYear(twelve.getUTCFullYear() + 1);
@@ -424,11 +439,11 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
       const rate = new Prisma.Decimal(part.ratePercent).div(100);
       const factor =
         part.indexer === "PRE"
-          ? new Prisma.Decimal(1).plus(rate).pow(new Prisma.Decimal(1).div(readFixedIncomeContract(position.asset.fixedIncomeContract)?.basis === "CALENDAR_365" ? 365 : 252))
+          ? new Prisma.Decimal(1).plus(rate).pow(new Prisma.Decimal(1).div(contract?.basis === "CALENDAR_365" ? 365 : 252))
           : new Prisma.Decimal(1).plus(latest!.dailyPercent.div(100).mul(rate));
       return sum.plus(factor.mul(part.weight).div(total));
     }, new Prisma.Decimal(0));
-    const businessDays = readFixedIncomeContract(position.asset.fixedIncomeContract)?.basis === "CALENDAR_365" ? Math.round((Date.parse(until) - Date.parse(from)) / 86400000) : businessDaysBetween(from, until);
+    const businessDays = contract?.basis === "CALENDAR_365" ? Math.round((Date.parse(until) - Date.parse(from)) / 86400000) : businessDaysBetween(from, until);
     projection = {
       until,
       businessDays,
@@ -440,7 +455,8 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
 
   return {
     inflationThrough: parts.some((part) => part.indexer === "IPCA") ? (await prisma.rateObservation.findFirst({ where: { indexer: "IPCA", date: { lte: new Date(from) } }, orderBy: { date: "desc" }, select: { date: true } }))?.date.toISOString().slice(0, 7) ?? null : null,
-    contract: readFixedIncomeContract(position.asset.fixedIncomeContract),
+    contract,
+    lifetime,
     parts: rateParts(position.allocations),
     start: toDateKey(position.calculationStartDate),
     baseBrl: position.openingQuantity.toNumber(),
