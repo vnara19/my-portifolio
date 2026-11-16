@@ -8,6 +8,7 @@ import { getMonthContext } from "@/modules/portfolio/application/get-month-conte
 import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import { getMonthPositions } from "@/modules/portfolio/application/get-month-positions";
 import { getPositionHistory, type PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
+import { positionTitle } from "@/modules/portfolio/presentation/position-display";
 import { formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
 import { PositionDetail, type PositionEditing } from "@/modules/portfolio/ui/position-detail";
 
@@ -21,10 +22,10 @@ type PositionPageProps = {
 export async function generateMetadata({ params }: PositionPageProps): Promise<Metadata> {
   const { assetId } = await params;
   const asset = await (await getUserDb())
-    ?.asset.findUnique({ where: { id: assetId }, select: { name: true } })
+    ?.asset.findUnique({ where: { id: assetId }, select: { name: true, ticker: true } })
     .catch(() => null);
 
-  return { title: asset?.name ?? "Position" };
+  return { title: asset ? positionTitle(asset.name, asset.ticker) : "Position" };
 }
 
 

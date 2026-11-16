@@ -1,5 +1,6 @@
 "use client";
 import type { GainComposition } from "../domain/portfolio-gains";
+import { positionTitle } from "../presentation/position-display";
 import { GainCompositionCard } from "./gain-composition-card";
 import { BondPurchaseCorrectionDialog } from "./bond-purchase-correction-dialog";
 import { TradeCorrectionDialog } from "./trade-correction-dialog";
@@ -187,7 +188,7 @@ function PositionDetailContent({
         <div className="min-w-0">
           <BackLink href={backHref} />
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] break-words sm:text-[2.65rem]">
-            {history.bond ? `${history.bond.issuer}${history.maturityDate ? ` · ${formatDayKey(history.maturityDate)}` : ""}` : history.assetName}
+            {history.bond ? `${history.bond.issuer}${history.maturityDate ? ` · ${formatDayKey(history.maturityDate)}` : ""}` : positionTitle(history.assetName, history.ticker)}
           </h1>
           {!history.quoteSymbol?.startsWith("TD:") ? <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
@@ -403,7 +404,7 @@ function PositionDetailContent({
           symbol={history.quoteSymbol} maturity={history.maturityDate} />
       ) : null}
       {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} /> : null}
-      {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
+      {history.cdi ? <CdiPanel cdi={history.cdi} maturity={history.maturityDate} /> : null}
 
       <PositionMonthsTable
         slots={slots}

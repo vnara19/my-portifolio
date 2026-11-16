@@ -13,19 +13,22 @@ function day(key: string) {
 }
 
 
-export function CdiPanel({ cdi }: { cdi: CdiView }) {
+export function CdiPanel({ cdi, maturity }: { cdi: CdiView; maturity: string | null }) {
   return (
     <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="cdi-title" data-testid="cdi-panel">
       <div className="flex items-center gap-2">
         <PercentIcon aria-hidden="true" className="text-primary" size={16} weight="bold" />
         <h2 id="cdi-title" className="text-base font-semibold tracking-[-0.025em]">
-          {ratesLabel(cdi.parts)}
+          {cdi.contract ? "Investment Details" : ratesLabel(cdi.parts)}
         </h2>
       </div>
 
       {cdi.contract ? <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Item label="Product" value={cdi.contract.product} />
         <Item label="Issuer" value={cdi.contract.issuer} />
+        <Item label="Contracted Rate" value={ratesLabel(cdi.parts)} />
+        <Item label="Maturity Date" value={maturity ? day(maturity) : "—"} />
+        <Item label="Invested Amount" value={cdi.lifetime ? formatBrl(cdi.lifetime.investedBrl) : "—"} />
       </dl> : null}
       {cdi.contract ? (
         <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">

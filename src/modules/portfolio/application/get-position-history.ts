@@ -88,7 +88,7 @@ export type CdiView = {
   parts: RatePart[];
 
   start: string;
-  lifetime: { interestBrl: number; netBrl: number | null } | null;
+  lifetime: { investedBrl: number; interestBrl: number; netBrl: number | null } | null;
   baseBrl: number;
 
   incomeBrl: number;
@@ -416,6 +416,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
   // A single known purchase gives an unambiguous remaining tax basis.
   const principal = purchase ? new Prisma.Decimal(purchase.amountBrl) : null;
   const lifetime = contract && principal && purchase && !position.incomeCalculationError && position.totalBrl.gt(0) ? {
+    investedBrl: principal.toNumber(),
     interestBrl: position.totalBrl.minus(principal).toNumber(),
     netBrl: contract.product === "CDB" || Date.parse(referenceDay) - Date.parse(purchase.occurredOn) >= 30 * 86400000
       ? brazilianNetValue(position.totalBrl, principal, new Date(purchase.occurredOn), new Date(referenceDay), contract.product !== "CDB").net.toNumber()

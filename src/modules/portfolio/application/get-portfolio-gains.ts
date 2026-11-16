@@ -35,6 +35,7 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
   const dailyRates = reportingFxSeries(rates);
   const holding = (row: { accountId: string; assetId: string }) => `${row.accountId}:${row.assetId}`;
   const bonds = new Map(bondAssets.map((asset) => [asset.id, readInternationalBond(asset.fixedIncomeContract)]));
+  const bankDebtAssets = new Set(bondAssets.filter(asset => !asset.quoteSymbol && readFixedIncomeContract(asset.fixedIncomeContract)).map(asset => asset.id));
   const interest = new Map<string, { remaining: Prisma.Decimal; usdPerNative: Prisma.Decimal; units: Prisma.Decimal }>();
   // A savings payout is available before same-day withdrawal instructions.
   transactions.sort((a,b) => +a.occurredOn - +b.occurredOn || Number(b.note === "Savings automatic return") - Number(a.note === "Savings automatic return") || +a.createdAt - +b.createdAt);
@@ -46,11 +47,15 @@ export async function getPortfolioGains(referenceDate: Date, currentUsdRate: num
     const fx = tradeReportingFx(row.occurredOn.toISOString().slice(0,10), row.note, currency, dailyRates);
     const usdRate = fx?.divisor ?? null;
     const movement: GainMovement = { holding: key, kind: row.kind, quantity: row.quantity, amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note ?? "")?.[1] ?? exact?.amountBrl ?? acquisition?.amountBrl ?? row.amountBrl, usdRate, transferId: row.transferId, assetId: row.position.assetId, day: row.occurredOn.toISOString().slice(0, 10), feeBrl: exact?.feeBrl ?? recordedTradeFeeBrl(row.note), costRecoveryUsd: 0 };
-    if (scope && fx?.nativeRate && row.kind === "CONTRIBUTION") {
+    if (scope && fx && row.kind === "CONTRIBUTION") {
+      const bankDebt = bankDebtAssets.has(row.position.assetId) && row.quantity.gt(0);
       const nativePurchase = exact ? { currency: exact.currency, price: exact.price }
-        : acquisition;
-      if (nativePurchase) movement.nativePurchase = {
-        ...nativePurchase, usdPerUnit: fx.nativeRate,
+        : acquisition ?? (bankDebt ? { currency: "BRL" as const, price: row.amountBrl.div(row.quantity) } : null);
+      // Bank debt acquisitions are recorded directly in BRL. The ledger unit
+      // represents principal, independently of the number of titles purchased.
+      const usdPerUnit = fx.nativeRate ?? (bankDebt && nativePurchase?.currency === "BRL" ? new Prisma.Decimal(1).div(fx.divisor) : null);
+      if (nativePurchase && usdPerUnit) movement.nativePurchase = {
+        ...nativePurchase, usdPerUnit,
         reference: fx.reference ? { day: fx.reference.day, provider: fx.reference.provider } : undefined,
       };
     }
