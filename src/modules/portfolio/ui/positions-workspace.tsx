@@ -526,7 +526,7 @@ function PositionRow({
               marketOf(position) !== "Other Markets" ? marketOf(position) : null,
               position.valueCurrency].filter(Boolean).join(" · ")}
           </p>
-          {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
+          {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && !["CDB", "LCI", "LCA"].includes(typeOf(position) ?? "") && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
         {shownColumns.map(column=>{const value=column.get(position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={holdingMetricDescription(column,position,value)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>

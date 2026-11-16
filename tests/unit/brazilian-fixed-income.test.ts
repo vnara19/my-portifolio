@@ -46,3 +46,11 @@ test("business-day IPCA stops at published reference and never accrues on weeken
   assert.equal(updated.state, "calculated");
   if (updated.state === "calculated" && old.state === "calculated") assert.ok(Number(updated.balance) > Number(old.balance));
 });
+
+test("bank debt purchase quantity is optional and preserves reported decimal units", () => {
+  const quantity = brazilianFixedIncomeSchema.shape.purchaseQuantity;
+  assert.equal(quantity.parse(undefined), undefined);
+  assert.equal(quantity.parse("12.34567890"), "12.34567890");
+  assert.equal(quantity.safeParse("0").success, false);
+  assert.equal(quantity.safeParse("1.123456789").success, false);
+});

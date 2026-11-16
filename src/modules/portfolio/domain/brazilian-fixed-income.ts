@@ -7,6 +7,7 @@ export const brazilianFixedIncomeSchema = z.object({
   issuer: z.string().trim().min(1).max(40),
   indexer: z.enum(["CDI", "PRE", "IPCA"]),
   rate: z.string().regex(/^\d+(?:\.\d{1,4})?$/).refine((value) => Number(value) > 0 && Number(value) <= 1000),
+  purchaseQuantity: z.string().regex(/^\d{1,16}(?:\.\d{1,8})?$/).refine(value => Number(value) > 0).optional(),
   basis: z.enum(["BUSINESS_252", "CALENDAR_365"]),
 });
 export type BrazilianFixedIncome = z.infer<typeof brazilianFixedIncomeSchema>;

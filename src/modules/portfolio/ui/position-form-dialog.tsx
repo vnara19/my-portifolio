@@ -166,6 +166,7 @@ function PositionForm({
   const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
   const [fiIssuer, setFiIssuer] = useState("");
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
+  const [fiQuantity, setFiQuantity] = useState("");
   const [fiRate, setFiRate] = useState("");
   const [kind, setKind] = useState<AssetKind | null>(null);
   const bondEntry = !editing && kind === "international-bond";
@@ -222,7 +223,7 @@ function PositionForm({
 
   const resetFields = () => {
     setBondIssues(["Bond details"]);
-    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate("");
+    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate(""); setFiQuantity("");
     setSelectedTreasury(null); setContractedRate("");
     setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
     setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
@@ -277,7 +278,7 @@ function PositionForm({
   const purchaseUnit = kind === "treasury" ? enteredPurchaseAmount !== null && treasuryUnits !== null && treasuryUnits > 0 ? enteredPurchaseAmount / treasuryUnits : null : enteredPurchaseAmount;
   const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
   const fixedIncomeEntry = !editing && kind === "fixed-income";
-  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252" } : null;
+  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252", ...(fiQuantity.trim() ? { purchaseQuantity: normalizeLocaleNumberInput(fiQuantity) ?? "" } : {}) } : null;
   const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
     ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
     : cleanName(assetName);
@@ -396,7 +397,9 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
-  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse(fixedContract).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
+  const fixedQuantityValid = brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(fixedContract?.purchaseQuantity).success;
+  if (fixedIncomeEntry && !fixedQuantityValid) issues.push({ tab: "ativo", message: "Enter a positive quantity with up to eight decimal places." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse({ ...fixedContract, purchaseQuantity: undefined }).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
     issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the total invested, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
@@ -562,6 +565,7 @@ function PositionForm({
   if (!editing && kind && !delegatedEntry) {
     if (fixedIncomeEntry) {
       requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
+      if (fiQuantity.trim()) requireField("Quantity Purchased", fixedQuantityValid);
       requireField("Amount invested", parsedValue !== null && parsedValue > 0);
       requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
       requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
@@ -811,6 +815,7 @@ function PositionForm({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
                     <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
+                    <Field label="Quantity Purchased (Optional)"><input aria-label="Quantity Purchased" inputMode="decimal" value={fiQuantity} onChange={(event) => setFiQuantity(event.target.value)} className={inputClass} /></Field>
                     <Field label={"Amount invested (BRL)"}><input aria-label={"Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
                     <Field label={"Purchase date"}><DatePicker aria-label={"Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
                     <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>

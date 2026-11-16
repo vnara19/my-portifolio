@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { overviewAssetLabel, showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
+import { positionTitle, overviewAssetLabel, showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
 import { typeOf } from "@/modules/portfolio/presentation/position-filters";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -55,4 +55,9 @@ test("Overview uses the Treasury asset name consistently instead of its provider
  const name="Tesouro Renda+ Aposentadoria Extra 2065";
  assert.equal(overviewAssetLabel(name,"TD:TESOURO-RENDA-APOSENTADORIA-EXTRA:2084-12-15"),name);
  assert.equal(overviewAssetLabel("ETF - UETW","UETW"),"UETW");
+});
+
+test("bank debt titles keep the issuer and rate while hiding generated dates", () => {
+  assert.equal(positionTitle("CDB Mercantil 107.50% CDI · 2028-03-22 · 2026-01-22", null), "CDB Mercantil 107.5% CDI");
+  assert.equal(positionTitle("LCI Example IPCA+6.00% · 2028-03-22 · 2026-01", null), "LCI Example IPCA+6%");
 });

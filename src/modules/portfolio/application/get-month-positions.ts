@@ -213,10 +213,12 @@ export async function getMonthPositions(
           const positionTotal = position.totalBrl.toNumber();
           const assetType = assetTypeOf(position.asset);
           const bond = readInternationalBond(position.asset.fixedIncomeContract);
-          const displayProduct = productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, readFixedIncomeContract(position.asset.fixedIncomeContract)?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null));
+          const fixedIncome = readFixedIncomeContract(position.asset.fixedIncomeContract);
+          const displayProduct = productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, fixedIncome?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null));
           const asOf = toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay);
           const securityQuantity = bond
             ? bond.faceValuePerBond ? position.quantity.div(bond.faceValuePerBond).toFixed() : null
+            : fixedIncome?.purchaseQuantity && position.quantity.gt(0) ? fixedIncome.purchaseQuantity
             : hasSecurityQuantity(assetType, position.asset.quoteSymbol) ? position.quantity.toString() : null;
 
           return {
