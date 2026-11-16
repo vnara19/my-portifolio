@@ -165,7 +165,6 @@ function TransactionForm({
         )
       : [],
   );
-  const [purchaseUnitPrice, setPurchaseUnitPrice] = useState<string | null>(null);
   const [purchaseQuantity, setPurchaseQuantity] = useState(edit?.fixedIncomePurchase?.quantity ?? "");
   const normalizedQuantity = normalizeLocaleNumberInput(purchaseQuantity);
   const quantityValid = normalizedQuantity !== null && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(normalizedQuantity).success;
@@ -272,7 +271,7 @@ function TransactionForm({
           </Field>}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span>Balance before the transaction</span><span className="font-mono text-foreground">{formatBrl(marketBefore)}{quoted ? ` · ${formatNumber(before.quantity, 8)} ${unit}` : ""}</span></div>
         </> : step === 1 ? <>
-          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description="Enter the details you have. The application calculates the rest and highlights any mismatch." />
+          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description={edit?.fixedIncomePurchase ? "Enter the quantity purchased and total invested." : "Enter the details you have. The application calculates the rest and highlights any mismatch."} />
           {edit ? null : <Field label="How would you like to enter this?">
             <Picker
               aria-label="Entry method"
@@ -374,30 +373,17 @@ function TransactionForm({
                   ? "Return amount (BRL)"
                   : opening
                     ? "Opening balance (BRL)"
-                    : "Contribution amount (BRL)"
+                    : edit?.fixedIncomePurchase ? "Total Invested (BRL)" : "Contribution amount (BRL)"
             }
           >
-            <NumberInput label="Transaction amount" value={texts.amount} onChange={(text) => { setPurchaseUnitPrice(null); type("amount", text); }} />
+            <NumberInput label="Transaction amount" value={texts.amount} onChange={(text) => type("amount", text)} />
           </Field>
         ) : null}
 
         {edit?.fixedIncomePurchase ? (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantity Purchased">
-              <NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={(text) => { setPurchaseUnitPrice(null); setPurchaseQuantity(text); }} />
-            </Field>
-            <Field label="Purchase Price per Unit (BRL)">
-              <NumberInput
-                label="Purchase Price per Unit"
-                value={purchaseUnitPrice ?? (quantityValid && typed.amount ? formatNumber(typed.amount / Number(normalizedQuantity), 8) : "")}
-                onChange={(text) => {
-                  setPurchaseUnitPrice(text);
-                  const price = parseLocaleNumber(text);
-                  if (quantityValid) type("amount", price === null ? "" : (price * Number(normalizedQuantity)).toFixed(2));
-                }}
-              />
-            </Field>
-          </div>
+          <Field label="Quantity Purchased">
+            <NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={setPurchaseQuantity} />
+          </Field>
         ) : null}
 
         {quoted && plan.kind === "INCOME" && mode === "operation" ? (
