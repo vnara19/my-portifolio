@@ -45,6 +45,7 @@ export type MonthPosition = {
   bondIssuer?: string;
   bondValuationDate?: string | null;
   autoIncome?: boolean;
+  fixedIncomeBasis?: "BUSINESS_252" | "CALENDAR_365";
   appliedOn?: string | null;
   calculationStartDate?: string | null;
   calculatedIncomeBrl?: number;
@@ -241,6 +242,7 @@ export async function getMonthPositions(
             bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
             fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
+            fixedIncomeBasis: fixedIncome?.basis,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,
             calculationStartDate: position.calculationStartDate ? toDateKey(position.calculationStartDate) : null,
             calculatedIncomeBrl: position.calculatedIncomeBrl.toNumber(),

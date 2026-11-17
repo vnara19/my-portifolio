@@ -726,3 +726,9 @@ currency. The composition rounds price and FX to cents, with any display
 rounding difference included in the costs and adjustments component.
 
 Settings supports backup export. Backup restoration is available through the maintenance CLI.
+
+In Holdings, Brazilian fixed-income daily gain uses the last recorded gross
+accrual day in BRL. The accrual engine replays dated movements and verified
+rates. The table publishes the daily result only if the replay matches the
+position balance. Instruments without market prices retain unavailable market
+metrics, and the daily accrual date is shown on hover.

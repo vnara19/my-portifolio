@@ -1,3 +1,6 @@
+import { fixedIncomeDailyGain } from "../domain/fixed-income-daily-gain";
+import { indexerOfSubclass } from "../domain/fixed-income-policy";
+import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { treasurySeriesOf, type TreasuryBook } from "@/modules/quotes/domain/treasury";
 import { getUserDb } from "@/lib/user-db";
@@ -10,7 +13,7 @@ import { xirr } from '../domain/overview-performance-metrics';
 import { allTimePriceChange, holdingMarketMetrics, type HoldingMarketMetrics, type MarketPoint } from '../domain/holding-market-metrics';
 import { getMonthPositions, type MonthPositions } from './get-month-positions';
 import type { PortfolioLedger } from './get-portfolio-ledger';
-export type HoldingAnalytics=HoldingMarketMetrics&{invested:number|null;average:number|null;unrealized:number|null;unrealizedPercent:number|null;daily:number|null;dailyPercent:number|null;totalGain:number|null;totalPercent:number|null;annualized:number|null};
+export type HoldingAnalytics=HoldingMarketMetrics&{invested:number|null;average:number|null;unrealized:number|null;unrealizedPercent:number|null;daily:number|null;dailyPercent:number|null;dailyDate?:string;totalGain:number|null;totalPercent:number|null;annualized:number|null};
 const capCache=new Map<string,{until:number;value:Promise<number|null>}>();
 function cryptoCap(symbol:string,currency:"USD"|"EUR"|"BRL"){const key=`${symbol}:${currency}`,cached=capCache.get(key);if(cached&&cached.until>Date.now())return cached.value;const value=resolveCoinGeckoCoin(symbol).then(coin=>coin?fetchCoinGeckoMarketCap(coin.id,currency):null).catch(()=>null);if(capCache.size>100)capCache.delete(capCache.keys().next().value!);capCache.set(key,{until:Date.now()+300000,value});return value;}
 type Listing=Awaited<ReturnType<typeof fetchYahooHoldingHistory>>;
@@ -41,6 +44,26 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const dates=[...new Set(missing.map(([,entries])=>entries.map(t=>t.month).sort().at(-1)!))];
   for(const date of dates){const old=await getMonthPositions(new Date(`${date}-01T00:00:00Z`));for(const [id] of missing){const p=old?.positions.find(p=>`${p.accountId}:${p.assetId}`===id);if(p&&!positions.some(row=>row.accountId===p.accountId&&row.assetId===p.assetId))positions.push({...p,historicalSold:true,liquidated:true,quantity:0,quantityText:'0',securityQuantity:p.securityQuantity===null?null:'0',nativeValue:0,totalBrl:0,totalUsd:0,share:0});}}
  }
+ const accrualPositions = positions.filter(p => p.autoIncome && p.fixedIncomeBasis && p.appliedOn &&
+  p.incomeCalculatedThrough && !p.incomeCalculationError && !p.liquidated);
+ const accrualRates = (async () => {
+  if (!accrualPositions.length) return { rates: [], ipcaRates: [], verifiedCoverage: [] };
+  const db = await getUserDb();
+  if (!db) return { rates: [], ipcaRates: [], verifiedCoverage: [] };
+  const earliest = accrualPositions.map(p => p.appliedOn!).sort()[0];
+  const [rates, coverage] = await Promise.all([
+   db.rateObservation.findMany({
+    where: { indexer: { in: ["CDI", "IPCA"] }, date: { gte: new Date(earliest.slice(0, 7) + "-01"), lte: new Date(asOf) } },
+    select: { indexer: true, date: true, dailyPercent: true },
+   }),
+   db.rateCoverage.findMany({ where: { indexer: "CDI" }, select: { fromDate: true, throughDate: true } }),
+  ]);
+  const key = (date: Date) => date.toISOString().slice(0, 10);
+  const series = (indexer: string) => rates.filter(r => r.indexer === indexer)
+   .map(r => ({ date: key(r.date), dailyPercent: r.dailyPercent.toString() }));
+  return { rates: series("CDI"), ipcaRates: series("IPCA"),
+   verifiedCoverage: coverage.map(w => ({ from: key(w.fromDate), through: key(w.throughDate) })) };
+ })();
  const treasurySymbols = [...new Set(positions.flatMap(p =>
   p.quoteSymbol?.startsWith("TD:") ? [p.quoteSymbol] : [],
  ))];
@@ -83,7 +106,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
  const usdBrl = results.get("BRL=X");
  const treasuryBook = await treasuryOrigins;
  const rateAt=(rows:MarketPoint[],day:string)=>{let lo=0,hi=rows.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>>1;if(rows[mid].day<=day){index=mid;lo=mid+1;}else hi=mid-1;}const p=rows[index];return p&&Date.parse(day)-Date.parse(p.day)<=7*86400000?p.value:null;};
- const { byHolding } = await reportingGains;
+ const [{ byHolding }, accrualInputs] = await Promise.all([reportingGains, accrualRates]);
  const data:Record<string,HoldingAnalytics>={};
  for(const p of positions){
   const source=p.quoteSymbol?results.get(symbolFor(p)!):null;
@@ -124,8 +147,22 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const observations:TwrObservation[]=[];let quantity=0,index=0;
   const days=[...new Set([...history.map(t=>t.day),...entries.map(t=>t.occurredOn)])].filter(day=>day>=entries[0]?.occurredOn&&day<=asOf).sort();
   for(const day of days){let inflow=0,outflow=0;while(index<entries.length&&entries[index].occurredOn<=day){const t=entries[index++];quantity+=(t.kind==='WITHDRAWAL'?-1:1)*t.quantity;if(t.kind==='CONTRIBUTION'||t.kind==='OPENING')inflow+=t.amountBrl;else if(t.kind==='WITHDRAWAL'||t.kind==='INCOME'&&t.quantity===0)outflow+=t.amountBrl;}const price=rateAt(history,day);observations.push({day,value:Math.abs(quantity)<1e-8?0:price===null?null:quantity*price,flow:inflow-outflow,inflow,outflow});}
+  const accrualEntries = entries.filter(t => !t.automatic && !isAutomaticAccrualNote(t.note));
+  const parts = p.allocations.flatMap(a => {
+   const indexer = indexerOfSubclass(a.subclass);
+   return indexer && a.ratePercent != null ? [{ indexer, weight: String(a.weight), ratePercent: String(a.ratePercent) }] : [];
+  });
+  const accrual = accrualPositions.includes(p) && p.valueCurrency === "BRL" && p.nativeValue !== null &&
+   accrualEntries.length > 0 && accrualEntries.every(t => !t.moneyUnavailable && !t.transferId) &&
+   parts.length === p.allocations.length
+   ? fixedIncomeDailyGain({
+    ...accrualInputs, startDate: p.appliedOn!, maturityDate: p.maturityDate, annualBasis: p.fixedIncomeBasis, parts,
+    movements: accrualEntries.map(t => ({ date: t.occurredOn, kind: t.kind, amount: String(t.amountBrl) })),
+   }, p.incomeCalculatedThrough!, asOf, p.nativeValue)
+   : null;
+  const units = Number(p.securityQuantity ?? p.quantity);
   const reporting = byHolding.get(`${p.accountId}:${p.assetId}`);
-  data[p.id]={...market,invested,average:invested!==null&&p.quantity>0?invested/p.quantity:null,unrealized:reporting?.unrealizedUsd??null,unrealizedPercent:reporting?.unrealizedPercent??null,daily,dailyPercent:daily!==null&&dailyBase>0?daily/dailyBase*100:null,totalGain:reporting?.totalUsd??null,totalPercent:valid&&gains?.unrealizedUsd!=null&&history.length?timeWeightedReturns(observations).at(-1)?.percent??null:null,annualized:valid&&gains?.unrealizedUsd!=null&&p.nativeValue!==null?xirr([...flows,{day:asOf,amount:p.nativeValue}]):null};
+  data[p.id]={...market,invested,average:invested!==null&&units>0&&p.securityQuantity!==null?invested/units:null,unrealized:reporting?.unrealizedUsd??null,unrealizedPercent:reporting?.unrealizedPercent??null,daily:accrual?.amount??daily,dailyPercent:accrual?.percent??(daily!==null&&dailyBase>0?daily/dailyBase*100:null),dailyDate:accrual?.amount!=null?p.incomeCalculatedThrough!:undefined,totalGain:reporting?.totalUsd??null,totalPercent:valid&&gains?.unrealizedUsd!=null&&history.length?timeWeightedReturns(observations).at(-1)?.percent??null:null,annualized:valid&&gains?.unrealizedUsd!=null&&p.nativeValue!==null?xirr([...flows,{day:asOf,amount:p.nativeValue}]):null};
  }
  return {positions,data};
 }
