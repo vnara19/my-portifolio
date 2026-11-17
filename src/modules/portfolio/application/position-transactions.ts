@@ -1,17 +1,20 @@
 import { executionFxNote } from "../domain/trade-reporting-fx";
 import { purchaseCost, purchaseNote, recordedTradeAmounts } from "../domain/purchase-cost";
 import { MATURITY_EXIT_NOTE } from "./maturity-exits";
-import { brazilianFixedIncomeSchema, readFixedIncomeContract } from "../domain/brazilian-fixed-income";
+import { fixedIncomeAllocation, fixedIncomeName, readFixedIncomeContract, type BrazilianFixedIncome } from "../domain/brazilian-fixed-income";
 
 /** Apply or undo transactions atomically to the open month. Reject negative balances and mismatched ownership. */
 import { PositionTransactionKind, Prisma } from "@/generated/prisma/client";
 import { getUserDb, SCOPED_USER } from "@/lib/user-db";
-import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
-import { foldCalculatedIncome, MonthEditError, parseDecimal, withUndo } from "@/modules/portfolio/application/month-editing";
+import { primeFixedIncomeRates, valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
+import { fixedIncomePurchaseFx, foldCalculatedIncome, MonthEditError, parseDecimal, withUndo } from "@/modules/portfolio/application/month-editing";
 import { WITHDRAWAL_ABOVE_BALANCE } from "@/modules/portfolio/domain/cdi-valuation";
 import type { TransactionKind } from "@/modules/portfolio/domain/position-transactions";
 import { calendarDay, lastDayOf, toDateKey } from "@/modules/quotes/domain/calendar";
 
+
+import { buildAssetKey } from "../domain/asset-kinds";
+import { ensureDatedMonth } from "./month-rollover";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -67,13 +70,16 @@ export async function addTransaction(input: { monthId: string; transaction: Tran
 }
 
 
-export async function updateTransaction(input: {
+type TransactionUpdate = {
   monthId: string;
   transactionId: string;
   transaction: TransactionInput;
-  purchaseQuantity?: string;
+  fixedIncome?: { contract: BrazilianFixedIncome; maturityDate: string };
   nativeTrade?: { currency: "BRL" | "USD" | "EUR"; price: string; commission: string; fxBrl: string };
-}) {
+};
+
+export async function updateTransaction(input: TransactionUpdate) {
+  if (input.fixedIncome) return updateFixedIncomePurchase(input, input.fixedIncome);
   return withUndo(input.monthId, async (transaction, month) => {
     const entry = await findMonthTransaction(transaction, month.id, input.transactionId);
 
@@ -95,17 +101,8 @@ export async function updateTransaction(input: {
 
     const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
     if ((contract && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
-    if (input.purchaseQuantity !== undefined) {
-      if (!contract || entry.kind !== "CONTRIBUTION" || kind !== "CONTRIBUTION" || entry.occurredOn.getTime() !== position.asset.appliedOn?.getTime()) throw new MonthEditError("This transaction is not a Brazilian fixed-income purchase.");
-      const purchaseQuantity = brazilianFixedIncomeSchema.shape.purchaseQuantity.parse(input.purchaseQuantity);
-      const values = parseValues(position, month.referenceDate, kind, input.transaction);
-      const asset = position.asset;
-      if (asset.maturityDate && values.occurredOn >= asset.maturityDate) throw new MonthEditError("The purchase must precede maturity.");
-      const updated = { ...contract, purchaseQuantity };
-      await transaction.asset.update({ where: { id: position.assetId }, data: { fixedIncomeContract: updated, appliedOn: values.occurredOn } });
-      await transaction.positionTransaction.update({ where: { id: entry.id }, data: { ...values, note: entry.note } });
-      await recomputePosition(transaction, position.id, "The correction would make the position negative.");
-      return { assets: [{ ...asset, fixedIncomeContract: contract, expectedFixedIncomeContract: updated }] };
+    if (contract && entry.kind === "CONTRIBUTION" && entry.occurredOn.getTime() === position.asset.appliedOn?.getTime()) {
+      throw new MonthEditError("Use the purchase editor to correct this investment.");
     }
     let values;
     if (input.nativeTrade) {
@@ -129,6 +126,89 @@ export async function updateTransaction(input: {
   }, { carryForward: true });
 }
 
+
+async function updateFixedIncomePurchase(input: TransactionUpdate, { contract, maturityDate }: NonNullable<TransactionUpdate["fixedIncome"]>) {
+  const day = input.transaction.occurredOn;
+  if (day < "2000-01-01") throw new MonthEditError("Enter a purchase date from 2000 onward.");
+  const reference = new Date(`${day.slice(0, 7)}-01T00:00:00Z`);
+  const appliedOn = parseOccurredOn(day, reference);
+  const maturity = new Date(`${maturityDate}T00:00:00Z`);
+  if (!Number.isFinite(+maturity) || toDateKey(maturity) !== maturityDate || maturity <= appliedOn) {
+    throw new MonthEditError("Enter a valid maturity date after the purchase date.");
+  }
+  if (contract.indexer !== "CDI" && Number(contract.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");
+  const db = await getUserDb();
+  if (!db) throw new MonthEditError("Sign in to edit the purchase.");
+  const source = await findMonthTransaction(db, input.monthId, input.transactionId);
+  const holding = await findPosition(db, input.monthId, source.positionId);
+  if (!readFixedIncomeContract(holding.asset.fixedIncomeContract) ||
+      source.positionId !== input.transaction.positionId || source.kind !== "CONTRIBUTION" ||
+      input.transaction.kind !== "CONTRIBUTION" || +source.occurredOn !== holding.asset.appliedOn?.getTime()) {
+    throw new MonthEditError("This transaction is not a Brazilian fixed-income purchase.");
+  }
+  parseAmount(input.transaction.amountBrl);
+  const fx = +source.occurredOn !== +appliedOn ? await fixedIncomePurchaseFx(day) : null;
+  await primeFixedIncomeRates(db, contract.indexer, day);
+  const targetMonth = day.slice(0, 7);
+  const sourceMonth = toDateKey(source.occurredOn).slice(0, 7);
+  const destination = targetMonth === sourceMonth ? { id: input.monthId } : await ensureDatedMonth(day);
+  const anchorId = targetMonth < sourceMonth ? destination.id : input.monthId;
+  return withUndo(anchorId, async tx => {
+    const entry = await findMonthTransaction(tx, input.monthId, input.transactionId);
+    const position = await findPosition(tx, input.monthId, entry.positionId);
+    const asset = position.asset;
+    const previousContract = readFixedIncomeContract(asset.fixedIncomeContract);
+    if (!previousContract || entry.positionId !== input.transaction.positionId || +entry.occurredOn !== +source.occurredOn ||
+        entry.kind !== "CONTRIBUTION" || +entry.occurredOn !== asset.appliedOn?.getTime()) {
+      throw new MonthEditError("The purchase changed. Reopen it and try again.");
+    }
+    const updatedContract = { ...contract, basis: previousContract.basis };
+    const values = parseValues(position, reference, "CONTRIBUTION", input.transaction);
+    const related = await tx.position.findMany({
+      where: { assetId: asset.id },
+      include: { portfolioMonth: { select: { referenceDate: true } }, transactions: { select: { id: true, occurredOn: true, transferId: true, kind: true } } },
+    });
+    if (related.some(row => row.accountId !== position.accountId ||
+        row.transactions.some(item => item.id !== entry.id && (item.transferId || item.kind === "WITHDRAWAL" || item.occurredOn <= appliedOn || item.occurredOn >= maturity)))) {
+      throw new MonthEditError("This purchase has linked movements that must be reconciled before its terms can be corrected.");
+    }
+    const name = fixedIncomeName(contract, maturityDate, day);
+    const account = await tx.account.findUniqueOrThrow({ where: { id: position.accountId }, select: { institution: { select: { name: true } } } });
+    const normalizedKey = buildAssetKey({ name, ticker: null, institutionName: account.institution.name, maturityDate });
+    if (await tx.asset.findFirst({where: {normalizedKey, id: {not: asset.id}}, select: {id: true}})) {
+      throw new MonthEditError("Another investment already uses these contract details.");
+    }
+    await tx.asset.update({where: {id: asset.id}, data: {name, normalizedKey, appliedOn, maturityDate: maturity, fixedIncomeContract: updatedContract}});
+    if (fx) await tx.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(fx.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fx.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
+    const oldMonth = related.find(row => row.id === position.id)!.portfolioMonth.referenceDate;
+    const months = await tx.portfolioMonth.findMany({where: {referenceDate: {gte: reference < oldMonth ? reference : oldMonth}}, orderBy: {referenceDate: "asc"}, select: {id: true, referenceDate: true}});
+    const byMonth = new Map(related.map(row => [row.portfolioMonthId, row]));
+    const destinationPositionId = byMonth.get(destination.id)?.id ?? (await tx.position.create({data: {
+      userId: SCOPED_USER, assetId: asset.id, accountId: position.accountId, portfolioMonthId: destination.id, quantity: 0, totalBrl: 0,
+    }, select: {id: true}})).id;
+    await tx.positionTransaction.update({where: {id: entry.id}, data: {...values, positionId: destinationPositionId, note: entry.note}});
+    const allocation = fixedIncomeAllocation(contract, day, maturityDate);
+    let openingQuantity = new Prisma.Decimal(0);
+    for (const month of months) {
+      const existing = byMonth.get(month.id);
+      if (month.referenceDate < reference || month.referenceDate >= maturity) {
+        if (existing) await tx.position.delete({where: {id: existing.id}});
+        continue;
+      }
+      const data = {openingQuantity, quantity: openingQuantity, totalBrl: openingQuantity, calculatedIncomeBrl: 0,
+        calculationStartDate: month.id === destination.id ? appliedOn : month.referenceDate};
+      const id = month.id === destination.id ? destinationPositionId : existing?.id;
+      const current = id ? await tx.position.update({where: {id}, data, select: {id: true}}) : await tx.position.create({
+        data: {...data, userId: SCOPED_USER, assetId: asset.id, accountId: position.accountId, portfolioMonthId: month.id}, select: {id: true},
+      });
+      await tx.positionAllocation.deleteMany({where: {positionId: current.id}});
+      await tx.positionAllocation.create({data: {...allocation, userId: SCOPED_USER, positionId: current.id, weight: 1, ratePercent: contract.rate}});
+      await recomputePosition(tx, current.id, "The correction would make the position negative.");
+      openingQuantity = (await tx.position.findUniqueOrThrow({where: {id: current.id}, select: {quantity: true}})).quantity;
+    }
+    return { assets: [{ ...asset, fixedIncomeContract: previousContract, expectedFixedIncomeContract: updatedContract }] };
+  }, { linkedMonths: true });
+}
 
 /** Record an FX correction without changing the original trade or its reference. */
 export async function recordExecutedUsdFx(input: { monthId: string; transactionId: string; rate: string }) {

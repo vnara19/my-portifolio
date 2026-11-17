@@ -2,7 +2,7 @@
 
 /** Record a contribution, withdrawal, opening balance or return. Cash amounts and market values are distinct; infer only a missing quantity, price or amount. */
 
-import { brazilianFixedIncomeSchema } from "../domain/brazilian-fixed-income";
+import { BRAZILIAN_DEBT_PRODUCTS, brazilianFixedIncomeSchema, type BrazilianFixedIncome } from "../domain/brazilian-fixed-income";
 import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
@@ -57,7 +57,7 @@ export type TransactionTarget = {
 export type TransactionEdit = {
   id: string;
   kind: StoredTransactionKind;
-  fixedIncomePurchase?: { quantity: string | null };
+  fixedIncomePurchase?: { quantity: string | null; contract: BrazilianFixedIncome; maturityDate: string };
   occurredOn: string;
   quantity: number;
   unitPriceBrl: number | null;
@@ -167,7 +167,13 @@ function TransactionForm({
   );
   const [purchaseQuantity, setPurchaseQuantity] = useState(edit?.fixedIncomePurchase?.quantity ?? "");
   const normalizedQuantity = normalizeLocaleNumberInput(purchaseQuantity);
-  const quantityValid = normalizedQuantity !== null && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(normalizedQuantity).success;
+  const [contract, setContract] = useState(edit?.fixedIncomePurchase?.contract);
+  const [maturity, setMaturity] = useState(edit?.fixedIncomePurchase?.maturityDate ?? "");
+  const fixedTerms = contract ? brazilianFixedIncomeSchema.required({ purchaseQuantity: true }).safeParse({
+    ...contract, rate: normalizeLocaleNumberInput(contract.rate), purchaseQuantity: normalizedQuantity,
+  }) : null;
+  const today = new Date().toISOString().slice(0, 10);
+  const dateValid = contract ? Boolean(day >= "2000-01-01" && day <= today && maturity > day) : day >= month.firstDay && day <= month.lastDay;
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
@@ -222,7 +228,7 @@ function TransactionForm({
         note: edit?.note ?? null,
       };
       const result = edit
-        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction, ...(edit.fixedIncomePurchase ? { purchaseQuantity: normalizedQuantity } : {}) })
+        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction, ...(fixedTerms?.success ? { fixedIncome: { contract: fixedTerms.data, maturityDate: maturity } } : {}) })
         : await addTransactionAction({ monthId: month.id, transaction });
 
       if (result.ok) {
@@ -232,7 +238,7 @@ function TransactionForm({
       }
     });
 
-  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && day >= month.firstDay && day <= month.lastDay && (!edit?.fixedIncomePurchase || quantityValid) && !isSaving;
+  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && dateValid && (!contract || (fixedTerms?.success && (contract.indexer === "CDI" || Number(fixedTerms.data.rate) <= 100))) && !isSaving;
   const showIssue = plan.issue !== null && (order.length > 0 || texts.total.trim() !== "");
 
   return (
@@ -271,7 +277,7 @@ function TransactionForm({
           </Field>}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span>Balance before the transaction</span><span className="font-mono text-foreground">{formatBrl(marketBefore)}{quoted ? ` · ${formatNumber(before.quantity, 8)} ${unit}` : ""}</span></div>
         </> : step === 1 ? <>
-          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description={edit?.fixedIncomePurchase ? "Enter the quantity purchased and total invested." : "Enter the details you have. The application calculates the rest and highlights any mismatch."} />
+          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description={edit?.fixedIncomePurchase ? "Review the purchase and contract details." : "Enter the details you have. The application calculates the rest and highlights any mismatch."} />
           {edit ? null : <Field label="How would you like to enter this?">
             <Picker
               aria-label="Entry method"
@@ -380,10 +386,16 @@ function TransactionForm({
           </Field>
         ) : null}
 
-        {edit?.fixedIncomePurchase ? (
-          <Field label="Quantity Purchased">
-            <NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={setPurchaseQuantity} />
-          </Field>
+        {contract ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Quantity Purchased"><NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={setPurchaseQuantity} /></Field>
+            <Field label="Product"><Picker aria-label="Product" value={contract.product} options={BRAZILIAN_DEBT_PRODUCTS.map(value => ({value, label: value}))} onValueChange={value => setContract({...contract, product: value as BrazilianFixedIncome["product"]})} /></Field>
+            <Field label="Issuer"><input aria-label="Issuer" className={inputClass} maxLength={40} value={contract.issuer} onChange={event => setContract({...contract, issuer: event.target.value})} /></Field>
+            <Field label="Purchase Date"><DatePicker aria-label="Purchase Date" value={day} min="2000-01-01" max={today} onChange={setDay} /></Field>
+            <Field label="Maturity Date"><DatePicker aria-label="Maturity Date" value={maturity} min={day} onChange={setMaturity} /></Field>
+            <Field label="Return Type"><Picker aria-label="Return Type" value={contract.indexer} options={[{value:"CDI",label:"Floating Rate · CDI"},{value:"PRE",label:"Fixed Rate"},{value:"IPCA",label:"Inflation-Linked · IPCA"}]} onValueChange={value => setContract({...contract, indexer: value as BrazilianFixedIncome["indexer"], rate: ""})} /></Field>
+            <Field label={contract.indexer === "CDI" ? "Percentage of CDI (%)" : contract.indexer === "IPCA" ? "Annual Yield Above IPCA (%)" : "Annual Yield (%)"}><NumberInput label="Contracted Rate" value={contract.rate} onChange={rate => setContract({...contract, rate})} /></Field>
+          </div>
         ) : null}
 
         {quoted && plan.kind === "INCOME" && mode === "operation" ? (
@@ -422,9 +434,9 @@ function TransactionForm({
           />}
         </section>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {contract ? <p className="mt-5 text-xs text-muted-foreground">{contract.product} · {contract.issuer} · {contract.rate}% {contract.indexer === "CDI" ? "of CDI" : contract.indexer === "IPCA" ? "above IPCA" : "per year"} · {purchaseQuantity} units<br />Purchase Date {day.split("-").reverse().join("/")} · Maturity Date {maturity.split("-").reverse().join("/")}</p> : <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field label="Transaction date"><DatePicker aria-label="Transaction date" value={day} min={month.firstDay} max={month.lastDay} onChange={setDay} /></Field>
-          </div>
+          </div>}
         </>}
         {step === 1 && showIssue ? <p role="status" data-testid="transaction-issue" className="mt-4 text-xs leading-5 text-warning-foreground">{plan.issue}</p> : null}
         {error ? <p role="alert" className="mt-4 text-xs text-destructive">{error}</p> : null}

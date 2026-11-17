@@ -112,7 +112,7 @@ export type PositionTransactionView = {
   assetType?: string | null;
   baseCurrency?: string;
   moneyUnavailable?: boolean;
-  fixedIncomePurchase?: { quantity: string | null };
+  fixedIncomePurchase?: { quantity: string | null; contract: NonNullable<ReturnType<typeof readFixedIncomeContract>>; maturityDate: string };
   bondPurchase?: InternationalBond | null;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
 
@@ -530,7 +530,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
       positionId: true,
       position: {
         select: {
-          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true, appliedOn: true } },
+          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true, appliedOn: true, maturityDate: true } },
           accountId: true,
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
@@ -559,7 +559,7 @@ export async function readTransactions(assetId?: string): Promise<PositionTransa
       amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
       bondPurchase: row.kind === "CONTRIBUTION" ? readInternationalBond(row.position.asset.fixedIncomeContract) : null,
       locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
-      fixedIncomePurchase: terms && row.kind === "CONTRIBUTION" && row.occurredOn.getTime() === row.position.asset.appliedOn?.getTime() ? { quantity: terms.purchaseQuantity ?? null } : undefined,
+      fixedIncomePurchase: terms && row.position.asset.maturityDate && row.kind === "CONTRIBUTION" && row.occurredOn.getTime() === row.position.asset.appliedOn?.getTime() ? { quantity: terms.purchaseQuantity ?? null, contract: terms, maturityDate: toDateKey(row.position.asset.maturityDate) } : undefined,
       automatic: row.note === MATURITY_EXIT_NOTE || row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
       note: row.note,
       transferId: row.transferId,

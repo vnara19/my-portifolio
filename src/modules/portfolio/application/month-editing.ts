@@ -209,6 +209,27 @@ const globalForUndo = globalThis as unknown as { monthUndoStore?: Map<string, Un
 const undoStore = (globalForUndo.monthUndoStore ??= new Map<string, UndoEntry>());
 
 
+/** Prefer the stored daily fixing, so a provider outage does not block a valid purchase. */
+export async function fixedIncomePurchaseFx(day: string) {
+  const db = await requirePrisma();
+  const date = new Date(`${day}T00:00:00Z`);
+  const earliest = new Date(date.getTime() - 7 * 86400000);
+  const stored = await db.dailyQuote.findFirst({
+    where: { symbol: "USD", quoteDate: { gte: earliest, lte: date }, valueBrl: { gt: 0 } },
+    orderBy: { quoteDate: "desc" },
+    select: { quoteDate: true, valueBrl: true },
+  });
+  if (stored && toDateKey(stored.quoteDate) === day) return { day, value: stored.valueBrl.toNumber() };
+  try {
+    const quote = await fetchReferenceFxLatest("USD", day);
+    if (new Date(quote.day) >= (stored?.quoteDate ?? earliest)) return quote;
+  } catch {
+    // The most recent stored fixing is still usable within the reference window.
+  }
+  if (stored) return { day: toDateKey(stored.quoteDate), value: stored.valueBrl.toNumber() };
+  throw new MonthEditError("The USD/BRL reference for the purchase date is unavailable. Try again after quotes update.");
+}
+
 export async function addPosition(input: { monthId: string; addition: PositionAddition }) {
   const newAsset = input.addition.newAsset;
   if (newAsset?.kind === "savings") throw new MonthEditError("Use the Savings form to register a Savings investment.");
@@ -297,7 +318,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   if (fixed) {
     const fixedDb = await requirePrisma();
     if (newAsset!.appliedOn! > toDateKey(calendarDay(new Date()))) throw new MonthEditError("The purchase date cannot be in the future.");
-    fixedFx = await fetchReferenceFxLatest("USD", newAsset!.appliedOn!);
+    fixedFx = await fixedIncomePurchaseFx(newAsset!.appliedOn!);
     await primeFixedIncomeRates(fixedDb, fixed.indexer, newAsset!.appliedOn!);
   }
   if (purchase && newAsset && datedMonth.referenceDate < currentReferenceMonth() && !newAsset.manualPriceBrl) newAsset.manualPriceBrl = purchase.cost.unitPriceBrl.toString();

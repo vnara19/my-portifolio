@@ -253,6 +253,12 @@ rate and redemption are explicit. New contracts use 252 Brazilian business days;
 legacy 365-calendar-day terms remain readable without rewriting saved contracts. It generates a
 lot-specific asset name, automatic fixed-income allocation and dated original cost.
 A nullable fixedIncomeContract JSON column preserves the terms through backups.
+Purchase corrections update the original transaction and contract together. Moving
+the purchase date rebuilds that holding from the earliest affected month and
+retains its transaction identity. Purchases with recorded withdrawals or linked
+transfers require reconciliation before contract terms can be changed. Purchase
+FX uses a stored same-day USD/BRL fixing when available, with a bounded
+historical fallback during provider interruptions.
 No CRI/CRA coupon, amortization, bank-account connection or net-redemption tax
 calculator is implied by this form. US/European direct bonds remain separate work.
 
