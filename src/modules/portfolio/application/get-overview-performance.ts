@@ -1,3 +1,7 @@
+import { fixedIncomeBalanceHistory } from "../domain/fixed-income-balance-history";
+import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
+import { autoIncomeParts } from "../domain/fixed-income-policy";
+import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
 import { custodyTransferPair } from "../domain/custody-transfer";
 import { readInternationalBond } from "../domain/international-bond";
 import { bondReportingUnitPrice } from "../domain/bond-performance";
@@ -19,8 +23,8 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   if (!history.length) return [];
   const tx=[...ledger.originals].sort((a,b)=>a.occurredOn.localeCompare(b.occurredOn)||a.id.localeCompare(b.id));
   const [assets, monthlyPositions] = await Promise.all([
-    db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true,fixedIncomeContract:true}}),
-    db.position.findMany({select:{assetId:true,quantity:true,portfolioMonth:{select:{referenceDate:true}}}}),
+    db.asset.findMany({select:{id:true,quoteSymbol:true,assetType:true,baseCurrency:true,fixedIncomeContract:true,autoIncome:true,appliedOn:true,maturityDate:true}}),
+    db.position.findMany({select:{assetId:true,quantity:true,incomeCalculatedThrough:true,incomeCalculationError:true,allocations:{select:{subclass:true,weight:true,ratePercent:true}},portfolioMonth:{select:{referenceDate:true}}}}),
   ]);
   const invalidMonths=new Set<string>();
   for(const h of history){
@@ -38,6 +42,41 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency})).reverse()]));
   const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
+  const bankAssets = assets.flatMap(asset => {
+    const contract = readFixedIncomeContract(asset.fixedIncomeContract);
+    if (!contract || !asset.appliedOn || asset.quoteSymbol || !asset.autoIncome) return [];
+    const latest = monthlyPositions.filter(position => position.assetId === asset.id &&
+      position.portfolioMonth.referenceDate <= overview.referenceDate)
+      .sort((a, b) => +b.portfolioMonth.referenceDate - +a.portfolioMonth.referenceDate);
+    const current = latest[0];
+    const parts = current ? autoIncomeParts(asset, current.allocations) : null;
+    if (!parts || current.incomeCalculationError) return [];
+    const through = latest.find(position => position.incomeCalculatedThrough)?.incomeCalculatedThrough
+      ?? new Date(+asset.appliedOn - 86_400_000);
+    return [{ asset, contract, parts, through }];
+  });
+  const [rateRows, coverage] = bankAssets.length ? await Promise.all([
+    db.rateObservation.findMany({ where: { indexer: { in: ["CDI", "IPCA"] }, date: { lte: new Date(end) } },
+      select: { indexer: true, date: true, dailyPercent: true } }),
+    db.rateCoverage.findMany({ where: { indexer: "CDI" }, select: { fromDate: true, throughDate: true } }),
+  ]) : [[], []];
+  const dateKey = (date: Date) => date.toISOString().slice(0, 10);
+  const series = (indexer: string) => rateRows.filter(rate => rate.indexer === indexer)
+    .map(rate => ({ date: dateKey(rate.date), dailyPercent: rate.dailyPercent.toString() }));
+  const rates = series("CDI"), ipcaRates = series("IPCA");
+  const verifiedCoverage = coverage.map(window => ({ from: dateKey(window.fromDate), through: dateKey(window.throughDate) }));
+  const bankBalances = new Map(bankAssets.map(({ asset, contract, parts, through }) => {
+    const movements = tx.filter(entry => entry.assetId === asset.id && entry.occurredOn <= end &&
+      !entry.automatic && !isAutomaticAccrualNote(entry.note));
+    const balances = movements.some(entry => entry.transferId) ? null : fixedIncomeBalanceHistory({
+      openingBalance: "0", startDate: dateKey(asset.appliedOn!),
+      asOf: new Date(Date.parse(end) + 86_400_000).toISOString().slice(0, 10),
+      maturityDate: asset.maturityDate ? dateKey(asset.maturityDate) : null,
+      annualBasis: contract.basis, parts, rates, ipcaRates, verifiedCoverage,
+      movements: movements.map(entry => ({ date: entry.occurredOn, kind: entry.kind, amount: String(entry.amountBrl) })),
+    }, dateKey(through));
+    return [asset.id, balances] as const;
+  }));
   const linked = new Map<string, typeof tx>();
   for (const entry of tx) {
     if (!entry.transferId || entry.occurredOn > end) continue;
@@ -56,6 +95,11 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
   const eur=quotes.filter(q=>q.symbol==="EUR").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
   const reportingRates=currency==="EUR"?eur:usd;
   const emptyMonthlyRates = new Map<string, number>();
+  const bankValue = (id: string, day: string) => {
+    const balance = bankBalances.get(id)?.get(day);
+    const fx = datedFx(day, null, currency, reportingRates, emptyMonthlyRates);
+    return balance !== undefined && fx ? balance / fx.rate : null;
+  };
   const readUnitReporting=(id:string,on:string)=>{
     const asset=assetMap.get(id),symbol=asset?.quoteSymbol;
     const bond=bonds.get(id);
@@ -138,6 +182,12 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     {
       for(const [id,units] of holdings){
         if(Math.abs(units)<1e-8)continue;
+        if (bankBalances.has(id)) {
+          const balance = bankValue(id, day);
+          if (balance === null) { value = null; break; }
+          value += balance;
+          continue;
+        }
         const price=unitReporting(id,day);
         if(price===null||units<0){value=null;break;}
         if(value!==null)value+=units*price;
@@ -146,7 +196,19 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     if(value===null && snapshots.has(day))value=snapshots.get(day)??null;
     if(invalidMonths.has(day.slice(0,7)))value=null;
     const previousDay=new Date(Date.parse(day)-86400000).toISOString().slice(0,10);
-    const daily=dailyOpenGain([...holdings].map(([id,units])=>({units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitReporting(id,day),previousPrice:unitReporting(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null})));
+    const daily=dailyOpenGain([...holdings].map(([id,units])=>{
+      if (bankBalances.has(id)) {
+        const opening = before.get(id) ?? 0;
+        const purchase = bought.get(id);
+        const current = bankValue(id, day);
+        const adjusted = current === null || sold.has(id) || (purchase && purchase.principal === null)
+          ? null : current - (purchase?.principal ?? 0);
+        return opening > 0
+          ? { units: units > 0 ? 1 : 0, oldUnits: 1, currentPrice: adjusted, previousPrice: bankValue(id, previousDay), newUnits: 0, newPrincipal: null }
+          : { units: units > 0 ? 1 : 0, oldUnits: 0, currentPrice: current, previousPrice: null, newUnits: purchase ? 1 : 0, newPrincipal: purchase?.principal ?? null };
+      }
+      return {units,oldUnits:Math.max(0,(before.get(id)??0)-(sold.get(id)??0)),currentPrice:unitReporting(id,day),previousPrice:unitReporting(id,previousDay),newUnits:bought.get(id)?.units??0,newPrincipal:bought.get(id)?.principal??null};
+    }));
     for (const cachedDay of unitPricesByDay.keys()) {
       if (cachedDay !== day) unitPricesByDay.delete(cachedDay);
     }

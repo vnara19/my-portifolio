@@ -732,3 +732,8 @@ accrual day in BRL. The accrual engine replays dated movements and verified
 rates. The table publishes the daily result only if the replay matches the
 position balance. Instruments without market prices retain unavailable market
 metrics, and the daily accrual date is shown on hover.
+
+Overview replays supported Brazilian bank fixed-income contracts with the same
+accrual engine used to value their positions. The daily series uses recorded
+movements and accrues through the last recorded fixing. Daily USD balances feed
+the existing flow-adjusted return, profit charts and reporting-month markers.

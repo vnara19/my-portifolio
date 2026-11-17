@@ -25,6 +25,7 @@ type MonthInput = {
   asOf: string;
   maturityDate?: string | null;
   movements: CdiMovement[];
+  onDailyBalance?: (day: string, balance: number) => void;
 };
 
 
@@ -168,20 +169,21 @@ function accrueMonth(input: MonthInput, dailyFactor: DailyFactor): CdiValuation 
   let cursor = input.startDate;
 
   const accrueUntil = (until: string): string | null => {
-    for (; cursor < until && cursor < end; cursor = nextDay(cursor)) {
-      if (balance!.isZero()) {
+    for (; cursor < until && (cursor < end || input.onDailyBalance); cursor = nextDay(cursor)) {
+      if (balance!.isZero() || cursor >= end) {
+        input.onDailyBalance?.(cursor, balance!.toNumber());
         continue;
       }
       const result = dailyFactor(cursor);
       if ("error" in result) {
         return result.error;
       }
-      if ("skip" in result) {
-        continue;
+      if (!("skip" in result)) {
+        balance = balance!.mul(result.factor);
+        lastRateDate = cursor;
+        rateDays += 1;
       }
-      balance = balance!.mul(result.factor);
-      lastRateDate = cursor;
-      rateDays += 1;
+      input.onDailyBalance?.(cursor, balance!.toNumber());
     }
     return null;
   };
