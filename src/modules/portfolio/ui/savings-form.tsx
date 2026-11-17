@@ -22,12 +22,12 @@ function EuroSavingsConditions({ rate = EURO_SAVINGS_RATE }: { rate?: Omit<Savin
         <p className="mt-3 text-xs text-muted-foreground">Daily interest, including weekends. Tax is deducted from interest.</p>
     </div>;
 }
-export function SavingsForm({ formId, onSaved, onPendingChange, onValidationChange }: {
+export function SavingsForm({ currency, defaultName, formId, onSaved, onPendingChange, onValidationChange }: {
+    currency: "BRL" | "EUR"; defaultName: string;
     formId: string; onSaved: (r: EditActionResult) => void;
     onPendingChange: (p: boolean) => void; onValidationChange: (e: string[]) => void;
 }) {
-    const [name, setName] = useState("");
-    const [currency, setCurrency] = useState<"BRL" | "EUR">("BRL");
+    const [name, setName] = useState(defaultName);
     const [opening, setOpening] = useState<Savings["openingType"] | null>(null);
     const [amount, setAmount] = useState("");
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -60,7 +60,7 @@ export function SavingsForm({ formId, onSaved, onPendingChange, onValidationChan
         <h2 className="text-base font-semibold">Savings</h2>
         <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Savings name"><input aria-label="Savings name" maxLength={80} className={inputClass} value={name} onChange={e => setName(e.target.value)} placeholder="For example, Itaú Reserve or Revolut Savings" /></Field>
-            <Field label="Currency"><Picker aria-label="Savings currency" value={currency} options={["BRL", "EUR"].map(value => ({ value, label: value }))} onValueChange={v => { setCurrency(v as typeof currency); setError(null); }} /></Field>
+            <Field label="Currency"><input aria-label="Savings currency" className={inputClass} readOnly value={currency} /></Field>
         </div>
         {euro ? <EuroSavingsConditions /> : null}
         <div className="grid gap-4 sm:grid-cols-2">

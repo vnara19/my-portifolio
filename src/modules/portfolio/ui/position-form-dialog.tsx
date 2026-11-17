@@ -34,7 +34,6 @@ import type { EditingCatalog } from "@/modules/portfolio/application/get-editing
 import type { MonthPosition, MonthQuote } from "@/modules/portfolio/application/get-month-positions";
 import {
   ASSET_KIND_DEFINITIONS,
-  ASSET_KINDS,
   baseCurrencyOf,
   buildAssetKey,
   cleanName,
@@ -88,6 +87,31 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "ativo", label: "Asset" },
 ];
 const CHECK_DEBOUNCE_MS = 500;
+
+const POSITION_CATEGORIES = [
+  { value: "listed", label: "Stocks & Listed Funds", hint: "Stocks, ETFs, UCITS, REITs, FIIs and ETCs" },
+  { value: "fixed", label: "Fixed Income" },
+  { value: "crypto", label: "Cryptocurrency" },
+  { value: "treasury", label: "Tesouro Direto" },
+  { value: "savings", label: "Savings" },
+] as const;
+type PositionCategory = typeof POSITION_CATEGORIES[number]["value"];
+const CATEGORY_KINDS = {
+  listed: ["us-market", "eu-market", "br-market"],
+  fixed: ["international-bond", "fixed-income"],
+} as const satisfies Record<string, readonly AssetKind[]>;
+const SAVINGS_PRODUCTS = [
+  { country: "Ireland", value: "revolut-instant", label: "Revolut Instant Access Savings", currency: "EUR" },
+  { country: "Brazil", value: "itau-reserve", label: "Itaú Reserve", currency: "BRL" },
+] as const;
+const SAVINGS_COUNTRIES = [...new Set(SAVINGS_PRODUCTS.map(({ country }) => country))]
+  .map(country => ({ value: country, label: country }));
+
+function kindOption(value: AssetKind) {
+  const { label, hint } = ASSET_KIND_DEFINITIONS[value];
+  return { value, label: englishLabel(label), hint };
+}
+
 
 const popupClass =
   "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(600px,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl outline-none transition-[scale,opacity] duration-150 ease-out data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0";
@@ -168,6 +192,12 @@ function PositionForm({
   const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
   const [fiQuantity, setFiQuantity] = useState("");
   const [fiRate, setFiRate] = useState("");
+  const [category, setCategory] = useState<PositionCategory | null>(null);
+  const [savingsCountry, setSavingsCountry] = useState<string | null>(null);
+  const [savingsProductId, setSavingsProductId] = useState<string | null>(null);
+  const savingsProduct = SAVINGS_PRODUCTS.find(({ value }) => value === savingsProductId);
+  const groupedKind = category === "listed" || category === "fixed";
+  const kindLabel = category === "listed" ? "Market" : "Fixed Income Type";
   const [kind, setKind] = useState<AssetKind | null>(null);
   const bondEntry = !editing && kind === "international-bond";
   const savingsEntry = !editing && kind === "savings";
@@ -233,10 +263,10 @@ function PositionForm({
     setAppliedOn(defaultAppliedOn()); setTab("geral");
     setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
   };
-  const chooseKind = (next: string) => {
+  const chooseKind = (next: AssetKind | null) => {
     if (next === kind) return;
     resetFields();
-    setKind(next as AssetKind);
+    setKind(next);
     if (next === "fixed-income") setAutoIncome(true);
     if (next === "treasury") void prefetchTreasuryCatalog().catch(() => undefined);
   };
@@ -560,7 +590,12 @@ function PositionForm({
 
   const fieldFeedback: Record<string, FieldFeedback> = {};
   const requireField = (label: string, valid: boolean) => { fieldFeedback[label] = { valid }; };
-  requireField("Asset type", Boolean(editing ? assetType : kind));
+  requireField("Asset type", Boolean(editing ? assetType : category));
+  if (groupedKind) requireField(kindLabel, Boolean(kind));
+  if (category === "savings") {
+    requireField("Country", Boolean(savingsCountry));
+    if (savingsCountry) requireField("Savings Product", Boolean(savingsProduct));
+  }
   if (editing) requireField("Asset name", Boolean(typedName));
   if (!editing && kind && !delegatedEntry) {
     if (fixedIncomeEntry) {
@@ -666,16 +701,48 @@ function PositionForm({
                 <Field label={"Asset type"}>
                   <Picker
                     aria-label={"Asset type"}
-                    options={ASSET_KINDS.filter((entry) => !["us-etf", "us-stock", "br-etf", "br-stock"].includes(entry) && !["brl-cash", "usd-balance", "eur-balance"].includes(entry)).map((entry) => ({
-                      value: entry,
-                      label: englishLabel(ASSET_KIND_DEFINITIONS[entry].label),
-                      hint: ASSET_KIND_DEFINITIONS[entry].hint,
-                    }))}
-                    value={kind}
-                    onValueChange={chooseKind}
+                    options={[...POSITION_CATEGORIES]}
+                    value={category}
+                    onValueChange={(value) => {
+                      const next = value as PositionCategory;
+                      if (category === next) return;
+                      setCategory(next);
+                      setSavingsCountry(null);
+                      setSavingsProductId(null);
+                      chooseKind(next === "crypto" || next === "treasury" ? next : null);
+                    }}
                     placeholder="Choose the type"
                   />
                 </Field>
+                {groupedKind ? (
+                  <Field label={kindLabel}>
+                    <Picker aria-label={kindLabel} options={CATEGORY_KINDS[category].map(kindOption)}
+                      value={kind} onValueChange={value => chooseKind(value as AssetKind)} placeholder={`Choose the ${kindLabel.toLowerCase()}`} />
+                  </Field>
+                ) : null}
+                {category === "savings" ? (
+                  <Field label="Country">
+                    <Picker aria-label="Country" options={SAVINGS_COUNTRIES} value={savingsCountry} placeholder="Choose the country"
+                      onValueChange={country => {
+                        if (country === savingsCountry) return;
+                        setSavingsCountry(country);
+                        setSavingsProductId(null);
+                        chooseKind(null);
+                      }} />
+                  </Field>
+                ) : null}
+                {category === "savings" && savingsCountry ? (
+                  <Field label="Savings Product">
+                    <Picker aria-label="Savings Product"
+                      options={SAVINGS_PRODUCTS.filter(product => product.country === savingsCountry).map(({ value, label, currency }) => ({ value, label, hint: currency }))}
+                      value={savingsProductId} placeholder="Choose the savings product" onValueChange={value => {
+                        if (value === savingsProductId) return;
+                        setBondIssues(["Savings details"]);
+                        setSavingsProductId(value);
+                        chooseKind("savings");
+                      }} />
+                  </Field>
+                ) : null}
 
               </div>
             )}
@@ -704,11 +771,11 @@ function PositionForm({
 
           </PositionSection>
 
-          {savingsEntry ? <SavingsForm formId={bondFormId} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
+          {savingsEntry && savingsProduct ? <SavingsForm key={savingsProduct.value} currency={savingsProduct.currency} defaultName={savingsProduct.label} formId={bondFormId} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
           <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
             {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
-              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">Choose the asset type above.
+              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">{category ? "Complete the selection above." : "Choose the asset type above."}
               </p>
             ) : (
               <>
