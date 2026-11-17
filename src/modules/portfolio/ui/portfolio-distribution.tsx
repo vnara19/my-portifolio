@@ -9,6 +9,7 @@ const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"types",label:"
 const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
+const RING_RADIUS = 196;
 const CHART_LEFT = -118;
 const CHART_TOP = -32;
 const CHART_WIDTH = 756;
@@ -53,13 +54,13 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
       <div className="relative mx-auto w-full" onMouseLeave={()=>setHover(null)}>
         <svg ref={chartRef} viewBox={`${CHART_LEFT} ${CHART_TOP} ${CHART_WIDTH} ${CHART_HEIGHT}`} className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
-          <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="29" fontWeight="600">{data.assetCount}</text>
-          <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="16" fontWeight="500">Total Assets</text>
+          <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="32" fontWeight="600">{data.assetCount}</text>
+          <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="17" fontWeight="500">Total Assets</text>
           {slices.map(({row,start})=>{
-            const circumference=2*Math.PI*190, length=row.share/100*circumference;
+            const circumference=2*Math.PI*RING_RADIUS, length=row.share/100*circumference;
             return <g key={row.key}>
-              {hover===row.key?<circle cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="90" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
-              <circle data-distribution-slice={row.key} cx="260" cy="260" r="190" fill="none" stroke={row.color} strokeWidth="64" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
+              {hover===row.key?<circle cx="260" cy="260" r={RING_RADIUS} fill="none" stroke={row.color} strokeWidth="90" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
+              <circle data-distribution-slice={row.key} cx="260" cy="260" r={RING_RADIUS} fill="none" stroke={row.color} strokeWidth="64" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onClick={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
             </g>;
           })}
           {[...slices].sort((a, b) => b.row.share - a.row.share).map(({ row, middle }) => <DistributionLabel key={row.key} row={row} angle={middle} />)}
@@ -85,27 +86,30 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
 }
 
 function DistributionLabel({ row, angle }: { row: DistributionRow; angle: number }) {
-  const percentage = point(angle, 190);
-  const anchor = point(angle, 243);
-  const nearVertical = Math.abs(Math.cos(angle)) < 0.35;
+  const percentage = point(angle, RING_RADIUS);
+  const anchor = point(angle, RING_RADIUS + 53);
+  const nearVertical = Math.abs(Math.cos(angle)) < 0.49;
   const left = anchor.x < 260;
   const width = 128;
   const height = 52;
   const closestY = Math.max(0, Math.abs(anchor.y - 260) - height / 2);
-  const outsideRing = Math.sqrt(237 ** 2 - closestY ** 2);
+  const outsideRing = Math.sqrt((RING_RADIUS + 47) ** 2 - closestY ** 2);
   const x = nearVertical ? anchor.x - width / 2 : 260 + (left ? -outsideRing - width : outsideRing);
   const y = nearVertical ? (anchor.y < 260 ? 22 - height : 498) : anchor.y - height / 2;
 
   return (
     <g pointerEvents="none" aria-hidden="true">
-      {row.share >= 4 ? (
+      {row.share >= 3 ? (
         <text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500">{Math.round(row.share)}%</text>
       ) : null}
       <foreignObject data-slice-label="" x={x} y={y} width={width} height={height} visibility="hidden">
         <div className={cn("flex h-full text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]",
           nearVertical ? cn("justify-center text-center", anchor.y < 260 ? "items-end" : "items-start") :
             cn("items-center", left ? "justify-end text-right" : "text-left"))}>
-          <span className="min-w-0">{row.label}</span>
+          <span className="min-w-0">
+            <span className="mr-1.5 inline-block size-[7px] rounded-full align-[1px]" style={{ backgroundColor: row.color }} />
+            {row.label}
+          </span>
         </div>
       </foreignObject>
     </g>
