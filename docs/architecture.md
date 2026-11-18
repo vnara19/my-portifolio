@@ -4,8 +4,11 @@
 
 Next.js App Router, React and TypeScript provide the application. Prisma with the
 PostgreSQL driver adapter connects to Neon. Better Auth stores users, credentials,
-sessions and rate limits in PostgreSQL. Registration is restricted by an email
-allowlist. The interface is English and dark-only.
+sessions and rate limits in PostgreSQL. Public email/password registration is available from the sign-in form and requires
+a separate sign-in after account creation. New users receive an empty, user-scoped
+portfolio. Quote synchronization covers the latest month of every user and deduplicates
+shared symbols. Email ownership verification requires a future email-delivery setup.
+The interface is English and dark-only.
 
 Vercel hosts the application. GitHub stores source and triggers deployments:
 `dev` → Preview → Neon `development`; `main` → Production → Neon `production`.

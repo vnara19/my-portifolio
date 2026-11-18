@@ -18,7 +18,7 @@ test.describe("without a session", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/posicoes$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Holdings" })).toBeVisible();
   });
 
   test("an incorrect password shows an error without signing in", async ({ page }) => {
@@ -36,15 +36,24 @@ test.describe("without a session", () => {
     expect(check.status()).toBe(401);
   });
 
-  test("an email outside the allowlist cannot create an account", async ({ page }) => {
+  test("a new account requires sign-in and starts with an empty portfolio", async ({ page }) => {
+    test.skip(!/^english099_[a-f0-9]+$/.test(new URL(process.env.DATABASE_URL ?? "postgresql://localhost/test").searchParams.get("schema") ?? ""), "Disposable database required");
+    const email = `new-${crypto.randomUUID()}@portfolio.invalid`;
+    const password = `Test!9${crypto.randomUUID()}`;
     await page.goto("/entrar");
-    await page.getByRole("button", { name: "Create account" }).click();
-    await page.getByLabel("Name").fill("Visitante");
-    await page.getByLabel("Email").fill("visitante@exemplo.test");
-    await page.getByLabel("Password").fill("senha-de-visitante-123");
-    await page.getByRole("button", { name: "Create account", exact: true }).click();
-    await expect(page.locator("form").getByRole("alert")).toContainText("is not allowed to create an account");
+    await page.getByRole("button", { name: "Create an Account", exact: true }).click();
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Create an Account", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Account created.");
+    await expect(page).toHaveURL(/\/entrar$/);
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Sign In", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText("Your portfolio is empty")).toBeVisible();
   });
+
 });
 
 test("settings show the account and sign-out button", async ({ page }) => {

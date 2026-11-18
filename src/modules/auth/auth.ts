@@ -1,5 +1,5 @@
 
-/** Email/password authentication with PostgreSQL sessions. Only allowlisted emails may sign up. CLI account creation can explicitly override the allowlist. */
+/** Email/password authentication with PostgreSQL sessions. Public registration creates an empty user account and requires a separate sign-in. */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { betterAuth } from "better-auth";
@@ -10,7 +10,7 @@ import { nextCookies } from "better-auth/next-js";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { accountSecurity } from "./account-security";
 import { getPrismaClient } from "@/lib/prisma";
-import { allowedHosts, isSignUpAllowed, originOf } from "@/modules/auth/access";
+import { allowedHosts, originOf } from "@/modules/auth/access";
 
 
 import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, passwordPolicyError } from "./password-policy";
@@ -49,11 +49,11 @@ function createAuth() {
       enabled: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
       maxPasswordLength: MAX_PASSWORD_LENGTH,
-      autoSignIn: true,
+      autoSignIn: false,
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path === "/sign-up/email" && !signUpOverride.getStore()) throw new APIError("FORBIDDEN", { message: "Account creation is managed by the application owner." });
+
         if (ctx.path === "/sign-in/email" && typeof ctx.body?.email === "string") {
           const limit=await consumeRateLimit(ctx.body.email.trim().toLowerCase(),"account-login",10,60);
           if(!limit.allowed)throw new APIError("TOO_MANY_REQUESTS",{message:"Too many attempts. Please try again shortly."});
@@ -80,20 +80,6 @@ function createAuth() {
 
     rateLimit: { enabled: true, storage: "database", modelName: "rateLimit" },
     advanced: { database: { generateId: "uuid" }, defaultCookieAttributes: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" } },
-    databaseHooks: {
-      user: {
-        create: {
-          before: async (user) => {
-            if (!signUpOverride.getStore() && !isSignUpAllowed(user.email)) {
-              throw new APIError("FORBIDDEN", {
-                message: "This email is not allowed to create an account. Ask the application owner for access.",
-              });
-            }
-            return { data: user };
-          },
-        },
-      },
-    },
     telemetry: { enabled: false },
 
     plugins: [accountSecurity(), nextCookies()],

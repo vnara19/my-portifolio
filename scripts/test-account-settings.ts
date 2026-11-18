@@ -20,7 +20,8 @@ async function main(){
  const cookie=(response:Response)=>response.headers.getSetCookie().map(c=>c.split(";")[0]).join("; ");
  const login=async(address:string,pw:string)=>request("/sign-in/email",{email:address,password:pw});
  const legacyLogin=await login(legacyEmail,"Oldpass!91");assert.equal(legacyLogin.status,200);
- const publicSignup=await request("/sign-up/email",{email:process.env.E2E_USER_EMAIL,password,name:"Untrusted signup"});assert.equal(publicSignup.status,403);
+ const publicSignup=await request("/sign-up/email",{email:`signup-${randomBytes(5).toString("hex")}@portfolio.invalid`,password,name:"Public signup"});assert.equal(publicSignup.status,200);
+ assert.equal((await publicSignup.json()).token,null);
  const first=await login(email,password);assert.equal(first.status,200);const originalCookie=cookie(first);
  const second=await login(email,password);assert.equal(second.status,200);const otherCookie=cookie(second);
  const before=await db.user.findUniqueOrThrow({where:{email}});
