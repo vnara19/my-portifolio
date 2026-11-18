@@ -90,10 +90,10 @@ const CHECK_DEBOUNCE_MS = 500;
 
 const POSITION_CATEGORIES = [
   { value: "listed", label: "Stocks & Listed Funds", hint: "Stocks, ETFs, UCITS, REITs, FIIs and ETCs" },
-  { value: "fixed", label: "Fixed Income" },
-  { value: "crypto", label: "Cryptocurrency" },
-  { value: "treasury", label: "Tesouro Direto" },
-  { value: "savings", label: "Savings" },
+  { value: "fixed", label: "Fixed Income", hint: "CDBs, LCIs, LCAs and Bonds" },
+  { value: "crypto", label: "Cryptocurrency", hint: "Coins, Altcoins and Stablecoins" },
+  { value: "treasury", label: "Tesouro Direto", hint: "Brazilian Government Bonds" },
+  { value: "savings", label: "Savings", hint: "Savings Accounts" },
 ] as const;
 type PositionCategory = typeof POSITION_CATEGORIES[number]["value"];
 const CATEGORY_KINDS = {
