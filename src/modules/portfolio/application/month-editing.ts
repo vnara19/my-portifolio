@@ -238,6 +238,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const bond = newAsset?.kind === "international-bond" ? newInternationalBondSchema.parse(newAsset.bondContract) : null;
   const today = toDateKey(calendarDay(new Date()));
   if (bond) {
+    if (!bond.maturityDate || bond.maturityDate <= today) throw new MonthEditError("Choose a maturity date in the future.");
     if (bond.valuationMode === "Cost" && bond.costEvents?.length) throw new MonthEditError("New bond purchases cannot include legacy receipt history.");
     if (bond.settlementDate > today || bond.quotes.some((quote) => quote.date > today)) throw new MonthEditError("Bond dates cannot be in the future.");
     newAsset!.bondContract = bond;
@@ -255,6 +256,7 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
     fixed.basis = "BUSINESS_252";
     newAsset!.fixedIncomeContract = fixed;
     if (!newAsset!.appliedOn || !newAsset!.maturityDate || newAsset!.maturityDate <= newAsset!.appliedOn) throw new MonthEditError("Enter a maturity date after the purchase date.");
+    if (newAsset!.maturityDate <= today) throw new MonthEditError("Choose a maturity date in the future.");
     if (fixed.indexer !== "CDI" && Number(fixed.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");
     newAsset!.name = fixedIncomeName(fixed, newAsset!.maturityDate ?? "", newAsset!.appliedOn!);
     newAsset!.autoIncome = true;
@@ -262,6 +264,8 @@ export async function addPosition(input: { monthId: string; addition: PositionAd
   const identity = newAsset && isMarketKind(newAsset.kind) ? await verifiedMarketIdentity(newAsset, input.monthId) : null;
   if (identity && !identity.exposure) throw new MonthEditError("This fund cannot be added until its asset class has been identified.");
   const purchaseDay = input.addition.purchase?.occurredOn ?? bond?.settlementDate ?? newAsset?.appliedOn ?? today;
+  if (purchaseDay > today) throw new MonthEditError("The transaction date cannot be in the future.");
+  if (input.addition.purchase?.side === "SELL" && !input.addition.assetId) throw new MonthEditError("You must own this asset before selling it.");
   const requestedMonth = await (await requirePrisma()).portfolioMonth.findUnique({ where: { id: input.monthId }, select: { id: true } });
   if (!requestedMonth) throw new MonthEditError("The reporting month does not exist.");
   const datedMonth = await ensureDatedMonth(purchaseDay);

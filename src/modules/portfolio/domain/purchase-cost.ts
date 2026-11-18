@@ -1,4 +1,6 @@
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/browser";
+
+type Decimal = InstanceType<typeof Prisma.Decimal>;
 
 export type PurchaseInput = { price: string; commission: string; currency: "USD" | "EUR" | "BRL"; occurredOn: string; side?: "BUY" | "SELL"; amountInvested?: string; contractedRate?: string; contractedIndexer?: "IPCA" | "IGPM" | "Selic" | "Fixed" };
 
@@ -36,9 +38,9 @@ export function recordedTradeFeeBrl(note: string | null): number {
 
 /** Recover source precision only when the canonical note still reconciles with the ledger. */
 export function recordedTradeAmounts(input: {
-  kind: string; quantity: Prisma.Decimal; unitPriceBrl: Prisma.Decimal | null;
-  amountBrl: Prisma.Decimal; note: string | null;
-}): { amountBrl: Prisma.Decimal; feeBrl: Prisma.Decimal; currency: PurchaseInput["currency"]; price: Prisma.Decimal } | null {
+  kind: string; quantity: Decimal; unitPriceBrl: Decimal | null;
+  amountBrl: Decimal; note: string | null;
+}): { amountBrl: Decimal; feeBrl: Decimal; currency: PurchaseInput["currency"]; price: Decimal } | null {
   const match = /^(Purchase|Sale): (\d+(?:\.\d+)?) × (USD|EUR|BRL) (\d+(?:\.\d+)?); commission (USD|EUR|BRL) (\d+(?:\.\d+)?); FX (\d+(?:\.\d+)?) BRL\/(USD|EUR|BRL)\./.exec(input.note ?? "");
   if (!match || match[3] !== match[5] || match[3] !== match[8] ||
     input.kind !== (match[1] === "Sale" ? "WITHDRAWAL" : "CONTRIBUTION") ||

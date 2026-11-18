@@ -25,7 +25,7 @@ import {
   updateTransaction,
 } from "@/modules/portfolio/application/position-transactions";
 import { requireMutationUser } from "@/modules/auth/session";
-import { newInternationalBondSchema } from "@/modules/portfolio/domain/international-bond";
+import { bondDay as day, newInternationalBondSchema } from "@/modules/portfolio/domain/international-bond";
 import { brazilianFixedIncomeSchema } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { ASSET_KINDS } from "@/modules/portfolio/domain/asset-kinds";
 import { ASSET_TYPES } from "@/modules/portfolio/domain/classification";
@@ -42,12 +42,6 @@ const value = z.string().trim().min(1).max(40);
 const strategy = z.null();
 const monthScope = { monthId: z.string().uuid() };
 const label = (max: number) => z.string().trim().min(1).max(max);
-const day = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((entry) => entry >= "2000-01-01" && entry <= "2100-12-31" && !Number.isNaN(Date.parse(`${entry}T00:00:00Z`)));
-
-
 const allocationsSchema = z
   .array(
     z.object({

@@ -3,6 +3,7 @@
 
 /** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
 
+import { purchaseCost, treasuryUnitPriceFromTotal } from "../domain/purchase-cost";
 import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
 import { SavingsForm } from "./savings-form";
 import { InternationalBondForm } from "./international-bond-form";
@@ -214,6 +215,7 @@ function PositionForm({
   const [contractedRate, setContractedRate] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
   const [commission, setCommission] = useState("0");
+  const firstFutureDay = new Date(Date.parse(latestPurchaseDay) + 86_400_000).toISOString().slice(0, 10);
   const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
   const strategy = "";
   // Asset details.
@@ -427,16 +429,42 @@ function PositionForm({
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
+  const tradeDateLabel = kind === "treasury" ? "Purchase date" : "Trade date";
+  const treasuryRate = normalizeLocaleNumberInput(contractedRate);
+  const treasuryRateValid = treasuryRate !== null && /^-?\d+(?:\.\d{1,8})?$/.test(treasuryRate) && Number(treasuryRate) > -100 && Number(treasuryRate) <= 1000;
+  const treasuryQuantityValid = parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) < 1e-7;
+  const validTradeDate = Boolean(purchaseDate) && purchaseDate <= latestPurchaseDay;
+  const validMaturity = Boolean(maturity) && maturity > latestPurchaseDay && maturity > appliedOn;
+  const validFixedRate = brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success &&
+    (fiIndexer === "CDI" || (parseLocaleNumber(fiRate) ?? Infinity) <= 100);
+  let tradeAmountIssue: string | null = null;
+  if (purchaseEntry && parsedValue !== null && parsedValue > 0 && purchaseUnit !== null && purchaseUnit > 0 && purchaseFee !== null && purchaseFee >= 0) {
+    const quantity = normalizeLocaleNumberInput(value)!;
+    const enteredPrice = normalizeLocaleNumberInput(purchasePrice)!;
+    try {
+      if (kind === "treasury") {
+        purchaseCost(quantity, treasuryUnitPriceFromTotal(enteredPrice, quantity), "0", 1, "BUY", enteredPrice);
+      } else {
+        purchaseCost(quantity, enteredPrice, normalizeLocaleNumberInput(commission)!, 1, side);
+      }
+    } catch (error) {
+      tradeAmountIssue = error instanceof Error ? error.message : "Review the trade amounts.";
+      issues.push({ tab: "ativo", message: tradeAmountIssue });
+    }
+  }
+
+  if (fixedIncomeEntry && maturity && !validMaturity) issues.push({ tab: "ativo", message: "Choose a maturity date in the future." });
+  if (purchaseEntry && !validTradeDate) issues.push({ tab: "ativo", message: "Choose a transaction date on or before today." });
+
   const fixedQuantityValid = Boolean(fixedContract?.purchaseQuantity) && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(fixedContract?.purchaseQuantity).success;
   if (fixedIncomeEntry && !fixedQuantityValid) issues.push({ tab: "ativo", message: "Enter a positive quantity with up to eight decimal places." });
-  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || parseLocaleNumber(fiRate) === null || parseLocaleNumber(fiRate)! <= 0 || !brazilianFixedIncomeSchema.safeParse({ ...fixedContract, purchaseQuantity: undefined }).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || !validFixedRate || !brazilianFixedIncomeSchema.safeParse({ ...fixedContract, purchaseQuantity: undefined }).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
   if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
     issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the total invested, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
   }
 
-  if (purchaseEntry && kind === "treasury" && (!selectedTreasury || parseLocaleNumber(contractedRate) === null || (parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) > 1e-7))) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
+  if (purchaseEntry && kind === "treasury" && (!selectedTreasury || !treasuryRateValid || !treasuryQuantityValid)) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
   if (purchaseEntry && side === "SELL" && !catalogAsset) issues.push({ tab: "ativo", message: "You must own this asset before selling it." });
-  if (purchaseEntry && side === "SELL" && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null && parsedValue * purchaseUnit <= purchaseFee) issues.push({ tab: "ativo", message: "Commission must be less than the sale proceeds." });
   if (!editing) {
     if (!kind) {
       issues.push({ tab: "geral", message: "Choose the asset type." });
@@ -603,14 +631,14 @@ function PositionForm({
       requireField("Quantity Purchased", fixedQuantityValid);
       requireField("Amount invested", parsedValue !== null && parsedValue > 0);
       requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
-      requireField("Maturity date", Boolean(maturity) && maturity > appliedOn);
-      requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success);
+      requireField("Maturity date", validMaturity);
+      requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", validFixedRate);
     } else if (purchaseEntry) {
       requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
-      requireField(kind === "treasury" ? "Titles Purchased" : "Quantity", parsedValue !== null && parsedValue > 0 && (kind !== "treasury" || Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) < 1e-7));
+      requireField(kind === "treasury" ? "Titles Purchased" : "Quantity", parsedValue !== null && parsedValue > 0 && (kind !== "treasury" || treasuryQuantityValid));
       requireField(kind === "treasury" ? "Total Invested" : side === "SELL" ? "Sale price" : "Purchase price", purchaseUnit !== null && purchaseUnit > 0);
-      requireField(kind === "treasury" ? "Purchase date" : "Trade date", Boolean(purchaseDate) && purchaseDate <= latestPurchaseDay);
-      if (kind === "treasury") requireField(treasuryYieldLabel(selectedTreasury?.indexer), parseLocaleNumber(contractedRate) !== null);
+      requireField(tradeDateLabel, validTradeDate);
+      if (kind === "treasury") requireField(treasuryYieldLabel(selectedTreasury?.indexer), treasuryRateValid);
       else requireField("Commission", purchaseFee !== null && purchaseFee >= 0);
       if (needsManualPrice) requireField("Quote in BRL", manualPriceValue !== null && manualPriceValue > 0);
     } else {
@@ -885,7 +913,7 @@ function PositionForm({
                     <Field label="Quantity Purchased"><input aria-label="Quantity Purchased" inputMode="decimal" value={fiQuantity} onChange={(event) => setFiQuantity(event.target.value)} className={inputClass} /></Field>
                     <Field label={"Amount invested (BRL)"}><input aria-label={"Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
                     <Field label={"Purchase date"}><DatePicker aria-label={"Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
-                    <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={appliedOn} /></Field>
+                    <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={firstFutureDay} /></Field>
                     <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
                     <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
 
@@ -998,7 +1026,7 @@ function PositionForm({
             <div className="space-y-1.5" data-testid="position-form-progress">
               <p className={cn("flex items-center gap-1.5 text-[11px]", ready ? "text-primary" : "text-destructive")}>
                 {ready ? <CheckCircleIcon aria-hidden="true" size={13} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={13} />}
-                {ready ? "Ready to add" : activeIssues.length ? `${activeIssues.length} required ${activeIssues.length === 1 ? "field" : "fields"} remaining` : "Review the details"}
+                {ready ? "Ready to add" : activeIssues.length ? `${activeIssues.length} required ${activeIssues.length === 1 ? "field" : "fields"} remaining` : tradeAmountIssue ?? visibleIssue?.message ?? "Review the details"}
               </p>
             </div>
           ) : visibleIssue ? (

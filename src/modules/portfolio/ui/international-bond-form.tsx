@@ -90,7 +90,7 @@ export function InternationalBondForm({ month, account, onSaved, formId, onPendi
       {text("issuer", "Issuer", "Citigroup Inc.")}{text("issuerCountry", "Issuer Country", "United States")}
       <Field label="Bond Currency"><Picker aria-label="Bond currency" searchable={false} value={fields.currency || null} onValueChange={(v) => updateField("currency", v)} options={[{ value: "USD", label: "USD · US Dollar" }, { value: "EUR", label: "EUR · Euro" }]} /></Field>
       <Field label="Structure"><Picker aria-label="Bond structure" searchable={false} value={fields.structure || null} onValueChange={(v) => { updateField("structure", v); }} options={Object.entries(structures).map(([value, label]) => ({ value, label }))} /></Field>
-      <Field label="Maturity Date"><DatePicker aria-label="Bond maturity date" value={fields.maturityDate} onChange={(v) => updateField("maturityDate", v)} /></Field>
+      <Field label="Maturity Date"><DatePicker aria-label="Bond maturity date" min={new Date(Date.parse(latestPurchaseDay) + 86_400_000).toISOString().slice(0, 10)} value={fields.maturityDate} onChange={(v) => updateField("maturityDate", v)} /></Field>
       {text("faceValuePerBond", `Face Value per Bond (${fields.currency || "USD / EUR"})`, "1000", true)}
     </div>
     {fields.structure === "Fixed" ? <div className="space-y-3 border-t border-border pt-4">

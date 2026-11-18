@@ -123,7 +123,10 @@ export function DatePicker({
       </div>
       {incomplete || outOfRange ? (
         <span className="sr-only" role="status">
-          {outOfRange ? `Choose a date between ${toDisplay(min ?? "")} e ${toDisplay(max ?? "")}.` : "Incomplete date."}
+          {outOfRange && min && max ? `Choose a date between ${toDisplay(min)} and ${toDisplay(max)}.`
+            : outOfRange && min ? `Choose a date on or after ${toDisplay(min)}.`
+            : outOfRange && max ? `Choose a date on or before ${toDisplay(max)}.`
+            : "Incomplete or invalid date."}
         </span>
       ) : null}
       <Popover.Portal>

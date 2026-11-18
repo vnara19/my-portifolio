@@ -26,7 +26,8 @@ export function validateBondEntry(fields: BondEntryFields, latestPurchaseDay = n
   if (coupon && !coupon.success) for (const issue of coupon.error.issues) errors[String(issue.path[0])] = "Review the coupon terms.";
   if (coupon?.success && bondDay.safeParse(fields.maturityDate).success && coupon.data.anchorDate > fields.maturityDate) errors.anchorDate = "The next coupon date must be on or before maturity.";
   if (!bondDay.safeParse(fields.maturityDate).success) errors.maturityDate = "Enter the maturity date.";
-  if (fields.settlementDate > latestPurchaseDay) errors.settlementDate = "Purchase date cannot follow the reporting date.";
+  else if (fields.maturityDate <= latestPurchaseDay) errors.maturityDate = "Choose a maturity date in the future.";
+  if (fields.settlementDate > latestPurchaseDay) errors.settlementDate = "Purchase date cannot be in the future.";
   const parsed = internationalBondSchema.safeParse({ type: "international-bond", ...fields, faceAmount, accruedInterestPaid, faceValuePerBond: number("faceValuePerBond"), totalPaid: number("totalPaid"), ...(coupon?.success ? { fixedCoupon: coupon.data } : {}), valuationMode: "Cost", quotes: [] });
   if (!parsed.success) for (const issue of parsed.error.issues) {
     const field = String(issue.path[0]);

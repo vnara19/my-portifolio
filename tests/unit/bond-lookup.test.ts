@@ -60,6 +60,10 @@ test("entry readiness checks required fields, coupon schedules, zero values and 
   const valid = validateBondEntry(complete); assert.deepEqual(valid.errors, {}); assert.equal(valid.parsed.success, true); assert.equal(valid.calculated?.accruedInterestPaid, "15.645");
   assert.equal(validateBondEntry({ ...complete, anchorDate: "2027-02-01" }).parsed.success, true);
   assert.ok(validateBondEntry({ ...complete, maturityDate: "2025-01-01" }).errors.maturityDate);
+  for (const today of ["2028-07-25", "2028-07-26"]) {
+    assert.equal(validateBondEntry(complete, today).errors.maturityDate, "Choose a maturity date in the future.");
+  }
+  assert.equal(validateBondEntry(complete, "2028-07-24").errors.maturityDate, undefined);
   assert.ok(validateBondEntry({ ...complete, purchaseAccruedPerBond: "1000" }).errors.purchaseAccruedPerBond);
   assert.ok(validateBondEntry({ ...complete, settlementDate: "2099-01-01" }, "2026-10-23").errors.settlementDate);
   assert.ok(validateBondEntry({ ...complete, frequency: "" }).errors.frequency);
