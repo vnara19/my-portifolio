@@ -16,6 +16,8 @@ import {
 } from "@/modules/quotes/domain/treasury";
 import { createTreasurySource, resilientTreasuryBook, fetchTreasuryQuotes, TREASURY_CURRENT_URL } from "@/modules/quotes/infrastructure/treasury";
 
+import { QuoteHttpError } from "@/modules/quotes/infrastructure/http";
+
 const header = "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
 const fixture = `${header}\nTesouro IPCA+;15/05/2035;02/10/2026;7,10;7,22;1.500,00;1.480,00;1.479,25\nTesouro IPCA+;15/08/2035;02/10/2026;7,10;7,22;1.600,00;1.580,00;1.579,25\nTesouro IPCA+;15/05/2035;30/09/2026;7,10;7,22;1.450,00;1.430,00;1.429,25\nTesouro IPCA+;15/05/2035;31/08/2026;7,10;7,22;1.400,00;1.380,00;1.379,25\nTesouro Prefixado com Juros Semestrais;01/01/2033;02/10/2026;13,0;13,1;1.000,00;990,00;989,50\nTesouro Prefixado;01/01/2026;31/12/2025;13,0;13,1;1.000,00;990,00;989,50\nTesouro Selic;01/03/2031;02/10/2026;0,1;0,2;20.100,00;20.000,00;0,00\n`;
 const snapshot = { totalCount: 1, items: [{ treasuryBondName: "Tesouro IPCA+ 2035", maturityDate: "2035-05-15T00:00:00Z", dateModified: "2026-10-02T15:00:00Z", unitaryRedemptionValue: 1479.25, unitaryInvestmentValue: 1500, availableInvestmentBondQuantity: 100, investmentProfitabilityFee: 7.1, financialIndexerName: "IPCA" }] };
@@ -290,4 +292,32 @@ test("dated CSV fallback retains purchase prices and rates without leaking futur
   const fixed = getTreasuryCatalog(book, "2026-10-04").find(bond => bond.type.startsWith("Tesouro Prefixado"))!;
   assert.equal(fixed.purchaseRate, 13);
   assert.equal(fixed.indexer, "Fixed");
+});
+
+
+test("Treasury access refusals use the official fallback without hammering the listing", async () => {
+  for (const status of [403, 429, 451]) {
+    let calls = 0;
+    const book = parseTreasuryCsv(fixture);
+    assert.equal(await resilientTreasuryBook(async () => { calls++; throw new QuoteHttpError(status, "Unavailable"); }, async () => book), book);
+    assert.equal(calls, 1);
+  }
+});
+
+test("an official source outage reuses dated observations for a bounded period", async () => {
+  let clock = 100, calls = 0;
+  const loadBook = createTreasurySource(async () => {
+    if (++calls > 1) throw new QuoteHttpError(403, "Unavailable");
+    return fixture;
+  }, () => clock);
+  const original = await loadBook();
+  clock += 60 * 60_000 + 1;
+  assert.equal(await loadBook(), original);
+  const [quote] = await fetchTreasuryQuotes([identity], { today: "2026-10-04", loadBook });
+  assert.equal(quote.status, "SUCCESS");
+  if (quote.status === "SUCCESS") assert.equal(quote.quoteDate, "2026-10-02");
+  const [stale] = await fetchTreasuryQuotes([identity], { today: "2026-10-20", loadBook });
+  assert.equal(stale.status, "FAILED");
+  clock += 24 * 60 * 60_000;
+  await assert.rejects(loadBook(), /Unavailable/);
 });

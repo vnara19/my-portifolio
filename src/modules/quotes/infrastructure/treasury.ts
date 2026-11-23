@@ -11,6 +11,7 @@ import { fetchProvider, describeProviderError, ProviderRefusalError, QuoteHttpEr
 // The official source publishes this URL; the old treasurybondsinfo.json returned HTTP 410.
 export const TREASURY_CSV_URL = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv";
 const CACHE_MS = 60 * 60 * 1000;
+const OUTAGE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 export const TREASURY_CURRENT_URL = "https://www.tesourodireto.com.br/o/c/rentabilidades/?pageSize=200";
 let current: { book: TreasuryBook; until: number } | null = null;
@@ -33,7 +34,10 @@ export async function readCurrentTreasuryBook(): Promise<TreasuryBook> {
 
 /** A listing can be incomplete during publication. Retry once, then use the official dated CSV, never an invented current price. */
 export async function resilientTreasuryBook(live: () => Promise<TreasuryBook>, historical: () => Promise<TreasuryBook>): Promise<TreasuryBook> {
-  try { return await live(); } catch { /* The publisher may be replacing its listing. */ }
+  try { return await live(); } catch (error) {
+    // Access refusals and rate limits will not recover with an immediate retry.
+    if (error instanceof QuoteHttpError && [403, 429, 451].includes(error.statusCode)) return historical();
+  }
   try { return await live(); } catch { return historical(); }
 }
 
@@ -41,7 +45,7 @@ export type TreasuryBookLoader = () => Promise<TreasuryBook>;
 
 
 export function createTreasurySource(loadText: () => Promise<string>, clock = Date.now): TreasuryBookLoader {
-  let cached: { book: TreasuryBook; until: number } | null = null;
+  let cached: { book: TreasuryBook; until: number; loadedAt: number } | null = null;
   let pending: Promise<TreasuryBook> | null = null;
 
   return async () => {
@@ -50,8 +54,15 @@ export function createTreasurySource(loadText: () => Promise<string>, clock = Da
 
     pending = loadText().then((text) => {
       const book = parseTreasuryCsv(text);
-      cached = { book, until: clock() + CACHE_MS };
+      cached = { book, until: clock() + CACHE_MS, loadedAt: clock() };
       return book;
+    }).catch((error) => {
+      // Keep the original observation dates; quote validation still rejects prices over seven days old.
+      if (cached && clock() < cached.loadedAt + OUTAGE_GRACE_MS) {
+        cached.until = Math.min(cached.loadedAt + OUTAGE_GRACE_MS, clock() + 5 * 60_000);
+        return cached.book;
+      }
+      throw error;
     }).finally(() => { pending = null; });
     return pending;
   };

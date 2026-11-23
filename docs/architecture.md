@@ -776,3 +776,9 @@ Market quotes remain due every five minutes. Daily reference FX, CDI/inflation
 observations and the Selic target are rechecked every fifteen minutes. Publication
 dates and provider failure backoff remain authoritative. A separate verified
 scheduler is still required for unattended updates while the application is closed.
+
+Treasury provider outages retain previously parsed official CSV observations for up to
+24 hours after a successful download, preserving each observation date and the existing
+seven-day quote freshness limit. Access refusals and rate limits skip the immediate
+live retry and use the official CSV fallback. A cold instance with no valid cached
+response still reports failure and preserves the stored quote; no price is invented.

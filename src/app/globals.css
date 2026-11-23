@@ -353,3 +353,8 @@
     width: 100%;
   }
 }
+
+/* Keep accessible chart data tables from contributing their intrinsic table width. */
+table.sr-only {
+  display: block;
+}
