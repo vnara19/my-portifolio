@@ -178,6 +178,11 @@ export function PositionsWorkspace({
   const canEdit = !month.isLocked;
   const monthLabel = formatMonthCompact(month.referenceDate);
   const sort=sorting[0];
+  const mobileSortColumns = [{ id: "assetName", label: "Asset" }, ...shownColumns];
+  const currentSortColumn = POSITION_COLUMNS.find(column => column.id === (sort?.id ?? "totalBrl"));
+  if (currentSortColumn && !mobileSortColumns.some(column => column.id === currentSortColumn.id)) {
+    mobileSortColumns.push(currentSortColumn);
+  }
   const sortedPositions = [...filtered].sort((a,b)=>{
     const column=[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].find(c=>c.id===sort?.id);
     const left=sort?.id==='assetName'?positionTitle(a.assetName,a.ticker,a.bondIssuer):sort?.id==='totalBrl'?a.totalBrl:column?.get(a,analytics[a.id]);
@@ -291,7 +296,7 @@ export function PositionsWorkspace({
 
 
       <section aria-label="Filters" className="mt-6 space-y-3">
-        <div className="-mx-5 flex items-center gap-2 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-wrap items-center gap-2">
           {QUICK_CLASSES.filter((assetClass) => options.classes.includes(assetClass)).map((assetClass) => {
             const active = filters.classes.includes(assetClass);
 
@@ -366,8 +371,15 @@ export function PositionsWorkspace({
           <div role="tablist" aria-label="Holdings view" className="flex gap-1">{(['position','price','performance','risk'] as const).map(item=><button key={item} type="button" role="tab" aria-selected={view===item} onClick={()=>setView(item)} className={cn("rounded-lg px-3 py-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-primary",view===item?"bg-primary/15 text-primary":"text-muted-foreground hover:text-foreground")}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div>
           <div className="flex items-center gap-4"><label className="flex items-center gap-2 text-xs text-muted-foreground">Display Sold<button type="button" role="switch" aria-label="Display Sold" aria-checked={displaySold} onClick={()=>setDisplaySold(old=>!old)} className={cn("relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary",displaySold?"bg-primary":"bg-muted")}><span className={cn("inline-block size-3.5 rounded-full transition-transform",displaySold?"translate-x-[18px] bg-primary-foreground":"translate-x-0.5 bg-muted-foreground")}/></button></label>{view==='position'?<details className="relative"><summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden"><TableIcon aria-hidden size={13}/>Columns</summary><fieldset className="absolute right-0 top-full z-30 mt-2 max-h-96 w-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xl"><legend className="sr-only">Customize Position Columns</legend>{POSITION_COLUMNS.map(column=><label key={column.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(column.id)} onChange={e=>setVisibleColumns(old=>e.target.checked?[...old,column.id]:old.filter(id=>id!==column.id))} className="accent-primary"/>{column.label}</label>)}</fieldset></details>:null}</div>
         </div>
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:hidden">
+          <label htmlFor="mobile-holdings-sort" className="shrink-0 text-xs text-muted-foreground">Sort by</label>
+          <select id="mobile-holdings-sort" aria-label="Sort holdings" value={sort?.id ?? "totalBrl"} onChange={event => void setQuery({ ordem: `${event.target.value}.${sort?.desc ? "desc" : "asc"}` })} className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-2 text-xs">
+            {mobileSortColumns.map(column => <option key={column.id} value={column.id}>{column.label}</option>)}
+          </select>
+          <button type="button" aria-label={sort?.desc ? "Sort ascending" : "Sort descending"} onClick={() => void setQuery({ ordem: `${sort?.id ?? "totalBrl"}.${sort?.desc ? "asc" : "desc"}` })} className="grid size-10 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground">{sort?.desc ? <ArrowDownIcon size={16} /> : <ArrowUpIcon size={16} />}</button>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
+          <table className="mobile-record-table holdings-record-table w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-border/60 text-[10px] font-semibold text-muted-foreground"><th className="w-9"><span className="sr-only">Expand</span></th>{[{id:'assetName',label:'Asset'},...shownColumns].map(column=><th key={column.id} className={cn("px-4 py-3 whitespace-nowrap",column.id!=='assetName'&&"text-right")} aria-sort={sort?.id===column.id?(sort.desc?'descending':'ascending'):'none'}><button type="button" onClick={()=>void setQuery({ordem:`${column.id}.${sort?.id===column.id&&!sort.desc?'desc':'asc'}`})} className="inline-flex items-center gap-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">{column.label}{sort?.id===column.id?(sort.desc?<ArrowDownIcon size={10}/>:<ArrowUpIcon size={10}/>):<ArrowsDownUpIcon size={10} className="opacity-50"/>}</button></th>)}</tr>
             </thead>
@@ -480,7 +492,7 @@ function PositionRow({
           opening && "bg-primary/[0.04] opacity-70",
         )}
       >
-        <td className="py-4 pr-0 pl-3 align-top sm:pl-4">
+        <td data-record-toggle className="py-4 pr-0 pl-3 align-top sm:pl-4">
           <button
             type="button"
             aria-expanded={expanded}
@@ -528,10 +540,10 @@ function PositionRow({
           </p>
           {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && !["CDB", "LCI", "LCA"].includes(typeOf(position) ?? "") && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
-        {shownColumns.map(column=>{const value=holdingDisplayValue(column,position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} title={holdingMetricDescription(column,position,value,analytics)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0||column.id==='unrealized'||column.id==='unrealizedPercent'?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
+        {shownColumns.map(column=>{const value=holdingDisplayValue(column,position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} data-label={column.label} title={holdingMetricDescription(column,position,value,analytics)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0||column.id==='unrealized'||column.id==='unrealizedPercent'?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>
       {expanded ? (
-        <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
+        <tr id={detailsId} data-record-details data-testid="position-details" className="bg-white/[0.012]">
           <td colSpan={shownColumns.length+2} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
             <PositionDetails position={position} />
             {position.assetType === "savings" ? <div className="mt-4"><SavingsMovementButton assetId={position.assetId} name={position.assetName} /></div> : null}
@@ -599,6 +611,7 @@ function Cell({ id, children }: { id: string; children: ReactNode }) {
 
   return (
     <td
+      data-record-heading={id === "assetName" ? "" : undefined}
       className={cn(
         "px-4 py-4 align-top",
         meta.align === "right" && "text-right",

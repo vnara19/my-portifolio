@@ -2,7 +2,7 @@ import { fixedIncomeDailyGain } from "../domain/fixed-income-daily-gain";
 import { indexerOfSubclass } from "../domain/fixed-income-policy";
 import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
-import { treasurySeriesOf, type TreasuryBook } from "@/modules/quotes/domain/treasury";
+import { unstable_cache } from "next/cache";
 import { getUserDb } from "@/lib/user-db";
 import { getPortfolioGains } from "./get-portfolio-gains";
 import { fetchCoinGeckoMarketCap, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
@@ -17,13 +17,29 @@ export type HoldingAnalytics=HoldingMarketMetrics&{invested:number|null;average:
 const capCache=new Map<string,{until:number;value:Promise<number|null>}>();
 function cryptoCap(symbol:string,currency:"USD"|"EUR"|"BRL"){const key=`${symbol}:${currency}`,cached=capCache.get(key);if(cached&&cached.until>Date.now())return cached.value;const value=resolveCoinGeckoCoin(symbol).then(coin=>coin?fetchCoinGeckoMarketCap(coin.id,currency):null).catch(()=>null);if(capCache.size>100)capCache.delete(capCache.keys().next().value!);capCache.set(key,{until:Date.now()+300000,value});return value;}
 type Listing=Awaited<ReturnType<typeof fetchYahooHoldingHistory>>;
+const cachedListing = unstable_cache(fetchYahooHoldingHistory, ["public-holding-history-v1"], { revalidate: 300 });
 const cache=new Map<string,{until:number;value:Promise<Listing|null>}>();
-function listing(symbol:string){const cached=cache.get(symbol);if(cached&&cached.until>Date.now())return cached.value;const value=fetchYahooHoldingHistory(symbol).catch(()=>null);if(cache.size>100)cache.delete(cache.keys().next().value!);cache.set(symbol,{until:Date.now()+300000,value});return value;}
-async function readTreasuryOrigins(): Promise<TreasuryBook | null> {
+function listing(symbol:string){
+ const saved=cache.get(symbol);
+ if(saved&&saved.until>Date.now())return saved.value;
+ const value=(process.env.NEXT_RUNTIME ? cachedListing(symbol) : fetchYahooHoldingHistory(symbol)).catch(()=>null);
+ if(cache.size>100)cache.delete(cache.keys().next().value!);
+ cache.set(symbol,{until:Date.now()+300000,value});
+ return value;
+}
+
+// Cache only public security origins, without portfolio identifiers or private balances.
+async function loadTreasuryOrigins(): Promise<Record<string, MarketPoint>> {
+ const book = await readTreasuryBook();
+ return Object.fromEntries([...book.series.values()].flatMap(series => series.points[0] ? [[series.symbol, series.points[0]]] : []));
+}
+const cachedTreasuryOrigins = unstable_cache(loadTreasuryOrigins, ["public-treasury-origins-v1"], { revalidate: 3600 });
+async function readTreasuryOrigins(): Promise<Record<string, MarketPoint> | null> {
  let timer: ReturnType<typeof setTimeout> | undefined;
  try {
+  const load = process.env.NEXT_RUNTIME ? cachedTreasuryOrigins() : loadTreasuryOrigins();
   return await Promise.race([
-   readTreasuryBook().catch(() => null),
+   load.catch(() => null),
    new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 8_000); }),
   ]);
  } finally {
@@ -119,7 +135,7 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
   const nativeBenchmark=(benchmark?.points??[]).flatMap(point=>{const u=rateAt(usdBrl?.points??[],point.day),e=rateAt(eurUsd?.points??[],point.day);const factor=p.valueCurrency==='USD'?1:p.valueCurrency==='BRL'?u:e?1/e:null;return factor?[{day:point.day,value:point.value*factor}]:[];});
   const market=holdingMarketMetrics(history,asOf,nativeBenchmark,treasury ? "close" : "range");
   if (treasury) {
-   const firstQuote = treasuryBook ? treasurySeriesOf(treasuryBook, { symbol: p.quoteSymbol! })?.points[0] : undefined;
+   const firstQuote = treasuryBook?.[p.quoteSymbol!];
    market.performance.all = allTimePriceChange(firstQuote, history.at(-1), market.last);
   } else if (!source?.allTimeAvailable) {
    market.performance.all = null;

@@ -119,7 +119,7 @@ export function PositionTransactions({
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-left text-xs" data-testid="position-transactions">
+          <table className="mobile-record-table w-full min-w-[560px] border-collapse text-left text-xs" data-testid="position-transactions">
             <thead>
               <tr className="text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
                 <th className="py-2 pr-3">Day</th>
@@ -144,8 +144,8 @@ export function PositionTransactions({
                       {dayLabel(entry.occurredOn)}
                       <span className="ml-1.5 text-[10px] text-muted-foreground/70">{monthLabel(entry.month)}</span>
                     </td>
-                    {showAssets ? <td className="py-2.5 pr-3 text-foreground">{entry.assetName}</td> : null}
-                    <td className="py-2.5 pr-3">
+                    {showAssets ? <td data-record-heading className="py-2.5 pr-3 text-foreground">{entry.assetName}</td> : null}
+                    <td data-label="Type" className="py-2.5 pr-3">
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
@@ -166,16 +166,16 @@ export function PositionTransactions({
                       ) : null}
                     </td>
                     {showTradeDetails ? (
-                      <td className="py-2.5 pr-3 text-right font-mono">
+                      <td data-label={dollars ? "US$" : "Quantity"} className="py-2.5 pr-3 text-right font-mono">
                         {entry.fixedIncomePurchase ? entry.fixedIncomePurchase.quantity ? QUANTITY.format(Number(entry.fixedIncomePurchase.quantity)) : "—" : entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.bondPurchase?.faceValuePerBond ? entry.quantity / Number(entry.bondPurchase.faceValuePerBond) : entry.quantity)}
                       </td>
                     ) : null}
                     {showTradeDetails ? (
-                      <td title={entry.bondPurchase ? "Cost per bond, including purchase interest and fees" : undefined} className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
+                      <td data-label={showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"} title={entry.bondPurchase ? "Cost per bond, including purchase interest and fees" : undefined} className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
                         {entry.moneyUnavailable ? "—" : entry.bondPurchase?.faceValuePerBond && entry.quantity > 0 ? formatPriceBrl(entry.amountBrl / (entry.quantity / Number(entry.bondPurchase.faceValuePerBond))) : entry.fixedIncomePurchase?.quantity ? formatPriceBrl(entry.amountBrl / Number(entry.fixedIncomePurchase.quantity)) : entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
                       </td>
                     ) : null}
-                    <td className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
+                    <td data-label={showAssets ? "Value (USD)" : "Value"} className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
                       {negative ? "−" : ""}
                       {entry.moneyUnavailable ? "—" : formatBrl(Math.abs(entry.amountBrl))}
                     </td>

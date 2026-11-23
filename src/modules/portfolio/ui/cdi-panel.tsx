@@ -59,7 +59,7 @@ export function CdiPanel({ cdi, maturity }: { cdi: CdiView; maturity: string | n
 
 function Item({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/70 px-3 py-2">
+    <div className="min-w-0 rounded-xl border border-border/70 px-3 py-2 [overflow-wrap:anywhere] sm:[overflow-wrap:normal]">
       <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</dt>
       <dd className="mt-0.5 font-mono text-xs text-foreground">{value}</dd>
     </div>

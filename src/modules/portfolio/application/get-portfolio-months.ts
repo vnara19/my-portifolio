@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
@@ -12,7 +13,7 @@ export type PortfolioMonthSummary = {
   changePercent: number | null;
 };
 
-export async function getPortfolioMonths(): Promise<PortfolioMonthSummary[]> {
+export const getPortfolioMonths = cache(async function getPortfolioMonths(): Promise<PortfolioMonthSummary[]> {
   const prisma = await getUserDb();
 
   if (!prisma) {
@@ -58,4 +59,4 @@ export async function getPortfolioMonths(): Promise<PortfolioMonthSummary[]> {
   } catch {
     return [];
   }
-}
+});

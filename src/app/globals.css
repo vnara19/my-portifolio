@@ -260,3 +260,96 @@
 .recharts-wrapper :focus-visible {
   outline: none;
 }
+
+
+/* Preserve desktop tables while keeping each record readable on a phone. */
+@media (max-width: 639px) {
+  .mobile-record-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mobile-record-table > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .mobile-record-table > tbody,
+  .mobile-record-table > tfoot {
+    display: block;
+    width: 100%;
+  }
+
+  .mobile-record-table > tbody > tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
+    padding: 18px 16px;
+  }
+
+  .mobile-record-table > tbody > tr > :is(td, th) {
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-record-table > tbody > tr > :first-child,
+  .mobile-record-table [data-record-heading],
+  .mobile-record-table [data-record-wide],
+  .mobile-record-table [colspan] {
+    grid-column: 1 / -1;
+  }
+
+  .mobile-record-table > tbody > tr > [data-label] {
+    display: block;
+  }
+
+  .mobile-record-table [data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 5px;
+    color: var(--muted-foreground);
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .mobile-record-table > tfoot > tr,
+  .mobile-record-table > tfoot > tr > td {
+    display: block;
+    width: 100%;
+  }
+
+  .holdings-record-table [data-record-toggle] {
+    position: absolute;
+    top: 14px;
+    right: 12px;
+  }
+
+  .holdings-record-table [data-record-toggle] > button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .holdings-record-table [data-record-heading] {
+    padding-right: 36px;
+  }
+
+  .mobile-record-table > tbody > tr[data-record-details] {
+    display: block;
+    padding-top: 0;
+  }
+
+  .mobile-record-table > tbody > tr[data-record-details] > td {
+    display: block;
+    width: 100%;
+  }
+}

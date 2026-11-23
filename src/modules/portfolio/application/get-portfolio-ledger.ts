@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { Prisma } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
@@ -16,7 +17,7 @@ export type PortfolioLedger = { rows: ReturnType<typeof portfolioLedgerRows>; tr
 export const transactionCurrency=(entry: PositionTransactionView):MoneyCurrency=>entry.assetType==="crypto"?"USD":entry.baseCurrency==="EUR"?"EUR":entry.baseCurrency==="USD"?"USD":"BRL";
 
 /** Bulk, user-scoped reads only. No quote-provider requests and no ledger writes. */
-export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise<PortfolioLedger|null>{
+export const getPortfolioLedger = cache(async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise<PortfolioLedger|null>{
  const db=await getUserDb();if(!db || !months.length)return null;
  const [positions,stored,series,daily]=await Promise.all([
   db.position.findMany({select:{id:true,accountId:true,assetId:true,portfolioMonthId:true,quantity:true,openingQuantity:true,totalBrl:true,unitPriceBrl:true,strategy:true,calculationStartDate:true,calculatedIncomeBrl:true,incomeCalculatedThrough:true,portfolioMonth:{select:{referenceDate:true}},asset:{select:{name:true,ticker:true,assetType:true,quoteSymbol:true,baseCurrency:true}},allocations:{select:{assetClass:true,subclass:true,duration:true,weight:true}}}}),
@@ -76,4 +77,4 @@ export async function getPortfolioLedger(months:PortfolioMonthSummary[]):Promise
   }
  }
  return {rows:portfolioLedgerRows(frames),transactions,originals,editEntries,targets};
-}
+});

@@ -755,3 +755,24 @@ Overview replays supported Brazilian bank fixed-income contracts with the same
 accrual engine used to value their positions. The daily series uses recorded
 movements and accrues through the last recorded fixing. Daily USD balances feed
 the existing flow-adjusted return, profit charts and reporting-month markers.
+
+
+### Navigation speed and phone layouts
+
+Server rendering deduplicates portfolio months, ledger, overview and performance
+reads within the current React request. Navigation prefetches the other main tab.
+Public listing history is shared for five minutes across server instances, and
+public Treasury inception observations for one hour. These caches contain no
+portfolio balances, transactions or account identifiers. Private reads remain
+request-scoped. Client analytics reuse derived series when only display controls change.
+
+Below 640px, holdings, distribution, transaction, month-history, Treasury redemption
+and quote tables use labeled records that fit the viewport. Holdings retain
+sorting, selected columns, filters and expansion controls. Desktop table layouts
+continue at their existing breakpoint. The position form keeps its current mobile dialog.
+
+While the application is visible, opening checks are eligible every minute.
+Market quotes remain due every five minutes. Daily reference FX, CDI/inflation
+observations and the Selic target are rechecked every fifteen minutes. Publication
+dates and provider failure backoff remain authoritative. A separate verified
+scheduler is still required for unattended updates while the application is closed.

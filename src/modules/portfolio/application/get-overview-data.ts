@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { bondChartLabels } from "../presentation/bond-chart-labels";
 import { buildPortfolioDistribution, type PortfolioDistribution } from "../domain/portfolio-distribution";
 import { englishLabel } from "@/lib/english-labels";
@@ -71,7 +72,7 @@ export type OverviewData = {
   currencyLabels: string[];
 };
 
-export async function getOverviewData(referenceDate?: Date): Promise<OverviewData | null> {
+export const getOverviewData = cache(async function getOverviewData(referenceDate?: Date): Promise<OverviewData | null> {
   const prisma = await getUserDb();
 
   if (!prisma) {
@@ -294,7 +295,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
   } catch {
     return null;
   }
-}
+});
 
 function collectLabels(history: OverviewHistoryPoint[], key: "byClass" | "byCurrency") {
   const totals = new Map<string, number>();

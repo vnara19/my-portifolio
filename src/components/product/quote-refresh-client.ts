@@ -20,7 +20,7 @@ export type QuoteRefreshClientState = {
 const SERVER_STATE: QuoteRefreshClientState = { running: false, summary: null, pendingRollover: null, rollingOver: false };
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 
-const OPEN_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const OPEN_CHECK_INTERVAL_MS = 60 * 1000;
 const ANNOUNCED_RUN_KEY = "quotes:announced-run";
 
 let state: QuoteRefreshClientState = SERVER_STATE;

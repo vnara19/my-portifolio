@@ -1,3 +1,5 @@
+import { getPrismaClient } from "@/lib/prisma";
+import { syncSelicReference } from "@/modules/quotes/application/selic-reference";
 import { refreshBondsForUser } from "./international-bonds";
 import { refreshFixedIncomeForUser } from "@/modules/portfolio/application/cdi-positions";
 import { checkMonthsUpToDate } from "@/modules/portfolio/application/month-rollover";
@@ -14,12 +16,14 @@ export async function runOpenChecks({ now = new Date() }: { now?: Date } = {}): 
     }),
   );
 
-  const [quotesChanged, ...incomeChanges] = await Promise.all([
+  const prisma = getPrismaClient();
+  const [selic, quotesChanged, ...incomeChanges] = await Promise.all([
+    prisma ? syncSelicReference(prisma, { now }).catch(() => null) : null,
     refreshUserQuotes(now).catch(() => false),
     refreshFixedIncomeForUser(now).catch(() => false),
     refreshBondsForUser().catch(() => false),
   ]);
-  return { quotesChanged, fixedIncomeChanged: incomeChanges.some(Boolean), rollover, targetPlan: "disabled", summary: await getQuoteRefreshSummary(now) };
+  return { quotesChanged, fixedIncomeChanged: incomeChanges.some(Boolean) || selic?.state === "fetched", rollover, targetPlan: "disabled", summary: await getQuoteRefreshSummary(now) };
 }
 
 function describeUnexpected(error: unknown, fallback: string) {

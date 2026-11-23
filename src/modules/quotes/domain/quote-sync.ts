@@ -1,5 +1,5 @@
 
-/** Market prices become due after five minutes; daily reference FX is rechecked after 50 minutes. History failures retry after 24 hours; repeated quote failures back off for 1, 2, 4 and at most 6 hours. */
+/** Market prices become due after five minutes; daily reference FX is rechecked after 15 minutes. History failures retry after 24 hours; repeated quote failures back off for 1, 2, 4 and at most 6 hours. */
 
 // Apply retry backoff after network failures.
 
@@ -8,7 +8,7 @@ import { HISTORY_BACKFILL_MONTHS } from "@/modules/quotes/domain/history-backfil
 
 
 export const QUOTE_DUE_AFTER_MS = 5 * 60 * 1000;
-export const REFERENCE_QUOTE_DUE_AFTER_MS = 50 * 60 * 1000;
+export const REFERENCE_QUOTE_DUE_AFTER_MS = 15 * 60 * 1000;
 
 export const HISTORY_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 export const MAX_QUOTES_PER_RUN = 150;

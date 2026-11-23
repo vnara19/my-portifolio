@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { fixedIncomeBalanceHistory } from "../domain/fixed-income-balance-history";
 import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
 import { autoIncomeParts } from "../domain/fixed-income-policy";
@@ -16,7 +17,7 @@ import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-f
 import { recordedBondAcquisition, recordedTradeAmounts } from "../domain/purchase-cost";
 
 /** Values at every external-flow boundary are mandatory; absent coverage is never interpolated. */
-export async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null,currency:"USD"|"EUR"="USD"):Promise<TwrObservation[]> {
+export const getOverviewPerformance = cache(async function getOverviewPerformance(overview:OverviewData|null,ledger:PortfolioLedger|null,currency:"USD"|"EUR"="USD"):Promise<TwrObservation[]> {
   const db=await getUserDb();
   if (!db || !overview || !ledger) return [];
   const history=historyThroughMonth(overview.history,overview.referenceDate);
@@ -215,4 +216,4 @@ export async function getOverviewPerformance(overview:OverviewData|null,ledger:P
     observations.push({day,value,flow,inflow,outflow,dailyGainUsd:invalidMonths.has(day.slice(0,7))?null:daily.amount,dailyGainPercent:invalidMonths.has(day.slice(0,7))?null:daily.percent});
   }
   return observations;
-}
+});

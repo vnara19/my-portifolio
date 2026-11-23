@@ -28,7 +28,7 @@ export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, mat
         {maturity ? `Maturity ${date(maturity)} · ` : ""}{quote ? `Market Quote ${date(quote.day)}` : "Market Quote unavailable"}
       </p>
       <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Tesouro Direto purchase details">
-        <table className="w-full min-w-[1040px] text-right text-xs">
+        <table className="mobile-record-table w-full min-w-[1040px] text-right text-xs">
           <thead><tr className="border-b border-border text-muted-foreground">
             {headers.map((header, index) => <th key={header} scope="col" className={`px-2 py-3 font-medium ${index === 0 ? "text-left" : ""}`}>{header}</th>)}
           </tr></thead>
@@ -40,7 +40,7 @@ export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, mat
                 row.contracted ? `${row.contracted.indexer === "Fixed" ? "" : `${row.contracted.indexer} + `}${percent(row.contracted.rate)}` : "—",
                 percent(row.annualized), percent(row.accumulated), money(row.gross), row.days,
                 percent(row.taxRate), money(row.ir), money(row.iof), money(row.custody), money(row.net),
-              ].map((value, index) => <td key={index} className="whitespace-nowrap px-2 py-3 font-mono">{value}</td>)}
+              ].map((value, index) => <td key={index} data-label={headers[index + 1]} className="whitespace-nowrap px-2 py-3 font-mono">{value}</td>)}
             </tr>
           ))}</tbody>
         </table>

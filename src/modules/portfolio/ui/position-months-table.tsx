@@ -50,7 +50,7 @@ export function PositionMonthsTable({
       testId="position-months-section"
     >
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left" data-testid="position-months">
+        <table className="mobile-record-table w-full border-collapse text-left" data-testid="position-months">
           <thead>
             <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
               <th className="px-4 py-3 pl-5 sm:pl-6">Reporting month</th>
@@ -183,19 +183,19 @@ function PresentRow({
         {step?.unexplainedBrl && Math.abs(step.unexplainedBrl) >= 0.05 ? <p className="mt-0.5 text-[10px] text-muted-foreground">not recorded {formatSignedBrl(step.unexplainedBrl)}</p> : null}
       </td>
       {quoted ? (
-        <td className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-foreground/85 md:table-cell">
+        <td data-label="Quantity" className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-foreground/85 md:table-cell">
           {formatQuantity(slot.quantity, quoteSymbol, ticker)}
         </td>
       ) : null}
       {quoted ? (
-        <td className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-muted-foreground lg:table-cell">
+        <td data-label="Quote" className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-muted-foreground lg:table-cell">
           {slot.priceBrl === null ? "—" : formatPriceBrl(slot.priceBrl)}
         </td>
       ) : null}
-      <td className="px-4 py-3 text-right font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
+      <td data-label="Value" className="px-4 py-3 text-right font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
         {formatBrl(slot.valueBrl)}
       </td>
-      <td className="px-4 py-3 text-right whitespace-nowrap">
+      <td data-label="Change" className="px-4 py-3 text-right whitespace-nowrap">
         {step ? (
           <>
             <p
@@ -215,7 +215,7 @@ function PresentRow({
         )}
       </td>
       {quoted ? (
-        <td className="hidden px-4 py-3 text-right whitespace-nowrap lg:table-cell">
+        <td data-label="Price Change" className="hidden px-4 py-3 text-right whitespace-nowrap lg:table-cell">
           {step?.priceEffectBrl != null ? (
             <>
               <p className="font-mono text-xs text-foreground/85">{formatSignedBrl(step.priceEffectBrl)}</p>
@@ -230,6 +230,7 @@ function PresentRow({
         </td>
       ) : null}
       <td
+        data-label="Contributions and Redemptions"
         className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-foreground/85 lg:table-cell"
         data-testid="month-flows"
       >
@@ -254,7 +255,7 @@ function PresentRow({
           "—"
         )}
       </td>
-      <td className="hidden px-4 py-3 pr-5 text-right font-mono text-xs text-muted-foreground sm:table-cell sm:pr-6">
+      <td data-label="Allocation" className="hidden px-4 py-3 pr-5 text-right font-mono text-xs text-muted-foreground sm:table-cell sm:pr-6">
         {formatSharePercent(slot.share)}
       </td>
     </tr>

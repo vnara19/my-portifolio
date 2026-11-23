@@ -13,9 +13,9 @@ workflow from a development branch to test financial writes; use a separate test
 connection and isolated schema instead.
 
 The job acquires a PostgreSQL lock. Concurrent invocations report busy rather than
-writing twice. Idle invocations do not fetch already-current symbols. Prices become
-due after 50 minutes; quote failures back off for 1, 2, 4 and at most 6 hours.
-History failures retry after 24 hours. Selic checks occur at most once daily.
+writing twice. Idle invocations do not fetch already-current symbols. Market prices become
+due after five minutes and daily reference FX after fifteen minutes; quote failures back off for 1, 2, 4 and at most 6 hours.
+History failures retry after 24 hours. Selic checks become due after fifteen minutes.
 
 Provider chains:
 
@@ -50,7 +50,7 @@ quote remains the valuation and editing contract.
 
 Quotes is scoped to registered portfolio symbols (including retained history), manual quotes and USD/EUR reporting conversions, not the whole market. The selected month controls the displayed monthly quote snapshot and update history. BRL is the valuation reference, so no BRL/BRL provider quote is required.
 
-Authenticated opening/visibility checks refresh due quotes for the user's current holdings plus USD/EUR reporting rates. The existing five-minute check throttle, 50-minute quote freshness threshold, PostgreSQL execution lock and provider failure backoff are retained. This mode skips full history, Selic and global CDI maintenance. Symbols are selected server-side through user-scoped access, never accepted from the browser. Public quote updates reprice current holdings through the established job; purchases and historical transaction values are untouched. A `quotesChanged` response refreshes the page even on its first check, except while the user is editing.
+Authenticated opening/visibility checks refresh due quotes for the user's current holdings plus USD/EUR reporting rates. The one-minute check throttle, five-minute market freshness threshold and fifteen-minute daily-reference FX threshold, PostgreSQL execution lock and provider failure backoff are retained. This mode skips full history maintenance. Selic and held fixed-income rate observations are checked separately with fifteen-minute freshness intervals. Symbols are selected server-side through user-scoped access, never accepted from the browser. Public quote updates reprice current holdings through the established job; purchases and historical transaction values are untouched. A `quotesChanged` response refreshes the page even on its first check, except while the user is editing.
 
 After a due refresh, supported market listings reconcile the recent five daily observations against completed Yahoo sessions, at most once per UTC day per symbol. Today's in-progress session is excluded. This repairs intraday observations retained from yesterday before they are used as yesterday's closing value in daily gain and TWR. Native prices use the recorded FX for their observation date; missing public ECB FX observations are inserted without replacing existing conversions. Only public daily quotes are updated, with provider `yahoo-close`; manual/spreadsheet observations, transactions, acquisition costs and monthly holdings are untouched. This does not make Xetra/Gettex or Stuttgart/Tradegate quotes interchangeable, and does not reproduce TradingView's independent cash-deposit history.
 

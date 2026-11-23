@@ -34,6 +34,7 @@ export function TabLink({
   return (
     <Link
       href={href}
+      prefetch={active ? false : true}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
       onClick={(event) => {

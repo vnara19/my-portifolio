@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, usePlotArea, type RectangleProps } from "recharts";
 import { monthlyProfitability, profitHistory, riskMetrics } from "../domain/overview-analytics";
 import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
@@ -25,14 +25,15 @@ export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labe
  const [sold,setSold]=useState(false);
  const [absolute,setAbsolute]=useState(false);
  const touch=useTouchTooltip();
- const rows=monthlyProfitability(observations,benchmark.points,asOf);
- const risks=riskMetrics(rows,rate);
+ const rows=useMemo(()=>monthlyProfitability(observations,benchmark.points,asOf),[observations,benchmark.points,asOf]);
+ const risks=useMemo(()=>riskMetrics(rows,rate),[rows,rate]);
  const years=[...new Set(rows.map(p=>p.month.slice(0,4)))].reverse();
  const ttm=new Date(`${asOf.slice(0,7)}-01T00:00:00Z`);ttm.setUTCMonth(ttm.getUTCMonth()-11);
  const months=rows.filter(r=>year==="all"||year==="ttm"&&r.month>=ttm.toISOString().slice(0,7)||r.month.startsWith(year));
 
  const start=periodStart(Date.parse(asOf),period);
- const profits=overview.gains.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,[],true).filter(p=>Date.parse(p.day)>=start&&p.day<=asOf);
+ const history=useMemo(()=>overview.gains.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,[],true),[observations,usd,overview.realizedHistory,overview.gains.totalUsd]);
+ const profits=useMemo(()=>history.filter(p=>Date.parse(p.day)>=start&&p.day<=asOf),[history,start,asOf]);
  const holdings=overview.holdingResults.filter(r=>sold||!r.sold).map(r=>({...r,label:overview.distribution.assets.find(a=>a.key===r.assetId)?.label??labels[r.assetId]??"Asset",result:r.totalUsd,percentage:r.totalUsd===null||r.principal<=0?null:r.totalUsd/r.principal*100})).filter(r=>filter==="all"||filter==="gainers"&&r.totalUsd!==null&&r.totalUsd>0||filter==="losers"&&r.totalUsd!==null&&r.totalUsd<0).sort((a,b)=>(absolute?b.result??-Infinity:b.percentage??-Infinity)-(absolute?a.result??-Infinity:a.percentage??-Infinity));
  const max=Math.max(1,...holdings.map(r=>Math.abs((absolute?r.result:r.percentage)??0)));
  return <>

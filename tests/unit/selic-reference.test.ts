@@ -109,7 +109,7 @@ function rateFixture(initial: ReferenceRate | null = null, initialPoints: Refere
 
 const point = (day: string, percent: string): ReferenceRatePoint => ({ key: "SELIC_TARGET", effectiveOn: new Date(`${day}T00:00:00.000Z`), percentAnnual: new Prisma.Decimal(percent) });
 
-test("concurrent and repeated checks within 24 hours call the source once", async () => {
+test("concurrent and repeated checks within 15 minutes call the source once", async () => {
   const fixture = rateFixture();
   let calls = 0;
   const starts: string[] = [];
@@ -120,10 +120,10 @@ test("concurrent and repeated checks within 24 hours call the source once", asyn
   ]);
   assert.equal(calls, 1);
   assert.deepEqual([one.state, two.state].sort(), ["fetched", "fresh"]);
-  const repeat = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 23 * 60 * 60 * 1000), fetchRate });
+  const repeat = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 14 * 60 * 1000), fetchRate });
   assert.equal(repeat.state, "fresh");
   assert.equal(calls, 1);
-  const next = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 24 * 60 * 60 * 1000), fetchRate });
+  const next = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 15 * 60 * 1000), fetchRate });
   assert.equal(next.state, "fetched");
   assert.equal(calls, 2);
 
@@ -131,7 +131,7 @@ test("concurrent and repeated checks within 24 hours call the source once", asyn
   assert.deepEqual(fixture.points().map((entry) => entry.percentAnnual.toString()), ["14"]);
 });
 
-test("missing history backfills points without waiting another 24 hours", async () => {
+test("missing history backfills points without waiting another refresh interval", async () => {
   const fixture = rateFixture({ key: "SELIC_TARGET", percentAnnual: new Prisma.Decimal(13.75), observedOn: new Date(today), fetchedAt: now, lastAttemptAt: now, source: "bcb-sgs-432", errorMessage: null });
   let calls = 0;
   const fetchRate = async () => { calls++; return history; };
@@ -202,7 +202,7 @@ test("cached Selic failure retries after 30 minutes and clears after source reco
   assert.equal(recovered.state, "fetched"); assert.equal(calls, 2);
   assert.equal(fixture.row()?.errorMessage, null);
   assert.equal(fixture.row()?.percentAnnual?.toString(), "14");
-  const repeated = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 60 * 60_000), fetchRate });
+  const repeated = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 44 * 60_000), fetchRate });
   assert.equal(repeated.state, "fresh"); assert.equal(calls, 2);
   assert.equal(isQuoteSyncFailure({ state: "idle", selic: recovered }), false);
 });

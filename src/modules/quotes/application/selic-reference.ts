@@ -4,7 +4,7 @@ import { fetchSelicTarget, selicChangePoints, type SelicFetcher } from "@/module
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 
 export const SELIC_RATE_KEY = "SELIC_TARGET";
-export const SELIC_REFRESH_MS = 24 * 60 * 60 * 1000;
+export const SELIC_REFRESH_MS = 15 * 60 * 1000;
 // Retry an outage on the next hourly job instead of replaying a cached failure all day.
 export const SELIC_FAILURE_RETRY_MS = 30 * 60 * 1000;
 const SELIC_LOCK_KEY = 2_026_100_204;

@@ -231,7 +231,7 @@ export function QuotesWorkspace({
         ) : null}
 
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
+          <table className="mobile-record-table w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
                 <th className="px-4 py-3 pl-5 sm:pl-6">Quote</th>
@@ -356,6 +356,8 @@ function QuoteRow({
         </div>
       </td>
       <td
+        data-label="Quote"
+        data-record-wide
         className={cn(
           "px-3 py-4 text-right sm:px-4",
           row.changed && "bg-warning/25 shadow-[inset_2px_0_0_var(--warning-border)]",

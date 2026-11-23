@@ -22,7 +22,7 @@ export type CdiReport = {
 
 const INDEXER = "CDI";
 
-const RATES_REFRESH_MS = 3 * 60 * 60 * 1000;
+const RATES_REFRESH_MS = 15 * 60 * 1000;
 
 const MAX_WINDOW_DAYS = 5 * 365;
 
