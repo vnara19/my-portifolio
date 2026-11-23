@@ -23,6 +23,8 @@ async function main() {
   try {
     const weak = await request("/sign-up/email", { email, password: "weak", name: "Test" });
     assert.notEqual(weak.status, 200);
+    assert.notEqual((await request("/sign-up/email", { email: "invalid-email", password, name: "Test" })).status, 200);
+    assert.notEqual((await request("/sign-up/email", { email, password: password.repeat(5), name: "Test" })).status, 200);
     const foreign = await request("/sign-up/email", { email, password, name: "Test" }, "", "https://untrusted.invalid");
     assert.notEqual(foreign.status, 200);
     const registered = await request("/sign-up/email", { email, password, name: "Test" });
@@ -33,8 +35,21 @@ async function main() {
     assert.equal(await db.session.count({ where: { userId: id } }), 0);
     const credential = await db.authAccount.findFirstOrThrow({ where: { userId: id, providerId: "credential" } });
     assert.ok(credential.password && credential.password !== password);
-    assert.notEqual((await request("/sign-up/email", { email, password, name: "Duplicate" })).status, 200);
-    const login = await request("/sign-in/email", { email, password });
+    const duplicate = await request("/sign-up/email", { email, password, name: "Duplicate" });
+    assert.equal(duplicate.status, 422);
+    assert.equal((await duplicate.json()).code, "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL");
+    assert.equal((await request("/sign-up/email", { email: ` ${email.toUpperCase()} `, password, name: "Duplicate" })).status, 422);
+    assert.equal(await db.user.count({ where: { email } }), 1);
+    assert.notEqual((await request("/sign-in/email", { email, password: "Wrong!9passwordlong" })).status, 200);
+    const concurrentEmail = `concurrent-${randomUUID()}@portfolio.invalid`;
+    const attempts = await Promise.all([
+      request("/sign-up/email", { email: concurrentEmail, password, name: "Concurrent" }),
+      request("/sign-up/email", { email: concurrentEmail.toUpperCase(), password, name: "Concurrent" }),
+    ]);
+    assert.equal(attempts.filter(response => response.status === 200).length, 1);
+    assert.equal(attempts.filter(response => response.status === 422).length, 1);
+    assert.equal(await db.user.count({ where: { email: concurrentEmail } }), 1);
+    const login = await request("/sign-in/email", { email: ` ${email.toUpperCase()} `, password });
     assert.equal(login.status, 200);
     const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     const session = await request("/get-session", null, cookie);

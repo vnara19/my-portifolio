@@ -7,7 +7,9 @@ PostgreSQL driver adapter connects to Neon. Better Auth stores users, credential
 sessions and rate limits in PostgreSQL. Public email/password registration is available from the sign-in form and requires
 a separate sign-in after account creation. New users receive an empty, user-scoped
 portfolio. Quote synchronization covers the latest month of every user and deduplicates
-shared symbols. Email ownership verification requires a future email-delivery setup.
+shared symbols. Registration rejects duplicate emails after trimming whitespace and ignoring letter case,
+validates email syntax and password strength on the server, and limits signup attempts.
+Email ownership is unverified, as the product intentionally has no email-delivery flow.
 The interface is English and dark-only.
 
 Vercel hosts the application. GitHub stores source and triggers deployments:

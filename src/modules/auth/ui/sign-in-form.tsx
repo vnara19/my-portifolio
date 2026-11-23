@@ -32,6 +32,8 @@ export function SignInForm({ redirectTo }: { redirectTo: string }) {
       if (result.error) {
         setError(result.error.status === 429
           ? "Too many attempts. Wait a moment and try again."
+          : registering && result.error.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
+          ? "An account with this email already exists. Sign in instead."
           : registering ? "Could not create this account. Check your details or sign in if you already have an account."
           : "Incorrect email or password.");
         return;

@@ -1,6 +1,7 @@
 
 /** Email/password authentication with PostgreSQL sessions. Public registration creates an empty user account and requires a separate sign-in. */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { z } from "zod";
 
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -50,10 +51,21 @@ function createAuth() {
       minPasswordLength: MIN_PASSWORD_LENGTH,
       maxPasswordLength: MAX_PASSWORD_LENGTH,
       autoSignIn: false,
+      onExistingUserSignUp: async () => {
+        throw new APIError("UNPROCESSABLE_ENTITY", {
+          message: "An account with this email already exists. Sign in instead.",
+          code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+        });
+      },
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-
+        if (["/sign-up/email", "/sign-in/email"].includes(ctx.path) && typeof ctx.body?.email === "string") {
+          ctx.body.email = ctx.body.email.trim().toLowerCase();
+          if (!z.email().max(254).safeParse(ctx.body.email).success) {
+            throw new APIError("BAD_REQUEST", { message: "Enter a valid email address.", code: "INVALID_EMAIL" });
+          }
+        }
         if (ctx.path === "/sign-in/email" && typeof ctx.body?.email === "string") {
           const limit=await consumeRateLimit(ctx.body.email.trim().toLowerCase(),"account-login",10,60);
           if(!limit.allowed)throw new APIError("TOO_MANY_REQUESTS",{message:"Too many attempts. Please try again shortly."});
@@ -62,6 +74,18 @@ function createAuth() {
         if (typeof password === "string") {
           const error = passwordPolicyError(password);
           if (error) throw new APIError("BAD_REQUEST", { message: error, code: "PASSWORD_POLICY" });
+        }
+        if (ctx.path === "/sign-up/email" && typeof ctx.body?.email === "string") {
+          const existing = await prisma.user.findFirst({
+            where: { email: { equals: ctx.body.email, mode: "insensitive" } },
+            select: { id: true },
+          });
+          if (existing) {
+            throw new APIError("UNPROCESSABLE_ENTITY", {
+              message: "An account with this email already exists. Sign in instead.",
+              code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+            });
+          }
         }
       }),
     },
@@ -78,7 +102,7 @@ function createAuth() {
     verification: { modelName: "verification" },
 
 
-    rateLimit: { enabled: true, storage: "database", modelName: "rateLimit" },
+    rateLimit: { enabled: true, storage: "database", modelName: "rateLimit", customRules: { "/sign-up/email": { window: 60, max: 10 } } },
     advanced: { database: { generateId: "uuid" }, defaultCookieAttributes: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" } },
     telemetry: { enabled: false },
 
