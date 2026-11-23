@@ -44,7 +44,7 @@ export async function AppShell({ active, months, selectedMonth, context, perform
               <Link
                 href="/"
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-[359px]:hidden lg:justify-self-start",
+                  "inline-flex shrink-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-sm:hidden lg:justify-self-start",
                   active === "settings" ? "max-[419px]:hidden" : null,
                 )}
               >

@@ -1,5 +1,7 @@
 import type { OverviewMarketStrip } from "@/modules/quotes/application/overview-market-strip";
-import { OverviewAnalytics } from "./overview-analytics";
+import { Suspense } from "react";
+import type { PortfolioLedger } from "../application/get-portfolio-ledger";
+import { DailyMoversSection } from "./daily-movers-section";
 import { overviewPerformanceMetrics } from "../domain/overview-performance-metrics";
 import type { TwrObservation } from "../domain/time-weighted-return";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
@@ -13,7 +15,7 @@ import { PortfolioEvolutionChart } from "@/modules/portfolio/ui/portfolio-evolut
 import type { SelicMonthView } from "@/modules/quotes/application/selic-reference";
 import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
-export function OverviewDashboard({ overview, selic, performance, benchmark, riskFreeRate, assetLabels, marketStrip }: { overview: OverviewData | null;marketStrip:OverviewMarketStrip; selic: SelicMonthView | null; performance: TwrObservation[]; benchmark: Sp500Benchmark; riskFreeRate:number|null; assetLabels:Record<string,string> }) {
+export function OverviewDashboard({ overview, selic, performance, benchmark, ledger, marketStrip }: { overview: OverviewData | null;marketStrip:OverviewMarketStrip; selic: SelicMonthView | null; performance: TwrObservation[]; benchmark: Sp500Benchmark; ledger:PortfolioLedger|null; }) {
   if (!overview) {
     return <><div className="mx-auto max-w-[1472px] px-5 pt-6 sm:px-7 xl:px-12"><DevQuoteSyncButton /></div><EmptyPortfolio /></>;
   }
@@ -68,7 +70,7 @@ export function OverviewDashboard({ overview, selic, performance, benchmark, ris
 
 
       <PortfolioDistributionPanel data={overview.distribution} />
-      <OverviewAnalytics overview={overview} observations={performance.filter(p=>p.day<=asOf)} usd={performance.filter(p=>p.day<=asOf)} benchmark={benchmark} rate={riskFreeRate} labels={assetLabels} asOf={asOf}/>
+      <Suspense fallback={<p role="status" className="mt-6 text-sm text-muted-foreground">Loading daily performance…</p>}><DailyMoversSection referenceDate={overview.referenceDate} ledger={ledger} labels={Object.fromEntries(overview.distribution.assets.map(asset=>[asset.key,asset.label]))}/></Suspense>
     </div>
   );
 }

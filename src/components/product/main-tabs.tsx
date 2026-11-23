@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation";
 
 import { TabLink } from "@/components/product/section-tabs";
 
-export type TabKey = "overview" | "positions" | "settings";
+export type TabKey = "overview" | "positions" | "analysis" | "settings";
 
 
 export type NavContext = { kind: "position" | "quotes"; label: string };
@@ -17,6 +17,7 @@ export type NavContext = { kind: "position" | "quotes"; label: string };
 export const MAIN_TABS = [
   { key: "overview", label: "Overview", href: "/", icon: ChartPieSliceIcon },
   { key: "positions", label: "Positions", href: "/posicoes", icon: ListBulletsIcon },
+  { key: "analysis", label: "Analysis", href: "/analysis", icon: ChartLineUpIcon },
 ] as const;
 
 const ENTER: Transition = { type: "spring", stiffness: 380, damping: 30, mass: 0.9 };
@@ -34,7 +35,7 @@ export function MainTabs({ active }: { active: TabKey | "none" }) {
   const withMonth = (href: string) => (month ? `${href}?mes=${month}` : href);
 
   return (
-    <nav aria-label="Main navigation" className="flex items-center gap-0.5 rounded-xl border border-border bg-card/70 p-1">
+    <nav aria-label="Main navigation" className="flex items-center gap-0.5 [&_a]:max-sm:px-2 [&_a]:max-sm:text-[11px] [&_a]:max-[359px]:px-1.5 [&_a]:max-[359px]:text-[10px] rounded-xl border border-border bg-card/70 p-1">
       {MAIN_TABS.map((tab) => (
         <TabLink key={tab.key} href={withMonth(tab.href)} active={tab.key === active}>
           <tab.icon aria-hidden="true" size={14} weight="duotone" className="shrink-0 max-[419px]:hidden" />

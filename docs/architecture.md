@@ -796,3 +796,13 @@ on hover, keyboard focus or touch. The current value uses the distribution's
 existing active valuation (fully sold holdings have zero remaining value).
 Portfolio Change identifies its Performance view as TWR without the explanatory
 paragraph beneath its Value view. Financial calculations are unchanged.
+
+The Analysis route (/analysis) contains Portfolio Profitability, Profit, Risks and
+Holdings Performance in their existing order. Overview ends with Distribution and
+Daily Gainers / Daily Losers. The main navigation preserves the reporting month
+across Overview, Positions and Analysis. Daily panels reuse Positions' daily metrics,
+convert native daily amounts using the current holding's USD valuation ratio, and
+aggregate positions of the same asset with a weighted daily opening denominator.
+Unavailable metrics suppress the whole affected asset rather than a partial total.
+Daily panels show USD amounts, not a separate FX-attribution return, and share the
+bar grid, absolute/percentage settings and accessible detail tooltip with Analysis.

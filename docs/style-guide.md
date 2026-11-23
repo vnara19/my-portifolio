@@ -29,7 +29,7 @@ Icons stay on the right; avoid colored glows or a new visual identity per screen
 Use shared badges, page controls, pickers, timelines and bottom sheets. Declare
 atomic variants with `tailwind-variants` rather than duplicating classes.
 
-Use Overview, Positions and Settings in the top navigation. No area sidebar or
+Use Overview, Positions and Analysis in the top navigation; Settings remains in the account menu. No area sidebar or
 family/payroll/pension navigation. Keep Quotes within Positions. Retain narrow-screen
 behavior, horizontal overflow within bounded panels, and readable mobile metric cards.
 
