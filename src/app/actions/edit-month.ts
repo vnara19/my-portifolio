@@ -14,7 +14,6 @@ import {
   MonthEditError,
   removePosition,
   undoChange,
-  updateMonthQuotes,
 } from "@/modules/portfolio/application/month-editing";
 import { ensureMonthsUpToDate } from "@/modules/portfolio/application/month-rollover";
 import {
@@ -117,11 +116,6 @@ const editSchema = z.object({
   }),
 });
 
-const quotesSchema = z.object({
-  ...monthScope,
-  quotes: z.array(z.object({ symbol: z.string().trim().min(1).max(120), valueBrl: value })).min(1).max(100),
-});
-
 export async function addPositionAction(input: unknown): Promise<EditActionResult> {
   const parsed = addSchema.safeParse(input);
 
@@ -160,19 +154,6 @@ export async function removePositionAction(input: unknown): Promise<EditActionRe
   return run(async () => {
     const result = await removePosition(parsed.data);
     return { ok: true, message: "Position removed.", undoToken: result.undoToken };
-  });
-}
-
-export async function saveQuotesAction(input: unknown): Promise<EditActionResult> {
-  const parsed = quotesSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return { ok: false, message: "Review the entered quotes." };
-  }
-
-  return run(async () => {
-    const result = await updateMonthQuotes(parsed.data);
-    return { ok: true, message: "Quotes saved and positions recalculated.", undoToken: result.undoToken };
   });
 }
 

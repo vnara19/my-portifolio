@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { hasUnreadQuoteIssue, inspectQuoteRun, readInspectedQuoteRun, serverInspectedQuoteRun, subscribeInspectedQuoteRun } from "@/components/product/quote-issue-read";
 
 import { runOpenCheck } from "@/components/product/quote-refresh-client";
 import { useQuoteRefresh } from "@/components/product/use-quote-refresh";
@@ -14,6 +16,16 @@ const OPEN_CHECK_POLL_MS = 60 * 1000;
 
 export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: QuoteRefreshSummary | null }) {
   const { summary, time, hasIssues, issueText, onDataChanged } = useQuoteRefresh(serverSummary);
+
+  const pathname = usePathname();
+  const onQuotesPage = pathname === "/posicoes/cotacoes";
+  const runId = summary?.lastRun?.id ?? null;
+  const inspectedId = useSyncExternalStore(subscribeInspectedQuoteRun, readInspectedQuoteRun, serverInspectedQuoteRun);
+  const unreadIssue = hasUnreadQuoteIssue(hasIssues, runId, inspectedId, onQuotesPage);
+
+  useEffect(() => {
+    if (onQuotesPage && runId && hasIssues) inspectQuoteRun(runId);
+  }, [onQuotesPage, runId, hasIssues]);
 
   useEffect(() => {
     runOpenCheck(onDataChanged, serverSummary);
@@ -66,7 +78,7 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
       >
         {shortLabel ?? "10 min"}
       </span>
-      {hasIssues ? (
+      {unreadIssue ? (
         <span
           aria-hidden="true"
           data-testid="quote-refresh-issue"

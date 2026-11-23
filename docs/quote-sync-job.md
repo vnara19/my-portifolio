@@ -55,3 +55,9 @@ Authenticated opening/visibility checks refresh due quotes for the user's curren
 After a due refresh, supported market listings reconcile the recent five daily observations against completed Yahoo sessions, at most once per UTC day per symbol. Today's in-progress session is excluded. This repairs intraday observations retained from yesterday before they are used as yesterday's closing value in daily gain and TWR. Native prices use the recorded FX for their observation date; missing public ECB FX observations are inserted without replacing existing conversions. Only public daily quotes are updated, with provider `yahoo-close`; manual/spreadsheet observations, transactions, acquisition costs and monthly holdings are untouched. This does not make Xetra/Gettex or Stuttgart/Tradegate quotes interchangeable, and does not reproduce TradingView's independent cash-deposit history.
 
 Opening checks work in Preview and Production while the application is open. They do not run with the site closed. Unattended refresh still requires a separately configured scheduler. Update History reports recorded attempts/results, not an inferred schedule. Header portfolio totals and Selic are intentionally absent from Quotes.
+
+Quotes are read-only in the interface; the manual quote-saving server action is removed.
+Update History loads the latest three runs, with Show More fetching three more.
+Opening Quotes acknowledges the current failed run in browser storage, clearing only
+its unread header dot. Failure details remain visible, and a different failed run
+produces a new unread dot when the user is outside Quotes.
