@@ -782,3 +782,9 @@ Treasury provider outages retain previously parsed official CSV observations for
 seven-day quote freshness limit. Access refusals and rate limits skip the immediate
 live retry and use the official CSV fallback. A cold instance with no valid cached
 response still reports failure and preserves the stored quote; no price is invented.
+
+Portfolio Distribution exposes Assets, Asset Classes, Product Types and Currency.
+All four views aggregate the same active holdings and USD gains. Product Types uses
+Positions' product resolver, including ETC separately from ETF; Asset Classes keeps
+the existing dominant allocation classification. Positions' product dropdown is
+labelled Product Type, while the colored quick filters remain asset-class filters.

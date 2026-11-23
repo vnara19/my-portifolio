@@ -201,7 +201,7 @@ export function PositionsWorkspace({
   const occupied = new Set(month.positions.filter(position=>!position.historicalSold).map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
-    { key: "tipo", label: "Asset Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
+    { key: "tipo", label: "Product Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
     { key: "mercado", label: "Market", options: options.markets, selected: filters.markets ?? [], onChange: (next) => void setQuery({ mercado: next }) },
     { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
     { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
@@ -346,7 +346,7 @@ export function PositionsWorkspace({
           />
 
           <div className="hidden sm:contents">
-            <MultiSelectFilter label="Asset Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
+            <MultiSelectFilter label="Product Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
             <MultiSelectFilter label="Market" options={options.markets} selected={filters.markets ?? []} onChange={(next) => void setQuery({ mercado: next })} />
             <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
             <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
@@ -561,7 +561,7 @@ function PositionDetails({
   position: MonthPosition;
 }) {
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Asset Type", value: typeOf(position) || "Review Product Type" },
+    { label: "Product Type", value: typeOf(position) || "Review Product Type" },
     { label: "Asset Class", value: <span className="inline-flex items-center gap-2"><AssetClassDot position={position} />{englishLabel(primaryClassOf(position))}</span> },
     { label: "Market", value: marketOf(position) },
     { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },

@@ -5,7 +5,7 @@ import type { PortfolioDistribution, DistributionRow } from "../domain/portfolio
 import { formatCurrency } from "../presentation/portfolio-format";
 import { cn } from "@/lib/utils";
 
-const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"types",label:"Asset Types",column:"Asset Type"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
+const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"classes",label:"Asset Classes",column:"Asset Class"},{key:"products",label:"Product Types",column:"Product Type"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
 const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
@@ -48,7 +48,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
   const activate=(row:DistributionRow)=>setHover(row.key);
   return <section id="alocacao" aria-labelledby="distribution-title" className="premium-panel mt-6 scroll-mt-32 rounded-[24px] p-5 sm:p-7">
     <h2 id="distribution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio Distribution</h2>
-    <div role="group" aria-label="Distribution view" className="mt-5 flex gap-1">
+    <div role="group" aria-label="Distribution view" className="mt-5 flex flex-wrap gap-1">
       {VIEWS.map(item=><button key={item.key} type="button" aria-pressed={view===item.key} onClick={()=>{setView(item.key);setHover(null);}} className={cn("rounded-lg px-3 py-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",view===item.key?"bg-white/10 text-foreground":"text-muted-foreground hover:bg-white/5 hover:text-foreground")}>{item.label}</button>)}
     </div>
     {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">

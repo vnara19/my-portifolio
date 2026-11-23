@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { bondChartLabels } from "../presentation/bond-chart-labels";
-import { buildPortfolioDistribution, type PortfolioDistribution } from "../domain/portfolio-distribution";
+import { buildPortfolioDistribution, type PortfolioDistribution, type DistributionHolding } from "../domain/portfolio-distribution";
 import { englishLabel } from "@/lib/english-labels";
 import { overviewAssetLabel } from "../presentation/position-display";
 import { historicalClosingValues } from "./historical-closing-values";
@@ -235,13 +235,13 @@ export const getOverviewData = cache(async function getOverviewData(referenceDat
     const referenceGains = {unrealizedUsd,unrealizedPercent,realizedUsd,realizedPercent,totalUsd,issue};
     const gainByAsset = new Map(assetGains.map(row=>[row.assetId,row.unrealizedUsd]));
     const bondLabels=bondChartLabels(positionsView?.positions??[]);
-    const uniqueHoldings = new Map<string,{assetId:string;label:string;assetClass:string;currency:string;valueUsd:number;unrealizedGainUsd:number|null}>();
+    const uniqueHoldings = new Map<string,DistributionHolding>();
     for (const position of positionsView?.positions ?? []) {
       if(position.liquidated || position.totalBrl<=0 || !usdRate)continue;
       const dominant=[...position.allocations].sort((a,b)=>b.weight-a.weight)[0];
       const gainUsd=gainByAsset.get(position.assetId);
       const previous=uniqueHoldings.get(position.assetId);
-      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
     }
     const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
     const gains = referenceGains;

@@ -2,7 +2,7 @@ import { BRAZILIAN_DEBT_PRODUCTS } from "../domain/brazilian-fixed-income";
 import type { AssetType } from "../domain/classification";
 
 /** User-facing products mirror the supported Add position flows, not bond details. */
-export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", "Savings", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Cryptocurrency"] as const;
+export const PRODUCT_TYPES = ["Stock", "REIT/FII", "ETF", "ETC", "Savings", ...BRAZILIAN_DEBT_PRODUCTS, "Bonds", "Tesouro Direto", "Cash Account", "Pension Plan", "Cryptocurrency"] as const;
 export const LEGACY_DEBT_PRODUCTS = BRAZILIAN_DEBT_PRODUCTS;
 export function reviewedDebtProduct(value: unknown): string | null {
   if (!value || typeof value !== "object" || !("displayProduct" in value)) return null;
@@ -20,7 +20,7 @@ export function productType(type: AssetType, instrument = "", product?: string |
   if (type === "treasury") return "Tesouro Direto";
   if (type === "fixed-income") return product && (BRAZILIAN_DEBT_PRODUCTS as readonly string[]).includes(product) ? product : "";
   if (type === "international-bond") return "Bonds";
-  if (instrument === "EU_ETC" || instrument === "ETC") return "ETF";
+  if (instrument === "EU_ETC" || instrument === "ETC") return "ETC";
   if (["REIT", "EU_REIT", "FII"].includes(instrument)) return "REIT/FII";
   if (type.endsWith("-etf") || /ETF/.test(instrument)) return "ETF";
   if (type.endsWith("-stock") || /^(EU_STOCK|ACAO|EQUITY|STOCK)$/.test(instrument)) return "Stock";
