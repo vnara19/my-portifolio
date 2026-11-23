@@ -7,14 +7,15 @@ const money = (value: number | null) => value === null ? "—" : formatCurrency(
 const percent = (value: number | null) => value === null ? "—" : `${value.toFixed(2)}%`;
 const number = new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, maturity }: {
+export function TreasuryRedemptionTable({ transactions, asOf, quote, symbol, maturity, selicStockBrl }: {
   transactions: PositionTransactionView[];
   asOf: string;
   quote: { day: string; price: number } | null | undefined;
   symbol: string;
   maturity: string | null;
+  selicStockBrl?: number | null;
 }) {
-  const rows = treasuryRedemptionRows(transactions, asOf, quote?.price ?? null, symbol, maturity);
+  const rows = treasuryRedemptionRows(transactions, asOf, quote?.price ?? null, symbol, maturity, selicStockBrl);
   if (!rows.length) return null;
   const headers = ["Purchase Date", "Quantity", "Purchase Price", "Invested Amount", "Contracted Return",
     "Annualized Return (Nominal)", "Accumulated Return", "Gross Value", "Days Held", "Income Tax Rate",

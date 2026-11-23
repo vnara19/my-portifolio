@@ -56,6 +56,7 @@ export type PositionHistoryView = {
   monthStatus: PortfolioMonthStatus;
 
   referenceDay: string;
+  treasurySelicStockBrl?: number | null;
   treasuryQuote?: { day: string; price: number } | null;
 
   usdRate: number | null;

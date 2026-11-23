@@ -40,6 +40,11 @@ export default async function PositionPage({ params, searchParams }: PositionPag
   ]);
 
 
+  if (history?.quoteSymbol?.startsWith("TD:TESOURO-SELIC:")) {
+    const holdings = month?.positions.filter(position => position.quoteSymbol?.startsWith("TD:TESOURO-SELIC:") && !position.liquidated);
+    history.treasurySelicStockBrl = holdings ? holdings.reduce((total, position) => total + position.totalBrl, 0) : null;
+  }
+
   const positionMonths = history ? monthsWithPosition(history, query.contas === "todas") : null;
 
   if (history && positionMonths && positionMonths.size > 0 && !positionMonths.has(history.selectedMonth)) {

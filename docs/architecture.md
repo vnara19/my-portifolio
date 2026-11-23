@@ -235,9 +235,22 @@ entries, retaining their rate/indexer and native cost breakdown in transaction n
 through backup, restore and undo. Acquisition costs feed the existing gains model;
 current market prices never replace original purchase cost.
 
-Public data does not expose a customer's tax basis, accrued custody fees or exact
-net redemption. This change does not add an IR/IOF/custody estimator or a projected
-IPCA/Selic cash-flow model, nor does it infer guaranteed future indexed returns.
+The early-redemption table estimates IR/IOF from recorded purchase lots and B3
+custody from marked balances and an estimated next-business-day settlement.
+Standard Prefixado, IPCA+ and IGP-M titles use 0.20% a year. Selic's BRL 10,000
+exemption is allocated proportionally across all Selic holdings recorded for the
+signed-in investor, across accounts and maturities. Renda+ uses 10/20-year bands
+and Educa+ uses 7/14-year bands. Their 60-day lockup and income conversion limits
+remain enforced. Coupon titles reset estimated unpaid custody at scheduled coupon
+payments, advanced to a business day. Zero custody still produces a net value.
+These are estimates using the current marked balance, not a reconstruction of
+private daily custody charges, paid fees or investments held outside this portfolio.
+No projected IPCA/Selic cash-flow or guaranteed future indexed return is inferred.
+
+When the current listing is unavailable, the dated official CSV also provides
+purchase prices, purchase rates and the indexer. Catalog metadata matches the
+quote date and never uses future rows for a historical query. Form labels identify
+the quoted date rather than implying a historical observation is a live offer.
 
 
 Treasury acquisition inputs are manual: purchase date, titles purchased, price per

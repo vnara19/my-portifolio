@@ -16,10 +16,10 @@ export type TreasuryIdentity = {
   maturityDate: string;
 };
 
-export type TreasurySeries = TreasuryIdentity & { points: DayValue[]; offered?: boolean; purchasePrice?: number; purchaseRate?: number; indexer?: string; targetYear?: number; isin?: string; paymentType?: string };
+export type TreasurySeries = TreasuryIdentity & { points: DayValue[]; purchaseQuotes?: { day: string; price?: number; rate?: number }[]; offered?: boolean; purchasePrice?: number; purchaseRate?: number; indexer?: string; targetYear?: number; isin?: string; paymentType?: string };
 
 export type TreasuryBook = { series: Map<string, TreasurySeries> };
-export type TreasuryCatalogBond = Omit<TreasurySeries, "points"> & { quoteDate: string; valueBrl: number };
+export type TreasuryCatalogBond = Omit<TreasurySeries, "points" | "purchaseQuotes"> & { quoteDate: string; valueBrl: number };
 
 export function treasurySymbol(type: string, maturityDate: string) {
   const slug = type.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
@@ -68,9 +68,10 @@ export function getTreasuryCatalog(book: TreasuryBook, today: string): TreasuryC
       return [];
     }
 
-    const { points: _points, ...identity } = series;
+    const { points: _points, purchaseQuotes, ...identity } = series;
     void _points;
-    return [{ ...identity, quoteDate: point.day, valueBrl: point.value }];
+    const purchase = purchaseQuotes?.find(quote => quote.day === point.day);
+    return [{ ...identity, ...(purchaseQuotes ? { purchasePrice: purchase?.price, purchaseRate: purchase?.rate } : {}), quoteDate: point.day, valueBrl: point.value }];
   }).sort((left, right) =>
     typeRank(left.type) - typeRank(right.type) ||
     left.type.localeCompare(right.type, "en-GB") ||
@@ -169,6 +170,8 @@ export function parseTreasuryCsv(text: string): TreasuryBook {
   }
 
   const [typeColumn, maturityColumn, dayColumn, priceColumn] = required.map((name) => header.indexOf(name));
+  const buyPriceColumn = header.indexOf("PU Compra Manha");
+  const buyRateColumn = header.indexOf("Taxa Compra Manha");
   const series = new Map<string, TreasurySeries>();
 
   for (const row of rows) {
@@ -185,16 +188,22 @@ export function parseTreasuryCsv(text: string): TreasuryBook {
     if (entry && entry.type !== type) throw new Error("Two Tesouro Direto securities have the same identifier.");
     if (!entry) {
       const dayLabel = `${maturityDate.slice(8, 10)}/${maturityDate.slice(5, 7)}/${maturityDate.slice(0, 4)}`;
-      entry = { symbol, providerId: treasuryProviderId(type, maturityDate), name: `${type} · ${dayLabel}`, type, maturityDate, points: [] };
+      entry = { symbol, providerId: treasuryProviderId(type, maturityDate), name: `${type} · ${dayLabel}`, type, maturityDate, points: [], purchaseQuotes: [],
+        indexer: type.includes("Prefixado") ? "Fixed" : type.includes("Selic") ? "Selic" : type.includes("IGP") ? "IGPM" : "IPCA" };
       series.set(symbol, entry);
     }
 
+    const buyPrice = buyPriceColumn >= 0 ? officialPrice(row[buyPriceColumn]) : null;
+    const rateText = buyRateColumn >= 0 ? row[buyRateColumn].trim() : "";
+    const buyRate = /^-?\d+(?:,\d+)?$/.test(rateText) ? Number(rateText.replace(",", ".")) : undefined;
+    entry.purchaseQuotes!.push({ day, price: buyPrice ?? undefined, rate: buyRate });
     entry.points.push({ day, value });
   }
 
   if (series.size === 0) throw new Error("Tesouro Direto did not return valid market prices.");
   for (const entry of series.values()) {
     entry.points.sort((left, right) => left.day.localeCompare(right.day));
+    entry.purchaseQuotes?.sort((left, right) => left.day.localeCompare(right.day));
     for (let index = 1; index < entry.points.length; index += 1) {
       if (entry.points[index].day === entry.points[index - 1].day) {
         throw new Error("Tesouro Direto returned multiple prices for the same security and date.");

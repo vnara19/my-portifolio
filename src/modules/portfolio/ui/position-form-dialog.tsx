@@ -940,9 +940,9 @@ function PositionForm({
                 </> : null}
                 {kind === "treasury" ? <>
                   {selectedTreasury ? <details className="rounded-xl border border-border p-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Security details</summary><div className="mt-3 flex flex-col gap-4">
-                    <ReadOnly label="Current purchase price" value={selectedTreasury.purchasePrice ? formatPriceBrl(selectedTreasury.purchasePrice) : "Unavailable"} />
-                    <ReadOnly label="Current gross redemption price" value={formatPriceBrl(selectedTreasury.valueBrl)} />
-                    <ReadOnly label="Currently offered annual rate" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${treasuryIndexerLabel(selectedTreasury.indexer)} ${selectedTreasury.purchaseRate ?? "—"}%`} />
+                    <ReadOnly label="Purchase price at quote date" value={selectedTreasury.purchasePrice ? formatPriceBrl(selectedTreasury.purchasePrice) : "Unavailable"} />
+                    <ReadOnly label="Gross redemption price at quote date" value={formatPriceBrl(selectedTreasury.valueBrl)} />
+                    <ReadOnly label="Annual rate at quote date" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${treasuryIndexerLabel(selectedTreasury.indexer)} ${selectedTreasury.purchaseRate ?? "—"}%`} />
                     {selectedTreasury.paymentType === "M" ? <ReadOnly label="Income starts" value={String(selectedTreasury.targetYear)} /> : null}
                     <ReadOnly label="Final payment date" value={selectedTreasury.maturityDate.split("-").reverse().join("/")} />
                     {selectedTreasury.isin ? <ReadOnly label="ISIN" value={selectedTreasury.isin} mono /> : null}

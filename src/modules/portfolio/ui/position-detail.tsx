@@ -401,7 +401,7 @@ function PositionDetailContent({
 
       {history.quoteSymbol?.startsWith("TD:") ? (
         <TreasuryRedemptionTable transactions={transactions} asOf={history.referenceDay} quote={history.treasuryQuote}
-          symbol={history.quoteSymbol} maturity={history.maturityDate} />
+          symbol={history.quoteSymbol} maturity={history.maturityDate} selicStockBrl={history.treasurySelicStockBrl} />
       ) : null}
       {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} /> : null}
       {history.cdi ? <CdiPanel cdi={history.cdi} maturity={history.maturityDate} /> : null}

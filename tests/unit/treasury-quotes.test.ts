@@ -275,3 +275,19 @@ test("a recovered live Treasury retry does not load the CSV",async()=>{
  const book=parseTreasuryCsv(fixture);let attempts=0;
  assert.equal(await resilientTreasuryBook(async()=>{if(++attempts===1)throw new Error("Incomplete");return book;},async()=>{throw new Error("Unexpected fallback");}),book);
 });
+
+
+test("dated CSV fallback retains purchase prices and rates without leaking future metadata", () => {
+  const book = parseTreasuryCsv(fixture);
+  const current = getTreasuryCatalog(book, "2026-10-04").find(bond => bond.symbol === identity.symbol)!;
+  assert.equal(current.purchasePrice, 1500);
+  assert.equal(current.purchaseRate, 7.1);
+  assert.equal(current.indexer, "IPCA");
+  assert.equal(current.quoteDate, "2026-10-02");
+  const past = getTreasuryCatalog(book, "2026-10-01").find(bond => bond.symbol === identity.symbol)!;
+  assert.equal(past.purchasePrice, 1450);
+  assert.equal(past.quoteDate, "2026-09-30");
+  const fixed = getTreasuryCatalog(book, "2026-10-04").find(bond => bond.type.startsWith("Tesouro Prefixado"))!;
+  assert.equal(fixed.purchaseRate, 13);
+  assert.equal(fixed.indexer, "Fixed");
+});
