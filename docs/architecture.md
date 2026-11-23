@@ -788,3 +788,11 @@ All four views aggregate the same active holdings and USD gains. Product Types u
 Positions' product resolver, including ETC separately from ETF; Asset Classes keeps
 the existing dominant allocation classification. Positions' product dropdown is
 labelled Product Type, while the colored quick filters remain asset-class filters.
+
+Holdings Performance omits unavailable/rounded-zero results in the selected display
+unit, uses one labelled magnitude scale for gains and losses, and exposes the asset
+name, total return percentage, total gain in USD and current holding value in USD
+on hover, keyboard focus or touch. The current value uses the distribution's
+existing active valuation (fully sold holdings have zero remaining value).
+Portfolio Change identifies its Performance view as TWR without the explanatory
+paragraph beneath its Value view. Financial calculations are unchanged.

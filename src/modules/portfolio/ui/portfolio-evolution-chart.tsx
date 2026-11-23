@@ -16,7 +16,7 @@ import { useTouchTooltip } from "./use-touch-tooltip";
 
 type Mode = "value" | "performance" | "class" | "currency";
 const MODES: {key:Mode;label:string}[] = [
-  {key:"value",label:"Value"},{key:"performance",label:"Performance"},
+  {key:"value",label:"Value"},{key:"performance",label:"Performance · TWR"},
   {key:"class",label:"Class"},{key:"currency",label:"Currency"},
 ];
 const PURPLE="#a66bd4";
@@ -96,7 +96,6 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
         </ComposedChart>
       </ResponsiveContainer>
     </div>
-    {mode==="value" ? <p className="mt-4 text-xs text-muted-foreground">Gain or loss in USD for each period, excluding net contributions and withdrawals.</p> : null}
     <div role="group" aria-label="Chart period" className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
       {CHART_PERIODS.map(p=>{
         const through=new Date(end).toISOString().slice(0,10);
