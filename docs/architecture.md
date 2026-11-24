@@ -814,3 +814,8 @@ Chart details expose the separate maturity date as DD/MM/YYYY; generated purchas
 and ISO-date suffixes are not shown in tooltip titles. Navigation order is
 Overview, Analysis, Positions. These are presentation changes, with no saved name,
 date, valuation or contract changes.
+
+Daily and Analysis performance tooltips put the full maturity date beside the
+security name in their heading, replacing the repeated maturity year. The body
+contains only the three existing gain/return/value metrics. Chart row labels keep
+the short year form; saved names and dates are unchanged.
