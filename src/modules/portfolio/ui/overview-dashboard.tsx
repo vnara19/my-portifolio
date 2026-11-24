@@ -69,7 +69,7 @@ export function OverviewDashboard({ overview, selic, performance, benchmark, led
       </section>
 
 
-      <PortfolioDistributionPanel data={overview.distribution} />
+      <PortfolioDistributionPanel data={overview.distribution} asOf={asOf} />
       <Suspense fallback={<p role="status" className="mt-6 text-sm text-muted-foreground">Loading daily performance…</p>}><DailyMoversSection referenceDate={overview.referenceDate} ledger={ledger} labels={Object.fromEntries(overview.distribution.assets.map(asset=>[asset.key,asset.label]))}/></Suspense>
     </div>
   );

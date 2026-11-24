@@ -8,7 +8,7 @@ export function RiskGauge({name,value,market}:{name:string;value:number|null;mar
  const labelPosition=(n:number)=>({left:`${left(n)}%`,transform:"translateX(-50%)"});
  return <div className="relative mt-5 pt-12 pb-12" role="img" aria-label={`${name}: Portfolio ${value?.toFixed(3)??"unavailable"}; SPX ${market?.toFixed(3)??"unavailable"}`}>
   <div className="absolute inset-x-0 top-0 h-12">
-   {value!==null?<span data-risk-label="portfolio" className="absolute bottom-2 rounded-md bg-foreground px-2 py-1 font-mono text-lg font-semibold leading-none text-background" style={labelPosition(value)}>{value.toFixed(3)}</span>:<span className="font-mono text-lg text-muted-foreground">—</span>}
+   {value!==null?<span data-risk-label="portfolio" className="absolute bottom-2 rounded-md border border-white/15 bg-white/[0.08] px-2 py-1 font-mono text-xs font-medium leading-none text-foreground" style={labelPosition(value)}>{value.toFixed(3)}</span>:<span className="font-mono text-lg text-muted-foreground">—</span>}
   </div>
   <div className={`relative h-1.5 rounded-full ${name==="Beta"?"bg-muted-foreground/50":"bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-400"}`}>
    {market!==null?<span data-risk-marker="spx" title={`SPX ${market.toFixed(3)}`} className="absolute z-10 size-3 -translate-x-1/2 rounded-full border-2 border-background bg-gray-400" style={{left:`${left(market)}%`,top:overlap?4:-3}}/>:null}

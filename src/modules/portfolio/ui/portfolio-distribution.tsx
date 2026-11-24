@@ -1,7 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PortfolioDistribution, DistributionRow } from "../domain/portfolio-distribution";
+import { buildPortfolioDistribution } from "../domain/portfolio-distribution";
+import type { SectorExposure } from "../domain/sector-exposure";
 import { displayMaturityDate } from "../presentation/position-display";
 import { formatCurrency } from "../presentation/portfolio-format";
 import { cn } from "@/lib/utils";
@@ -16,10 +18,29 @@ const CHART_TOP = -32;
 const CHART_WIDTH = 756;
 const CHART_HEIGHT = 584;
 
-export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) {
+export function PortfolioDistributionPanel({data,asOf}:{data:PortfolioDistribution;asOf?:string}) {
   const [view,setView]=useState<typeof VIEWS[number]["key"]>("assets");
   const [hover,setHover]=useState<string|null>(null);
-  const rows=data[view], active=rows.find(row=>row.key===hover);
+  const [live,setLive]=useState<{asOf:string;exposures:Record<string,SectorExposure|null>}|null>(null);
+  const symbols=JSON.stringify([...new Set(data.assets.flatMap(row=>row.sectorSymbol?[row.sectorSymbol]:[]))].sort());
+  useEffect(()=>{
+    if(view!=="sectors"||!asOf||asOf!==new Date().toISOString().slice(0,10)||symbols==="[]")return;
+    const controller=new AbortController();
+    const load=async()=>{try{
+      const response=await fetch("/api/quotes/sectors",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:JSON.parse(symbols)}),signal:controller.signal});
+      if(!response.ok)return;
+      const result=await response.json() as {exposures:Record<string,SectorExposure|null>};
+      if(!controller.signal.aborted)setLive({asOf,exposures:result.exposures});
+    }catch{/* Preserve reviewed exposure when the composition provider is unavailable. */}};
+    void load();const timer=setInterval(()=>{if(document.visibilityState==="visible")void load();},60*60_000);
+    return()=>{controller.abort();clearInterval(timer);};
+  },[view,asOf,symbols]);
+  const liveSectors=live&&live.asOf===asOf?buildPortfolioDistribution(data.assets.map(row=>{
+    const candidate=row.sectorSymbol?live.exposures[row.sectorSymbol]:null;
+    const valid=candidate?.sources.some(source=>source.retrievedAt&&Date.now()-Date.parse(source.retrievedAt)<7*86400_000);
+    return {assetId:row.key,label:row.label,assetClass:"",productType:"",currency:"USD",valueUsd:row.valueUsd,unrealizedGainUsd:row.unrealizedGainUsd,sectorExposure:valid?candidate!:row.sectorExposure};
+  })).sectors:null;
+  const rows=view==="sectors"?(liveSectors??data.sectors):data[view], active=rows.find(row=>row.key===hover);
   const selected=VIEWS.find(item=>item.key===view)!;
   const slices=rows.map((row,index)=>{const start=-Math.PI/2+rows.slice(0,index).reduce((sum,item)=>sum+item.share,0)/100*Math.PI*2;return {row,start,middle:start+row.share/100*Math.PI};});
   const chartRef = useRef<SVGSVGElement>(null);

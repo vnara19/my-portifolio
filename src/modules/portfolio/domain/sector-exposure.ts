@@ -1,6 +1,6 @@
 /** GICS company sectors, with separate buckets for exposures outside that taxonomy. */
 export const GICS_SECTORS = ["Energy", "Materials", "Industrials", "Consumer Discretionary", "Consumer Staples", "Health Care", "Financials", "Information Technology", "Communication Services", "Utilities", "Real Estate"] as const;
-export type SectorSource = { label:string; url:string; asOf?:string; note:string };
+export type SectorSource = { label:string; url:string; asOf?:string; retrievedAt?:string; note:string };
 export type SectorExposure = { weights:{sector:string;weight:number}[]; sources:SectorSource[] };
 const worldSources = {
  current: "https://www.msci.com/documents/10199/4db922ce-68d2-446d-2f9e-4ed408a9db29",

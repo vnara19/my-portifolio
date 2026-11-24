@@ -20,3 +20,30 @@ issuer/index source coverage before their sector exposure can be displayed.
 
 The UI omits explanatory prose at the user's request. Reference snapshots remain
 dated; removing the disclosure does not introduce live sector refreshes.
+
+## Automatic fund coverage
+
+The current reporting day's Sectors tab requests public fund composition from
+Yahoo Finance for ETF quote symbols, including newly added ETFs. The authenticated,
+same-origin route accepts a bounded symbol list, limits request size/rate/concurrency,
+and never transmits balances, transactions, accounts or user identifiers upstream.
+Provider sessions contain only provider-issued technical cookies and are never
+logged, returned to clients or included in the persistent data cache.
+
+Public results are cached in the Next Data Cache for 24 hours and revalidated on
+demand. The tab rechecks hourly while visible and when opened. This does not slow
+initial Overview rendering or change quote-update jobs. This is on-demand automatic
+refresh, not a separate unattended sector schedule. Dates record retrieval time;
+Yahoo does not provide a holdings publication date in this response. Public provider
+coverage and availability are not guaranteed. There is no automated web search or
+manual category guess for unsupported ETFs.
+
+Reported equity-sector weights apply only to the reported equity allocation.
+Cash, bonds and remaining exposure stay separate. Incomplete totals, duplicate or
+unknown sectors, negative weights and invalid asset mixes are rejected. CSH2 retains
+its reviewed economic overnight-rate classification, rather than looking through
+synthetic collateral. Historic months never receive today's composition. Provider
+failures preserve reviewed fallback classifications/index snapshots (or Sector
+Unavailable for uncovered funds); automatic results over seven days old are not
+applied. Sector labels map provider categories to common industry labels; this is
+not a licensed GICS classification feed or an independently audited holdings record.
