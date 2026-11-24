@@ -17,9 +17,13 @@ export function parseFundSectors(payload:unknown,symbol:string,retrievedAt:strin
  const cash=(top.cashPosition?.raw??0)*100,bonds=(top.bondPosition?.raw??0)*100;
  if(cash>0)weights.push({sector:"Cash & Savings",weight:cash});
  if(bonds>0)weights.push({sector:"Bonds",weight:bonds});
+ // Preserve explicit provider categories; a missing allocation is a different case.
+ for(const [sector,position] of [["Other Exposures",top.otherPosition],["Preferred Shares",top.preferredPosition],["Convertible Securities",top.convertiblePosition]] as const){
+  if(position&&position.raw>0)weights.push({sector,weight:position.raw*100});
+ }
  const known=weights.reduce((s,w)=>s+w.weight,0);
  if(known>100.1)return null;
- if(known<100)weights.push({sector:"Sector Unavailable",weight:100-known});
- if(known>100)for(const weight of weights)weight.weight=weight.weight/known*100;
- return {weights,sources:[{label:`${symbol} · Yahoo Finance fund composition`,url:`https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/holdings/`,retrievedAt,note:"Provider-reported fund sectors, mapped to common sector labels. Retrieval date is not the holdings publication date, which the provider does not supply. Equity weights are applied only to the equity portion; cash, bonds and unclassified exposure remain separate."}]};
+ if(known<100-1e-8)weights.push({sector:"Sector Unavailable",weight:100-known});
+ else if(known!==100)for(const weight of weights)weight.weight=weight.weight/known*100;
+ return {weights,sources:[{label:`${symbol} · Yahoo Finance fund composition`,url:`https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/holdings/`,retrievedAt,note:"Provider-reported fund sectors, mapped to common sector labels. Retrieval date is not the holdings publication date, which the provider does not supply. Equity weights are applied only to the equity portion; cash, bonds, provider-reported other exposures and missing classifications remain separate."}]};
 }

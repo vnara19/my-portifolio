@@ -23,3 +23,18 @@ test("normalize published rounding without changing total allocation",()=>{
  const exposure=parseFundSectors(payload({sectorWeightings:[{technology:{raw:0.599}},{financial_services:{raw:0.4}}]}),"X","2026-11-24")!;
  assert.ok(Math.abs(exposure.weights.reduce((s,w)=>s+w.weight,0)-100)<1e-9);
 });
+test("provider-reported Other is separate from genuinely missing allocation",()=>{
+ const exposure=parseFundSectors(payload({stockPosition:{raw:0.9914},cashPosition:{raw:0.0082},bondPosition:{raw:0},otherPosition:{raw:0.0004}}),"UETW.DE","2026-11-24")!;
+ assert.equal(exposure.weights.find(w=>w.sector==="Other Exposures")?.weight,0.04);
+ assert.equal(exposure.weights.some(w=>w.sector==="Sector Unavailable"),false);
+ const partial=parseFundSectors(payload({otherPosition:{raw:0.02}}),"X","2026-11-24")!;
+ assert.equal(partial.weights.find(w=>w.sector==="Other Exposures")?.weight,2);
+ assert.ok(Math.abs(partial.weights.find(w=>w.sector==="Sector Unavailable")!.weight-3)<1e-9);
+});
+test("explicit preferred and convertible allocations stay identified, without phantom rounding gaps",()=>{
+ const exposure=parseFundSectors(payload({stockPosition:{raw:0.8},cashPosition:{raw:0.1},bondPosition:{raw:0.05},preferredPosition:{raw:0.03},convertiblePosition:{raw:0.02}}),"X","2026-11-24")!;
+ assert.equal(exposure.weights.find(w=>w.sector==="Preferred Shares")?.weight,3);
+ assert.equal(exposure.weights.find(w=>w.sector==="Convertible Securities")?.weight,2);
+ assert.equal(exposure.weights.some(w=>w.sector==="Sector Unavailable"),false);
+ assert.equal(parseFundSectors(payload({otherPosition:{raw:0.2}}),"X","2026-11-24"),null);
+});

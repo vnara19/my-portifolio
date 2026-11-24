@@ -47,3 +47,10 @@ failures preserve reviewed fallback classifications/index snapshots (or Sector
 Unavailable for uncovered funds); automatic results over seven days old are not
 applied. Sector labels map provider categories to common industry labels; this is
 not a licensed GICS classification feed or an independently audited holdings record.
+
+Provider-reported `otherPosition` is displayed as Other Exposures. It is not
+Sector Unavailable: the latter is reserved for uncovered securities, unmapped
+composition and genuinely missing allocation. Preferred shares and convertible
+securities are also retained when explicitly supplied. Tiny floating-point
+residuals do not create phantom unavailable rows. The public cache version was
+advanced so existing cached compositions are reclassified on their next lookup.

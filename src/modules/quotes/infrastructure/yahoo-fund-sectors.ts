@@ -33,4 +33,4 @@ export const getFundSectors=unstable_cache(async(symbol:string)=>{
  if(!response.ok){await response.body?.cancel();throw new Error("Fund composition unavailable");}
  const payload=JSON.parse(new TextDecoder().decode(await limitedBytes(response.body,2_000_000)));
  return parseFundSectors(payload,symbol,new Date().toISOString());
-},["fund-sector-composition-v1"],{revalidate:86400});
+},["fund-sector-composition-v2"],{revalidate:86400});
