@@ -2,7 +2,7 @@ import { cache } from "react";
 import { bondChartLabels } from "../presentation/bond-chart-labels";
 import { buildPortfolioDistribution, type PortfolioDistribution, type DistributionHolding } from "../domain/portfolio-distribution";
 import { englishLabel } from "@/lib/english-labels";
-import { overviewAssetLabel } from "../presentation/position-display";
+import { maturityChartLabel } from "../presentation/position-display";
 import { historicalClosingValues } from "./historical-closing-values";
 import { getMonthPositions } from "./get-month-positions";
 import { expressUsdGainsInEur } from "../domain/overview-reporting";
@@ -45,7 +45,7 @@ export type OverviewData = {
   gains: PortfolioGains;
   gainsEur?: PortfolioGains;
   realizedHistory: {day:string;value:number}[];
-  holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;quoteSymbol:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
+  holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;quoteSymbol:string|null;maturityDate?:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
   accountingCurrency: "USD";
   reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
@@ -241,7 +241,7 @@ export const getOverviewData = cache(async function getOverviewData(referenceDat
       const dominant=[...position.allocations].sort((a,b)=>b.weight-a.weight)[0];
       const gainUsd=gainByAsset.get(position.assetId);
       const previous=uniqueHoldings.get(position.assetId);
-      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||overviewAssetLabel(position.assetName,position.ticker),assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||maturityChartLabel(position.assetName,position.ticker,position.maturityDate),maturityDate:position.maturityDate,assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
     }
     const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
     const gains = referenceGains;
@@ -260,7 +260,7 @@ export const getOverviewData = cache(async function getOverviewData(referenceDat
       gainsEur,
       accountingCurrency: "USD",
       realizedHistory,
-      holdingResults: assetGains,
+      holdingResults: assetGains.map(row=>({...row,maturityDate:positionsView?.positions.find(p=>p.assetId===row.assetId)?.maturityDate??null})),
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { positionTitle, overviewAssetLabel, showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
+import { positionTitle, maturityChartLabel, displayMaturityDate, overviewAssetLabel, showPositionTicker, hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "@/modules/portfolio/presentation/position-display";
 import { typeOf } from "@/modules/portfolio/presentation/position-filters";
 import { englishLabel } from "@/lib/english-labels";
 
@@ -60,4 +60,19 @@ test("Overview uses the Treasury asset name consistently instead of its provider
 test("bank debt titles keep the issuer and rate while hiding generated dates", () => {
   assert.equal(positionTitle("CDB Mercantil 107.50% CDI · 2028-03-22 · 2026-01-22", null), "CDB Mercantil 107.5% CDI");
   assert.equal(positionTitle("LCI Example IPCA+6.00% · 2028-03-22 · 2026-01", null), "LCI Example IPCA+6%");
+});
+
+test("Treasury titles keep only the security name and year, preserving income-start years", () => {
+  assert.equal(positionTitle("Tesouro Prefixado · 01/01/2032", "TD:TESOURO-PREFIXADO:2032-01-01"), "Tesouro Prefixado 2032");
+  assert.equal(positionTitle("Tesouro IPCA+ · 2035-05-15", null), "Tesouro IPCA+ 2035");
+  assert.equal(positionTitle("Tesouro Renda+ Aposentadoria Extra 2065", null), "Tesouro Renda+ Aposentadoria Extra 2065");
+});
+
+test("debt chart labels show the maturity year and only the maturity date is formatted for details", () => {
+ const name="CDB BMG 15.33% · 2030-04-08 · 2025-04-07";
+ assert.equal(positionTitle(name,null),"CDB BMG 15.33%");
+ assert.equal(maturityChartLabel(name,null,"2030-04-08"),"CDB BMG 15.33% · 2030");
+ assert.equal(maturityChartLabel("LCI Example 100% CDI · 2028-03-22 · 2026-01-01",null,"2028-03-22"),"LCI Example 100% CDI · 2028");
+ assert.equal(displayMaturityDate("2030-04-08"),"08/04/2030");
+ assert.equal(displayMaturityDate(null),null);
 });

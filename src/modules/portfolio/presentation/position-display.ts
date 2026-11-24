@@ -31,6 +31,9 @@ export function nativeUnitPrice(priceBrl: number | null, currency: "BRL" | "USD"
 /** Normalize generated ETF labels without renaming saved assets or repeating their ticker. */
 export function positionTitle(name: string, ticker: string | null, bondIssuer?: string) {
   if (bondIssuer) return bondIssuer;
+  if (/^Tesouro\s/i.test(name)) {
+    return name.replace(/\s*[·–—]\s*(?:\d{2}\/\d{2}\/(\d{4})|(\d{4})-\d{2}-\d{2})(?:\s*[·–—].*)?$/, (_, year, isoYear) => ` ${year ?? isoYear}`);
+  }
   if (/^(CDB|LCI|LCA)\s/i.test(name)) {
     return name.replace(/\s+·\s+\d{4}-\d{2}-\d{2}(?:\s+·\s+.*)?$/, "")
       .replace(/(\d+\.\d*?[1-9])0+(?=%)|(\d+)\.0+(?=%)/g, "$1$2");
@@ -48,5 +51,15 @@ export function exposureCurrency(assetType: AssetType, baseCurrency: string): st
 
 /** Human-readable Treasury names replace internal provider keys across Overview. */
 export function overviewAssetLabel(name:string,ticker:string|null) {
-  return ticker?.startsWith("TD:") ? name : ticker?.replace(/\.(SAO|SA)$/i, "") || positionTitle(name,ticker);
+  return ticker?.startsWith("TD:") ? positionTitle(name,ticker) : ticker?.replace(/\.(SAO|SA)$/i, "") || positionTitle(name,ticker);
+}
+
+/** Chart labels add only the maturity year; the full date stays in details. */
+export function maturityChartLabel(name:string,ticker:string|null,maturityDate:string|null) {
+  const title=positionTitle(name,ticker);
+  return /^(CDB|LCI|LCA)\s/i.test(title)&&maturityDate ? `${title} · ${maturityDate.slice(0,4)}` : overviewAssetLabel(name,ticker);
+}
+
+export function displayMaturityDate(day:string|null|undefined) {
+  return day&&/^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day.slice(8,10)}/${day.slice(5,7)}/${day.slice(0,4)}` : null;
 }

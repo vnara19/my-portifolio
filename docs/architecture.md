@@ -806,3 +806,11 @@ aggregate positions of the same asset with a weighted daily opening denominator.
 Unavailable metrics suppress the whole affected asset rather than a partial total.
 Daily panels show USD amounts, not a separate FX-attribution return, and share the
 bar grid, absolute/percentage settings and accessible detail tooltip with Analysis.
+
+Display names use Treasury security name + year instead of a full date in titles.
+Existing Renda+/Educa+ income-start years remain unchanged. CDB/LCI/LCA chart
+labels add the maturity year, while Positions keeps its shorter product title.
+Chart details expose the separate maturity date as DD/MM/YYYY; generated purchase
+and ISO-date suffixes are not shown in tooltip titles. Navigation order is
+Overview, Analysis, Positions. These are presentation changes, with no saved name,
+date, valuation or contract changes.

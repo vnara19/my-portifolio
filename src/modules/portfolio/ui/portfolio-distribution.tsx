@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import type { PortfolioDistribution, DistributionRow } from "../domain/portfolio-distribution";
+import { displayMaturityDate } from "../presentation/position-display";
 import { formatCurrency } from "../presentation/portfolio-format";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
         </svg>
         {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x-CHART_LEFT)/CHART_WIDTH*100}%`,top:`${(tooltipAnchor.y-CHART_TOP)/CHART_HEIGHT*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
           <div className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:active.color}}/><span className="min-w-0 break-words">{active.label}</span></div>
+          {view==="assets"&&displayMaturityDate(active.maturityDate)?<div className="mt-1 pl-4 font-mono text-muted-foreground">{displayMaturityDate(active.maturityDate)}</div>:null}
           <div className="mt-1 pl-4 font-mono whitespace-nowrap">{formatCurrency(active.valueUsd,"USD")} ({formatSharePercent(active.share)})</div>
         </div>:null}
       </div>

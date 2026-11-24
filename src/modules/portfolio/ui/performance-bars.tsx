@@ -2,10 +2,11 @@
 import { useId, useState } from "react";
 import { AssetIcon } from "./asset-icon";
 import { formatCurrency } from "../presentation/portfolio-format";
+import { displayMaturityDate, positionTitle } from "../presentation/position-display";
 import { holdingPerformanceScale } from "../presentation/holding-performance-scale";
 const percent=(n:number)=>`${n>=0?"+":""}${n.toFixed(2)}%`;
 
-export type PerformanceHolding = { assetId:string; name:string; ticker:string|null; assetType:string|null; quoteSymbol:string|null; label:string; result:number|null; percentage:number|null };
+export type PerformanceHolding = { assetId:string; name:string; ticker:string|null; assetType:string|null; quoteSymbol:string|null; label:string; maturityDate?:string|null; result:number|null; percentage:number|null };
 
 export function HoldingPerformanceRow({holding:r,absolute,scale,totalValue,periodLabel="Total",compact=false}:{holding:PerformanceHolding;absolute:boolean;scale:ReturnType<typeof holdingPerformanceScale>;totalValue:number|null;periodLabel?:"Total"|"Day";compact?:boolean}) {
  const [open,setOpen]=useState(false);
@@ -16,7 +17,8 @@ export function HoldingPerformanceRow({holding:r,absolute,scale,totalValue,perio
   <div className="relative flex h-8 items-center"><div aria-hidden="true" className="pointer-events-none absolute -inset-y-2 inset-x-0">{scale.ticks.map((tick,index)=><span key={index} className="absolute inset-y-0 border-l border-dashed border-muted-foreground/30" style={{left:`${tick/scale.maximum*100}%`}}/>)}</div><div className="relative h-2 w-full rounded-full bg-muted/50"><div className={`h-full rounded-full ${v<0?"bg-destructive":"bg-primary"}`} style={{width:`${Math.abs(v)/scale.maximum*100}%`}}/></div></div>
   <span className={`text-right font-mono text-[11px] sm:text-xs ${v<0?"text-destructive":"text-primary"}`}>{absolute?formatCurrency(v,"USD",true):percent(v)}</span>
   {open?<div id={tooltipId} role="tooltip" className={`pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-full max-w-[430px] rounded-xl border border-border bg-card px-4 py-3 text-xs shadow-xl ${compact?"":"sm:left-[220px] sm:w-[min(430px,calc(100%_-_220px))]"}`}>
-    <p className="mb-2 font-medium leading-snug break-words">{r.name||r.label}</p>
+    <p className="mb-2 font-medium leading-snug break-words">{r.maturityDate?r.label:positionTitle(r.name,r.ticker)||r.label}</p>
+    {displayMaturityDate(r.maturityDate)?<p className="mb-2 font-mono text-muted-foreground">{displayMaturityDate(r.maturityDate)}</p>:null}
     <dl className="space-y-1.5">{[{label:`${periodLabel} Gain %`,value:r.percentage===null?"—":percent(r.percentage),gain:r.result},{label:`${periodLabel} Gain`,value:r.result===null?"—":formatCurrency(r.result,"USD",true),gain:r.result},{label:"Total Value",value:totalValue===null?"—":formatCurrency(totalValue,"USD"),gain:null}].map(item=><div key={item.label} className="flex items-baseline justify-between gap-4"><dt className="text-muted-foreground">{item.label}</dt><dd className={`font-mono whitespace-nowrap ${item.gain===null?"text-foreground":item.gain<0?"text-destructive":"text-primary"}`}>{item.value}</dd></div>)}</dl>
   </div>:null}
  </div>;

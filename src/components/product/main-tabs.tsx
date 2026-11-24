@@ -16,8 +16,8 @@ export type NavContext = { kind: "position" | "quotes"; label: string };
 
 export const MAIN_TABS = [
   { key: "overview", label: "Overview", href: "/", icon: ChartPieSliceIcon },
-  { key: "positions", label: "Positions", href: "/posicoes", icon: ListBulletsIcon },
   { key: "analysis", label: "Analysis", href: "/analysis", icon: ChartLineUpIcon },
+  { key: "positions", label: "Positions", href: "/posicoes", icon: ListBulletsIcon },
 ] as const;
 
 const ENTER: Transition = { type: "spring", stiffness: 380, damping: 30, mass: 0.9 };

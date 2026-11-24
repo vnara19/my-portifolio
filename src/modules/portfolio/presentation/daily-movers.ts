@@ -1,7 +1,7 @@
 import type { MonthPosition } from "../application/get-month-positions";
 import type { HoldingAnalytics } from "../application/get-holdings-analytics";
 
-export type DailyMover = { assetId:string; name:string; ticker:string|null; assetType:string|null; quoteSymbol:string|null; label:string; result:number|null; percentage:number|null; totalValue:number|null };
+export type DailyMover = { assetId:string; name:string; ticker:string|null; assetType:string|null; quoteSymbol:string|null; label:string; maturityDate?:string|null; result:number|null; percentage:number|null; totalValue:number|null };
 
 /** Reuse Positions' daily return, converting its native amount to USD for comparisons. */
 export function dailyMovers(positions:MonthPosition[],analytics:Record<string,HoldingAnalytics>,labels:Record<string,string>):DailyMover[] {
@@ -14,7 +14,7 @@ export function dailyMovers(positions:MonthPosition[],analytics:Record<string,Ho
   const amount=valid?metric.daily!*factor!:0;
   const base=valid?(metric.dailyPercent!==0?amount/metric.dailyPercent!*100:(metric.daily===0?p.totalUsd!:0)):0;
   const previous=groups.get(p.assetId);
-  const row:DailyMover=previous?.row??{assetId:p.assetId,name:p.assetName,ticker:p.ticker,assetType:p.assetType,quoteSymbol:p.quoteSymbol,label:labels[p.assetId]??p.ticker??p.assetName,result:0,percentage:null,totalValue:0};
+  const row:DailyMover=previous?.row??{assetId:p.assetId,name:p.assetName,ticker:p.ticker,assetType:p.assetType,quoteSymbol:p.quoteSymbol,label:labels[p.assetId]??p.ticker??p.assetName,maturityDate:p.maturityDate,result:0,percentage:null,totalValue:0};
   row.result=(row.result??0)+amount;
   row.totalValue=p.totalUsd===null||row.totalValue===null?null:row.totalValue+p.totalUsd;
   groups.set(p.assetId,{row,base:(previous?.base??0)+base,complete:(previous?.complete??true)&&valid});
