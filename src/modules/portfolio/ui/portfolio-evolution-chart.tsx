@@ -85,7 +85,7 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
           <defs><linearGradient id="portfolio-value-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.25}/><stop offset="100%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.01}/></linearGradient></defs>
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 4"/>
           <XAxis dataKey="day" tickFormatter={day=>new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(day))} axisLine={false} tickLine={false} minTickGap={28} tick={{fill:"var(--muted-foreground)",fontSize:10}}/>
-          <YAxis orientation="right" width={70} axisLine={false} tickLine={false} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickFormatter={v=>isPerformance?`${v}%`:new Intl.NumberFormat("en-GB",{style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:0}).format(v)}/>
+          <YAxis tickCount={10} minTickGap={16} orientation="right" width={70} axisLine={false} tickLine={false} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickFormatter={v=>isPerformance?`${v}%`:new Intl.NumberFormat("en-GB",{style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:0}).format(v)}/>
           <Tooltip cursor={{stroke:"var(--muted-foreground)",strokeDasharray:"3 3"}} content={({active,payload})=>{
             if(!active||!payload?.length)return null;
             const point=payload[0]?.payload as typeof data[number];

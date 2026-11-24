@@ -1,3 +1,4 @@
+import { sectorExposure } from "../domain/sector-exposure";
 import { cache } from "react";
 import { bondChartLabels } from "../presentation/bond-chart-labels";
 import { buildPortfolioDistribution, type PortfolioDistribution, type DistributionHolding } from "../domain/portfolio-distribution";
@@ -241,7 +242,7 @@ export const getOverviewData = cache(async function getOverviewData(referenceDat
       const dominant=[...position.allocations].sort((a,b)=>b.weight-a.weight)[0];
       const gainUsd=gainByAsset.get(position.assetId);
       const previous=uniqueHoldings.get(position.assetId);
-      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||maturityChartLabel(position.assetName,position.ticker,position.maturityDate),maturityDate:position.maturityDate,assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||maturityChartLabel(position.assetName,position.ticker,position.maturityDate),maturityDate:position.maturityDate,assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",sectorExposure:sectorExposure(position,selectedHistory.day??selected.referenceDate.toISOString().slice(0,10)),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
     }
     const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
     const gains = referenceGains;

@@ -6,7 +6,7 @@ import { displayMaturityDate } from "../presentation/position-display";
 import { formatCurrency } from "../presentation/portfolio-format";
 import { cn } from "@/lib/utils";
 
-const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"classes",label:"Asset Classes",column:"Asset Class"},{key:"products",label:"Product Types",column:"Product Type"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
+const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"classes",label:"Asset Classes",column:"Asset Class"},{key:"products",label:"Product Types",column:"Product Type"},{key:"sectors",label:"Sectors",column:"Sector"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
 const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
 const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
 
@@ -74,16 +74,17 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
       </div>
       <div className="min-w-0 overflow-x-auto rounded-lg [scrollbar-width:thin]">
         <table className="mobile-record-table w-full min-w-[490px] text-left text-xs" aria-label={`${selected.label} distribution table`}>
-          <thead className="text-[11px] font-normal text-muted-foreground"><tr className="border-b border-border"><th scope="col" className="py-3 pr-4 font-normal">{selected.column}</th><th scope="col" className="px-3 py-3 text-right font-normal whitespace-nowrap">Holding Value</th><th scope="col" className="px-3 py-3 text-right font-normal">Allocation</th><th scope="col" className="py-3 pl-3 text-right font-normal whitespace-nowrap">Unrealized Gain</th></tr></thead>
+          <thead className="text-[11px] font-normal text-muted-foreground"><tr className="border-b border-border"><th scope="col" className="py-3 pr-4 font-normal">{selected.column}</th><th scope="col" className="px-3 py-3 text-right font-normal whitespace-nowrap">Holding Value</th><th scope="col" className="px-3 py-3 text-right font-normal">Allocation</th>{view!=="sectors"?<th scope="col" className="py-3 pl-3 text-right font-normal whitespace-nowrap">Unrealized Gain</th>:null}</tr></thead>
           <tbody>{rows.map(row=><tr key={row.key} onMouseEnter={()=>activate(row)} onMouseLeave={()=>setHover(null)} className={cn("border-b border-border/60 last:border-0",hover===row.key&&"bg-white/[0.035]")}>
             <th scope="row" className="py-3 pr-4 font-medium"><button type="button" onFocus={()=>activate(row)} onBlur={()=>setHover(null)} onClick={()=>activate(row)} className="flex items-center gap-2 whitespace-nowrap rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:row.color}}/><span className={cn(view==="assets"&&"max-w-[240px] whitespace-normal rounded-md bg-white/[0.07] px-2 py-1 text-left")}>{row.label}</span></button></th>
             <td data-label="Holding Value" className="px-3 py-3 text-right font-mono whitespace-nowrap">{formatCurrency(row.valueUsd,"USD")}</td>
             <td data-label="Allocation" className="px-3 py-3 text-right font-mono whitespace-nowrap text-muted-foreground">{formatSharePercent(row.share)}</td>
-            <td data-label="Unrealized Gain" className={cn("py-3 pl-3 text-right font-mono whitespace-nowrap",row.unrealizedGainUsd===null||row.unrealizedGainUsd===0?"text-muted-foreground":row.unrealizedGainUsd>0?"text-primary":"text-destructive")}>{row.unrealizedGainUsd===null?"—":`${row.unrealizedGainUsd>0?"+":""}${formatCurrency(row.unrealizedGainUsd,"USD")}`}</td>
+            {view!=="sectors"?<td data-label="Unrealized Gain" className={cn("py-3 pl-3 text-right font-mono whitespace-nowrap",row.unrealizedGainUsd===null||row.unrealizedGainUsd===0?"text-muted-foreground":row.unrealizedGainUsd>0?"text-primary":"text-destructive")}>{row.unrealizedGainUsd===null?"—":`${row.unrealizedGainUsd>0?"+":""}${formatCurrency(row.unrealizedGainUsd,"USD")}`}</td>:null}
           </tr>)}</tbody>
         </table>
       </div>
     </div>}
+    {view==="sectors"?<div className="mt-5 text-[11px] leading-relaxed text-muted-foreground"><p>GICS company sectors plus non-GICS exposures. Fund breakdowns are approximate; unknown exposures remain unclassified.</p><details className="mt-2"><summary className="w-fit cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-primary">Sources &amp; methodology</summary><ul className="mt-2 space-y-2">{data.sectorSources.map(source=><li key={`${source.label}:${source.asOf??""}`}><a href={source.url} target="_blank" rel="noreferrer" className="text-primary underline">{source.label}</a>{source.asOf?` · ${displayMaturityDate(source.asOf)}`:""}<p>{source.note}</p></li>)}</ul><p className="mt-2">Sector weights use dated reference snapshots and reviewed fund mandates. They are not refreshed with market prices. Historical months never use a later snapshot. Sector-level gains are omitted because fund returns cannot be attributed to sectors from weights alone.</p></details></div>:null}
   </section>;
 }
 
