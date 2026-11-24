@@ -6,8 +6,7 @@ It distributes existing USD holding values; it does not change valuations, costs
 returns or transactions. Sector gain attribution is omitted because holdings
 weights alone cannot establish each sector's contribution to fund returns.
 
-Reviewed sources and links live in `domain/sector-exposure.ts` and appear in the
-view's Sources & methodology disclosure. UETW uses dated MSCI World index weights
+Reviewed sources and links live in `domain/sector-exposure.ts` and are retained for review. The chart uses concise display names without GICS suffixes. UETW uses dated MSCI World index weights
 as a fund proxy (March 31 and October 30, 2026), normalized for published rounding.
 Only snapshots on or before the reporting day are eligible. Older unsupported
 periods and unknown securities remain Sector unavailable. XDWT uses its technology
@@ -18,3 +17,6 @@ use the issuer's Financials sector rather than loan-book look-through.
 These are reviewed reference snapshots, not an automated holdings feed. Price
 refreshes do not refresh sector weights. Additional securities require reliable
 issuer/index source coverage before their sector exposure can be displayed.
+
+The UI omits explanatory prose at the user's request. Reference snapshots remain
+dated; removing the disclosure does not introduce live sector refreshes.

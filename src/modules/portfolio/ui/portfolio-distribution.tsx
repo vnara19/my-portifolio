@@ -84,11 +84,12 @@ export function PortfolioDistributionPanel({data}:{data:PortfolioDistribution}) 
         </table>
       </div>
     </div>}
-    {view==="sectors"?<div className="mt-5 text-[11px] leading-relaxed text-muted-foreground"><p>GICS company sectors plus non-GICS exposures. Fund breakdowns are approximate; unknown exposures remain unclassified.</p><details className="mt-2"><summary className="w-fit cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-primary">Sources &amp; methodology</summary><ul className="mt-2 space-y-2">{data.sectorSources.map(source=><li key={`${source.label}:${source.asOf??""}`}><a href={source.url} target="_blank" rel="noreferrer" className="text-primary underline">{source.label}</a>{source.asOf?` · ${displayMaturityDate(source.asOf)}`:""}<p>{source.note}</p></li>)}</ul><p className="mt-2">Sector weights use dated reference snapshots and reviewed fund mandates. They are not refreshed with market prices. Historical months never use a later snapshot. Sector-level gains are omitted because fund returns cannot be attributed to sectors from weights alone.</p></details></div>:null}
+
   </section>;
 }
 
 function DistributionLabel({ row, angle }: { row: DistributionRow; angle: number }) {
+  if (row.share < 3) return null;
   const percentage = point(angle, RING_RADIUS);
   const anchor = point(angle, RING_RADIUS + 53);
   const nearVertical = Math.abs(Math.cos(angle)) < 0.49;
