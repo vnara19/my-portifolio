@@ -5,7 +5,7 @@ export function RiskGauge({name,value,market}:{name:string;value:number|null;mar
  const maximum=Math.max(limit,...[value,market].filter((n):n is number=>n!==null).map(Math.ceil));
  const left=(n:number)=>(n-minimum)/(maximum-minimum)*100;
  const overlap=value!==null&&market!==null&&Math.abs(left(value)-left(market))<3;
- const labelPosition=(n:number)=>({left:`${left(n)}%`,transform:`translateX(-${left(n)}%)`});
+ const labelPosition=(n:number)=>({left:`${left(n)}%`,transform:"translateX(-50%)"});
  return <div className="relative mt-5 pt-12 pb-12" role="img" aria-label={`${name}: Portfolio ${value?.toFixed(3)??"unavailable"}; SPX ${market?.toFixed(3)??"unavailable"}`}>
   <div className="absolute inset-x-0 top-0 h-12">
    {value!==null?<span data-risk-label="portfolio" className="absolute bottom-2 rounded-md bg-foreground px-2 py-1 font-mono text-lg font-semibold leading-none text-background" style={labelPosition(value)}>{value.toFixed(3)}</span>:<span className="font-mono text-lg text-muted-foreground">—</span>}
