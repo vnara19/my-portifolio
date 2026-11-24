@@ -56,14 +56,16 @@ export function PortfolioDistributionPanel({data,asOf}:{data:PortfolioDistributi
         const fits = name.height <= box.height && name.width <= box.width &&
           !occupied.some(other => name.left < other.right + 3 && name.right + 3 > other.left &&
             name.top < other.bottom + 3 && name.bottom + 3 > other.top);
-        label.style.visibility = fits ? "visible" : "hidden";
+        label.parentElement!.style.visibility = fits ? "visible" : "hidden";
         if (fits) occupied.push(name);
       }
     };
     measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chart);
     let active = true;
     void document.fonts.ready.then(() => { if (active) measure(); });
-    return () => { active = false; };
+    return () => { active = false; observer.disconnect(); };
   }, [rows]);
   const activeSlice=slices.find(slice=>slice.row.key===hover);
   const tooltipAnchor=activeSlice?point(activeSlice.middle,165):null;
@@ -123,11 +125,11 @@ function DistributionLabel({ row, angle }: { row: DistributionRow; angle: number
   const y = nearVertical ? (anchor.y < 260 ? 22 - height : 498) : anchor.y - height / 2;
 
   return (
-    <g pointerEvents="none" aria-hidden="true">
+    <g data-slice-label-pair="" pointerEvents="none" aria-hidden="true" visibility="hidden">
       {row.share >= 3 ? (
         <text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500">{Math.round(row.share)}%</text>
       ) : null}
-      <foreignObject data-slice-label="" x={x} y={y} width={width} height={height} visibility="hidden">
+      <foreignObject data-slice-label="" x={x} y={y} width={width} height={height}>
         <div className={cn("flex h-full text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]",
           nearVertical ? cn("justify-center text-center", anchor.y < 260 ? "items-end" : "items-start") :
             cn("items-center", left ? "justify-end text-right" : "text-left"))}>
