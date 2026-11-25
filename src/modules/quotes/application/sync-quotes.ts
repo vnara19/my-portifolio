@@ -1,3 +1,4 @@
+import { activeQuotePositionWhere, REQUIRED_REFERENCE_QUOTES } from "../domain/active-quote-usage";
 
 /** Scheduled quote sync reserves execution with a PostgreSQL lock. Fetch only due symbols, retain backoff after failures and preserve independent rate updates. */
 import {
@@ -325,12 +326,12 @@ async function symbolsInUse(transaction: Transaction, monthIds: string[]) {
   }
 
   const positions = await transaction.position.findMany({
-    where: { portfolioMonthId: { in: monthIds }, asset: { quoteSymbol: { not: null } } },
+    where: { portfolioMonthId: { in: monthIds }, ...activeQuotePositionWhere, asset: { quoteSymbol: { not: null } } },
     distinct: ["assetId"],
     select: { asset: { select: { quoteSymbol: true } } },
   });
 
-  return [...new Set(["USD", "EUR", ...positions.map((position) => position.asset.quoteSymbol!)])].sort();
+  return [...new Set([...REQUIRED_REFERENCE_QUOTES, ...positions.map((position) => position.asset.quoteSymbol!)])].sort();
 }
 
 
@@ -370,6 +371,7 @@ async function registerMissingSymbols(transaction: Transaction, inUse: string[])
   ]);
   const metadata = new Map<string, { instrumentType: string; baseCurrency: string }>();
   for (const currency of ["USD", "EUR"]) metadata.set(currency, { instrumentType: "FIAT", baseCurrency: currency });
+  metadata.set("BTC", { instrumentType: "CRIPTO", baseCurrency: "USD" });
 
   for (const quote of [...monthly, ...daily]) {
     if (!metadata.has(quote.symbol)) {

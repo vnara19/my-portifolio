@@ -1,3 +1,4 @@
+import { visibleMonthQuoteSymbols } from "../domain/active-quote-usage";
 import { Prisma, QuoteUpdateStatus, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
@@ -124,7 +125,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
     for (const position of month.positions) {
       const symbol = position.asset.quoteSymbol;
 
-      if (!symbol) {
+      if (!symbol || !position.quantity.greaterThan(0)) {
         continue;
       }
 
@@ -141,9 +142,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
     const own = [...stored.values()]
       .filter((quote) => quote.manual || quote.symbol === "USD" || quote.symbol === "EUR" || viewer.symbols.has(quote.symbol))
       .map((quote) => quote.symbol);
-    const priority = (symbol: string) => symbol === "USD" ? 0 : symbol === "EUR" ? 1 : 2;
-    const symbols = [...new Set(["USD", "EUR", ...own, ...usage.keys()])].sort((left, right) =>
-      priority(left) - priority(right) || left.localeCompare(right));
+    const symbols = visibleMonthQuoteSymbols({activeSymbols:usage.keys(),storedSymbols:own,isCurrent:month.referenceDate.getTime()===current.getTime()});
     const assetsOf = (symbol: string) =>
       [...(usage.get(symbol)?.assets ?? [])].sort((left, right) => left.localeCompare(right, "en-GB"));
     const inclusionBySymbol = new Map(inclusions.map((quote) => [quote.symbol, quote]));

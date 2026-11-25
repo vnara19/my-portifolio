@@ -819,3 +819,15 @@ Daily and Analysis performance tooltips put the full maturity date beside the
 security name in their heading, replacing the repeated maturity year. The body
 contains only the three existing gain/return/value metrics. Chart row labels keep
 the short year form; saved names and dates are unchanged.
+
+## Sold-out quote lifecycle
+
+Live quote sync selects positive-quantity positions from each user's latest month.
+A zero-quantity position does not keep a symbol in the live refresh set. A shared
+symbol continues to refresh if another active holding/user still requires it; a
+repurchase restores eligibility automatically. USD/EUR reporting rates and BTC (used by the Overview strip) remain.
+The current month's Quotes list likewise includes active holdings and reporting
+FX rather than all stored symbols. Historical months keep their stored quotes.
+No positions, sales, realized gains, historical prices, registry entries or audit
+records are deleted when an asset leaves the live refresh set. Overview market
+benchmarks/rates use their existing independent sources and are unchanged.
