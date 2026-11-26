@@ -55,3 +55,10 @@ test("Treasury All Time uses the first official redemption quote rather than the
  assert.equal(allTimePriceChange(first, first, first.value), null);
  assert.equal(allTimePriceChange(first, latest, null), null);
 });
+
+test("a single stale observation cannot imply flat weekly performance",()=>{
+ const same=[{day:"2026-11-19",value:152.95}];
+ assert.equal(holdingMarketMetrics(same,"2026-11-26").performance['1w'],null);
+ const flat=[{day:"2026-11-19",value:152.95},{day:"2026-11-26",value:152.95}];
+ assert.equal(holdingMarketMetrics(flat,"2026-11-26").performance['1w'],0);
+});

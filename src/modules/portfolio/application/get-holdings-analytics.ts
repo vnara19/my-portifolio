@@ -1,3 +1,4 @@
+import { fixedIncomePerformance } from "../domain/fixed-income-performance";
 import { fixedIncomeDailyGain } from "../domain/fixed-income-daily-gain";
 import { indexerOfSubclass } from "../domain/fixed-income-policy";
 import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
@@ -168,6 +169,9 @@ export async function getHoldingsAnalytics(month:MonthPositions,ledger:Portfolio
    const indexer = indexerOfSubclass(a.subclass);
    return indexer && a.ratePercent != null ? [{ indexer, weight: String(a.weight), ratePercent: String(a.ratePercent) }] : [];
   });
+  if(accrualPositions.includes(p)&&p.valueCurrency==="BRL"&&parts.length===p.allocations.length){
+   market.performance=fixedIncomePerformance({...accrualInputs,startDate:p.appliedOn!,maturityDate:p.maturityDate,annualBasis:p.fixedIncomeBasis!,parts},asOf);
+  }
   const accrual = accrualPositions.includes(p) && p.valueCurrency === "BRL" && p.nativeValue !== null &&
    accrualEntries.length > 0 && accrualEntries.every(t => !t.moneyUnavailable && !t.transferId) &&
    parts.length === p.allocations.length

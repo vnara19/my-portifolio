@@ -34,6 +34,10 @@ export function holdingMetricDescription(column: HoldingColumn, position: MonthP
  if (value === null && position.fixedIncomeBasis && !position.quoteSymbol && ["daily", "dailyPercent"].includes(column.id)) {
   return "The latest daily accrual could not be reconciled with the recorded balance.";
  }
+ if(position.fixedIncomeBasis&&!position.quoteSymbol&&column.id.startsWith("perf-"))return value===null
+  ? "Contract terms or official rates do not cover this full period, or it starts before the investment."
+  : "Gross contracted accrual in BRL, before taxes and fees. Purchases and withdrawals are excluded; All Time starts at the investment date.";
+ if(column.id.startsWith("perf-")&&value!==null)return `Price change in ${position.valueCurrency}, without conversion to portfolio USD. All Time follows available instrument price history.`;
  if (value === null && position.fixedIncomeBasis && !position.quoteSymbol && (column.id.startsWith("perf-") || column.id.startsWith("vol-") || column.id.startsWith("beta-") || ["last", "change", "changePercent", "volume", "averageVolume", "marketCap", "exchange"].includes(column.id))) {
   return "This instrument accrues at its contracted rate and has no market price series.";
  }

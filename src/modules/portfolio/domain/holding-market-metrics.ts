@@ -24,7 +24,7 @@ export function holdingBeta(points:MarketPoint[],benchmark:MarketPoint[],asOf:st
 }
 export function holdingMarketMetrics(points:MarketPoint[],asOf:string,benchmark:MarketPoint[]=[],volatilitySource:"range"|"close"="range"):HoldingMarketMetrics{
  const history=points.filter(p=>p.day<=asOf),last=at(history,asOf),previous=last?history.filter(p=>p.day<last.day).at(-1):undefined;
- const performance=Object.fromEntries(PERFORMANCE_PERIODS.map(([period])=>{const cutoff=holdingCutoff(asOf,period),base=cutoff?at(history,cutoff):history[0];return [period,last&&base?(last.value/base.value-1)*100:null];}));
+ const performance=Object.fromEntries(PERFORMANCE_PERIODS.map(([period])=>{const cutoff=holdingCutoff(asOf,period),base=cutoff?at(history,cutoff):history[0];return [period,last&&base&&base.day<last.day?(last.value/base.value-1)*100:null];}));
  const range=(days:number)=>{if(!last)return null;const window=history.filter(p=>p.day>key(new Date(Date.parse(last.day)-days*86400000)));if(!window.length||!at(history,key(new Date(Date.parse(last.day)-days*86400000)))||window.some(p=>!p.low||p.high==null))return null;return mean(window.map(p=>(p.high!-p.low!)/Math.abs(p.low!)*100));};
  const daily=last?.high!=null&&last.low&&previous?Math.max(last.high-last.low,Math.abs(last.high-previous.value),Math.abs(last.low-previous.value))/Math.abs(last.low)*100:null;
  const closeMovement = (days: number) => {

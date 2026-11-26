@@ -837,3 +837,11 @@ Treasury naming rules, leaving provider identifiers and stored asset names intac
 USD/EUR both display BRL per one unit of foreign currency. Quote Date identifies
 the price's effective date; Last Update identifies retrieval time and provider.
 A recent retrieval does not imply the provider published a newer price.
+
+Positions Performance uses native-currency price changes for quoted securities.
+One observation reused at both endpoints is unavailable, not a measured zero;
+a genuine zero requires distinct dates. Contractual Brazilian fixed income uses
+a normalized gross BRL accrual series from the existing rate/day-count engine,
+without deposits or withdrawals. Periods before investment, missing CDI/IPCA
+observations or unverified coverage remain unavailable. Tooltips distinguish this
+contractual accrual from market-price performance, taxes and USD portfolio gains.
