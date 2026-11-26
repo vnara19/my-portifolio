@@ -67,7 +67,7 @@ export async function AppShell({ active, months, selectedMonth, context, perform
 
             <div className="flex shrink-0 items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
 
-              <span className={cn("contents", menu ? "max-[359px]:hidden" : null)}>
+              <span className="contents max-[359px]:hidden">
                 <Suspense fallback={<span role="status" className="flex h-9 items-center rounded-xl border border-border px-3 text-xs text-muted-foreground">Checking quotes…</span>}>
                   <QuoteStatus />
                 </Suspense>

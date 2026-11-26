@@ -38,7 +38,7 @@ export function OverviewDashboard({ overview, selic, performance, benchmark, led
         <DevQuoteSyncButton />
       </header>
 
-      <div className="mt-4 min-[1440px]:relative min-[1440px]:left-1/2 min-[1440px]:w-[calc(100vw-96px)] min-[1440px]:max-w-[1800px] min-[1440px]:-translate-x-1/2">
+      <div className="mt-4">
         <OverviewKpis overview={overview} metrics={referenceMetrics} />
       </div>
 

@@ -46,3 +46,14 @@ Use consistent English financial labels: Fixed income, Equities, Cash, Contribut
 Withdrawals, Opening balance and Automatic accrual. Keep Tesouro Direto, Selic, CDI,
 IPCA and tickers. English numeric/date display must not change BRL/USD semantics.
 Keep database category keys separate from translated labels and free-form user names.
+
+## Responsive alignment
+
+Overview summary cards share the same content bounds as the heading, reference
+strip and charts, including ultrawide monitors. Do not add viewport-width breakout
+wrappers around individual sections. Summary cards use one column on phones, two
+from the small breakpoint and four from the extra-large breakpoint; values wrap
+rather than shrinking abruptly on wider monitors. Below 360px the header quote
+status is hidden so all three navigation tabs and the account control fit. Full
+quote status remains available on the Quotes screen. Verify loaded content, not
+loading placeholders, at phone and desktop widths when changing layout.
