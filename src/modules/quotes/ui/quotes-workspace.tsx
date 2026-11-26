@@ -1,5 +1,6 @@
 "use client";
 
+import { quoteDisplayName } from "../presentation/quote-display";
 import { englishLabel } from "@/lib/english-labels";
 
 import {
@@ -31,12 +32,7 @@ import { DevQuoteSyncButton } from "@/modules/quotes/ui/dev-quote-sync-button";
 
 
 
-const INSTRUMENT_LABELS: Record<string, string> = {
-  ACAO: "Stock",
-  CRIPTO: "Cryptocurrency",
-  ETF: "ETF",
-  FIAT: "Currency",
-};
+
 
 export function QuotesWorkspace({
   month,
@@ -132,11 +128,11 @@ export function QuotesWorkspace({
               <tr className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
                 <th className="px-4 py-3 pl-5 sm:pl-6">Quote</th>
                 <th className="px-3 py-3 text-right sm:px-4">Value</th>
-                <th className="hidden px-4 py-3 md:table-cell">Source</th>
+                <th className="hidden px-4 py-3 md:table-cell" title="Date the provider assigns to this price, not the time it was retrieved.">Quote Date</th>
                 <th className="hidden px-4 py-3 text-right whitespace-nowrap sm:table-cell">
                   Total Position Value
                 </th>
-                <th className="hidden px-4 py-3 pr-5 whitespace-nowrap lg:table-cell sm:pr-6">Last update</th>
+                <th className="hidden px-4 py-3 pr-5 whitespace-nowrap lg:table-cell sm:pr-6" title="When the site last retrieved this quote from the provider.">Last Update</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/55">
@@ -173,22 +169,16 @@ function QuoteRow({
   row: MonthQuoteRow;
   usdRate: number | null;
 }) {
-  const symbolLabel = row.symbol.replace(/\.(SAO|SA)$/i, "");
+  const symbolLabel = quoteDisplayName(row.symbol,row.assets);
   const currencyName = row.symbol === "USD" ? "US Dollar" : row.symbol === "EUR" ? "Euro" : null;
-  const assetNames = [...new Set(row.assets.map(name => name.replace(/^ETF\s*[-–:]\s*/i, "").trim()))]
-    .filter(name => name.replace(/\.(SAO|SA)$/i, "").toUpperCase() !== symbolLabel.toUpperCase());
-  const subtitle = currencyName ?? assetNames.join(", ");
+  const subtitle = currencyName ?? (row.symbol === "BTC" ? "Bitcoin" : null);
 
   return (
     <tr data-testid="quote-row" className="align-top transition-colors duration-150 hover:bg-white/[0.018]">
       <td className="px-4 py-4 pl-5 sm:pl-6">
         <p className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-mono text-sm font-semibold text-foreground">{symbolLabel}</span>
-          {row.instrumentType ? (
-            <span className="text-[10px] text-muted-foreground">
-              {INSTRUMENT_LABELS[row.instrumentType] ?? row.instrumentType}
-            </span>
-          ) : null}
+          <span className="text-sm font-semibold text-foreground">{symbolLabel}</span>
+
         </p>
         {subtitle ? <p className="mt-1 max-w-[340px] text-[11px] leading-snug text-muted-foreground">{subtitle}</p> : null}
         <p className="mt-0.5 text-[10px] text-muted-foreground/80">
@@ -204,7 +194,7 @@ function QuoteRow({
         </div>
       </td>
       <td
-        data-label="Quote"
+        data-label="Value"
         data-record-wide
         className={cn(
           "px-3 py-4 text-right sm:px-4",
@@ -214,11 +204,11 @@ function QuoteRow({
             <span className="font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
               {row.valueBrl === null ? <span className="text-muted-foreground">No quote</span> : row.symbol === "BTC"
                 ? usdRate !== null && usdRate > 0 ? formatCurrency(row.valueBrl / usdRate, "USD") : "USD rate unavailable"
-                : row.symbol === "EUR" ? `1 BRL = ${formatCurrency(1 / row.valueBrl, "EUR", false, 4)}` : formatPriceBrl(row.valueBrl)}
+                : row.symbol === "USD" || row.symbol === "EUR" ? `1 ${row.symbol} = ${formatPriceBrl(row.valueBrl)}` : formatPriceBrl(row.valueBrl)}
             </span>
-            {row.valueBrl !== null && (row.symbol === "BTC" || row.symbol === "EUR") ? (
+            {row.valueBrl !== null && row.symbol === "BTC" ? (
               <span className="mt-1 block text-[10px] text-muted-foreground" title="Conversion uses the exchange rate for this reporting month.">
-                {row.symbol === "EUR" ? `1 EUR = ${formatPriceBrl(row.valueBrl)}` : `BTC/BRL: ${formatPriceBrl(row.valueBrl)}`}
+                {`BTC/BRL: ${formatPriceBrl(row.valueBrl)}`}
               </span>
             ) : null}
           </>
@@ -276,7 +266,7 @@ function QuoteOrigin({ row }: { row: MonthQuoteRow }) {
   }
 
   if (row.quoteDate) {
-    return <span className="text-[11px] whitespace-nowrap text-foreground/85">Quote for {formatDay(row.quoteDate)}</span>;
+    return <span className="text-[11px] whitespace-nowrap text-foreground/85"><span className="md:hidden">Quote Date: </span>{formatDay(row.quoteDate)}</span>;
   }
 
   return (

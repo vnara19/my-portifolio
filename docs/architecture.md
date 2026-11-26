@@ -831,3 +831,9 @@ FX rather than all stored symbols. Historical months keep their stored quotes.
 No positions, sales, realized gains, historical prices, registry entries or audit
 records are deleted when an asset leaves the live refresh set. Overview market
 benchmarks/rates use their existing independent sources and are unchanged.
+
+Quotes display clean listing tickers without exchange suffixes and use Positions'
+Treasury naming rules, leaving provider identifiers and stored asset names intact.
+USD/EUR both display BRL per one unit of foreign currency. Quote Date identifies
+the price's effective date; Last Update identifies retrieval time and provider.
+A recent retrieval does not imply the provider published a newer price.
