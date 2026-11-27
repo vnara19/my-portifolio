@@ -149,6 +149,8 @@ export function AssetPriceChart({
               tickLine={false}
             />
             <YAxis
+              tickCount={10}
+              minTickGap={18}
               axisLine={false}
               domain={["auto", "auto"]}
               tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}

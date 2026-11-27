@@ -131,6 +131,8 @@ export function PositionEvolutionChart({
               minTickGap={12}
             />
             <YAxis
+              tickCount={10}
+              minTickGap={18}
               axisLine={false}
               tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
               tickFormatter={(value: number) => formatBrl(value, { compact: true })}
