@@ -1,0 +1,144 @@
+"use client";
+
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { PortfolioDistribution, DistributionRow } from "../domain/portfolio-distribution";
+import { buildPortfolioDistribution } from "../domain/portfolio-distribution";
+import type { SectorExposure } from "../domain/sector-exposure";
+import { displayMaturityDate } from "../presentation/position-display";
+import { formatCurrency } from "../presentation/portfolio-format";
+import { cn } from "@/lib/utils";
+
+const VIEWS = [{key:"assets",label:"Assets",column:"Asset"},{key:"classes",label:"Asset Classes",column:"Asset Class"},{key:"products",label:"Product Types",column:"Product Type"},{key:"sectors",label:"Sectors",column:"Sector"},{key:"currencies",label:"Currency",column:"Currency"}] as const;
+const formatSharePercent=(value:number)=>`${value.toFixed(2)}%`;
+const point=(angle:number,radius:number)=>({x:260+Math.cos(angle)*radius,y:260+Math.sin(angle)*radius});
+
+const RING_RADIUS = 196;
+const CHART_LEFT = -118;
+const CHART_TOP = -32;
+const CHART_WIDTH = 756;
+const CHART_HEIGHT = 584;
+
+export function PortfolioDistributionPanel({data,asOf}:{data:PortfolioDistribution;asOf?:string}) {
+  const [view,setView]=useState<typeof VIEWS[number]["key"]>("assets");
+  const [hover,setHover]=useState<string|null>(null);
+  const [live,setLive]=useState<{asOf:string;exposures:Record<string,SectorExposure|null>}|null>(null);
+  const symbols=JSON.stringify([...new Set(data.assets.flatMap(row=>row.sectorSymbol?[row.sectorSymbol]:[]))].sort());
+  useEffect(()=>{
+    if(view!=="sectors"||!asOf||asOf!==new Date().toISOString().slice(0,10)||symbols==="[]")return;
+    const controller=new AbortController();
+    const load=async()=>{try{
+      const response=await fetch("/api/quotes/sectors",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbols:JSON.parse(symbols)}),signal:controller.signal});
+      if(!response.ok)return;
+      const result=await response.json() as {exposures:Record<string,SectorExposure|null>};
+      if(!controller.signal.aborted)setLive({asOf,exposures:result.exposures});
+    }catch{/* Preserve reviewed exposure when the composition provider is unavailable. */}};
+    void load();const timer=setInterval(()=>{if(document.visibilityState==="visible")void load();},60*60_000);
+    return()=>{controller.abort();clearInterval(timer);};
+  },[view,asOf,symbols]);
+  const liveSectors=live&&live.asOf===asOf?buildPortfolioDistribution(data.assets.map(row=>{
+    const candidate=row.sectorSymbol?live.exposures[row.sectorSymbol]:null;
+    const valid=candidate?.sources.some(source=>source.retrievedAt&&Date.now()-Date.parse(source.retrievedAt)<7*86400_000);
+    return {assetId:row.key,label:row.label,assetClass:"",productType:"",currency:"USD",valueUsd:row.valueUsd,unrealizedGainUsd:row.unrealizedGainUsd,sectorExposure:valid?candidate!:row.sectorExposure};
+  })).sectors:null;
+  const rows=view==="sectors"?(liveSectors??data.sectors):data[view], active=rows.find(row=>row.key===hover);
+  const selected=VIEWS.find(item=>item.key===view)!;
+  const slices=rows.map((row,index)=>{const start=-Math.PI/2+rows.slice(0,index).reduce((sum,item)=>sum+item.share,0)/100*Math.PI*2;return {row,start,middle:start+row.share/100*Math.PI};});
+  const chartRef = useRef<SVGSVGElement>(null);
+
+  useLayoutEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const measure = () => {
+      const occupied: DOMRect[] = [];
+      for (const label of chart.querySelectorAll<SVGForeignObjectElement>("[data-slice-label]")) {
+        const box = label.getBoundingClientRect();
+        const name = label.querySelector("span")!.getBoundingClientRect();
+        const fits = name.height <= box.height && name.width <= box.width &&
+          !occupied.some(other => name.left < other.right + 3 && name.right + 3 > other.left &&
+            name.top < other.bottom + 3 && name.bottom + 3 > other.top);
+        label.parentElement!.style.visibility = fits ? "visible" : "hidden";
+        if (fits) occupied.push(name);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chart);
+    let active = true;
+    void document.fonts.ready.then(() => { if (active) measure(); });
+    return () => { active = false; observer.disconnect(); };
+  }, [rows]);
+  const activeSlice=slices.find(slice=>slice.row.key===hover);
+  const tooltipAnchor=activeSlice?point(activeSlice.middle,165):null;
+  const activate=(row:DistributionRow)=>setHover(row.key);
+  return <section id="alocacao" aria-labelledby="distribution-title" className="premium-panel mt-6 scroll-mt-32 rounded-[24px] p-5 sm:p-7">
+    <h2 id="distribution-title" className="text-base font-semibold tracking-[-0.025em]">Portfolio Distribution</h2>
+    <div role="group" aria-label="Distribution view" className="mt-5 flex flex-wrap gap-1">
+      {VIEWS.map(item=><button key={item.key} type="button" aria-pressed={view===item.key} onClick={()=>{setView(item.key);setHover(null);}} className={cn("rounded-lg px-3 py-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",view===item.key?"bg-white/10 text-foreground":"text-muted-foreground hover:bg-white/5 hover:text-foreground")}>{item.label}</button>)}
+    </div>
+    {rows.length===0?<p className="py-12 text-center text-sm text-muted-foreground">No Holdings</p>:<div className="mt-4 grid min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)]">
+      <div className="relative mx-auto w-full" onMouseLeave={()=>setHover(null)}>
+        <svg ref={chartRef} viewBox={`${CHART_LEFT} ${CHART_TOP} ${CHART_WIDTH} ${CHART_HEIGHT}`} className="block h-auto w-full overflow-hidden" role="group" aria-label={`${selected.label} distribution`}>
+          <text x="260" y="251" textAnchor="middle" fill="currentColor" fontSize="32" fontWeight="600">{data.assetCount}</text>
+          <text x="260" y="280" textAnchor="middle" fill="var(--muted-foreground)" fontSize="17" fontWeight="500">Total Assets</text>
+          {slices.map(({row,start})=>{
+            const circumference=2*Math.PI*RING_RADIUS, length=row.share/100*circumference;
+            return <g key={row.key}>
+              {hover===row.key?<circle cx="260" cy="260" r={RING_RADIUS} fill="none" stroke={row.color} strokeWidth="90" strokeOpacity="0.22" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`}/>:null}
+              <circle data-distribution-slice={row.key} cx="260" cy="260" r={RING_RADIUS} fill="none" stroke={row.color} strokeWidth="64" strokeDasharray={`${length} ${circumference-length}`} transform={`rotate(${start*180/Math.PI} 260 260)`} tabIndex={0} role="img" aria-label={`${row.label}: ${formatCurrency(row.valueUsd,"USD")}, ${formatSharePercent(row.share)}`} onMouseEnter={()=>activate(row)} onClick={()=>activate(row)} onFocus={()=>activate(row)} onBlur={()=>setHover(null)} className="outline-none"/>
+            </g>;
+          })}
+          {[...slices].sort((a, b) => b.row.share - a.row.share).map(({ row, middle }) => <DistributionLabel key={row.key} row={row} angle={middle} />)}
+        </svg>
+        {active&&tooltipAnchor?<div role="tooltip" style={{left:`${(tooltipAnchor.x-CHART_LEFT)/CHART_WIDTH*100}%`,top:`${(tooltipAnchor.y-CHART_TOP)/CHART_HEIGHT*100}%`,transform:`translate(${tooltipAnchor.x>260?"-100%":"0"}, -100%)`}} className="pointer-events-none absolute z-10 w-max max-w-[80%] rounded-md border border-white/10 bg-[#292929] px-3 py-2.5 text-xs shadow-xl">
+          <div className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:active.color}}/><span className="min-w-0 break-words">{active.label}</span></div>
+          {view==="assets"&&displayMaturityDate(active.maturityDate)?<div className="mt-1 pl-4 font-mono text-muted-foreground">{displayMaturityDate(active.maturityDate)}</div>:null}
+          <div className="mt-1 pl-4 font-mono whitespace-nowrap">{formatCurrency(active.valueUsd,"USD")} ({formatSharePercent(active.share)})</div>
+        </div>:null}
+      </div>
+      <div className="min-w-0 overflow-x-auto rounded-lg [scrollbar-width:thin]">
+        <table className="mobile-record-table w-full min-w-[490px] text-left text-xs" aria-label={`${selected.label} distribution table`}>
+          <thead className="text-[11px] font-normal text-muted-foreground"><tr className="border-b border-border"><th scope="col" className="py-3 pr-4 font-normal">{selected.column}</th><th scope="col" className="px-3 py-3 text-right font-normal whitespace-nowrap">Holding Value</th><th scope="col" className="px-3 py-3 text-right font-normal">Allocation</th>{view!=="sectors"?<th scope="col" className="py-3 pl-3 text-right font-normal whitespace-nowrap">Unrealized Gain</th>:null}</tr></thead>
+          <tbody>{rows.map(row=><tr key={row.key} onMouseEnter={()=>activate(row)} onMouseLeave={()=>setHover(null)} className={cn("border-b border-border/60 last:border-0",hover===row.key&&"bg-white/[0.035]")}>
+            <th scope="row" className="py-3 pr-4 font-medium"><button type="button" onFocus={()=>activate(row)} onBlur={()=>setHover(null)} onClick={()=>activate(row)} className="flex items-center gap-2 whitespace-nowrap rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:row.color}}/><span className={cn(view==="assets"&&"max-w-[240px] whitespace-normal rounded-md bg-white/[0.07] px-2 py-1 text-left")}>{row.label}</span></button></th>
+            <td data-label="Holding Value" className="px-3 py-3 text-right font-mono whitespace-nowrap">{formatCurrency(row.valueUsd,"USD")}</td>
+            <td data-label="Allocation" className="px-3 py-3 text-right font-mono whitespace-nowrap text-muted-foreground">{formatSharePercent(row.share)}</td>
+            {view!=="sectors"?<td data-label="Unrealized Gain" className={cn("py-3 pl-3 text-right font-mono whitespace-nowrap",row.unrealizedGainUsd===null||row.unrealizedGainUsd===0?"text-muted-foreground":row.unrealizedGainUsd>0?"text-primary":"text-destructive")}>{row.unrealizedGainUsd===null?"—":`${row.unrealizedGainUsd>0?"+":""}${formatCurrency(row.unrealizedGainUsd,"USD")}`}</td>:null}
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>}
+
+  </section>;
+}
+
+function DistributionLabel({ row, angle }: { row: DistributionRow; angle: number }) {
+  if (row.share < 3) return null;
+  const percentage = point(angle, RING_RADIUS);
+  const anchor = point(angle, RING_RADIUS + 53);
+  const nearVertical = Math.abs(Math.cos(angle)) < 0.49;
+  const left = anchor.x < 260;
+  const width = 128;
+  const height = 52;
+  const closestY = Math.max(0, Math.abs(anchor.y - 260) - height / 2);
+  const outsideRing = Math.sqrt((RING_RADIUS + 47) ** 2 - closestY ** 2);
+  const x = nearVertical ? anchor.x - width / 2 : 260 + (left ? -outsideRing - width : outsideRing);
+  const y = nearVertical ? (anchor.y < 260 ? 22 - height : 498) : anchor.y - height / 2;
+
+  return (
+    <g data-slice-label-pair="" pointerEvents="none" aria-hidden="true" visibility="hidden">
+      {row.share >= 3 ? (
+        <text x={percentage.x} y={percentage.y} dy="0.35em" textAnchor="middle" fill="white" fontSize="16" fontWeight="500">{Math.round(row.share)}%</text>
+      ) : null}
+      <foreignObject data-slice-label="" x={x} y={y} width={width} height={height}>
+        <div className={cn("flex h-full text-[13px] leading-tight font-semibold text-muted-foreground [overflow-wrap:anywhere]",
+          nearVertical ? cn("justify-center text-center", anchor.y < 260 ? "items-end" : "items-start") :
+            cn("items-center", left ? "justify-end text-right" : "text-left"))}>
+          <span className="min-w-0">
+            <span className="mr-1.5 inline-block size-[7px] rounded-full align-[1px]" style={{ backgroundColor: row.color }} />
+            {row.label}
+          </span>
+        </div>
+      </foreignObject>
+    </g>
+  );
+}

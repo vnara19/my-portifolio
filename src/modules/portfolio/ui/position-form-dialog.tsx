@@ -1,5 +1,15 @@
 "use client";
 
+
+/** Single-page position creation with existing edit sections. Picker values preserve database keys while labels are displayed in English. */
+
+import { purchaseCost, treasuryUnitPriceFromTotal } from "../domain/purchase-cost";
+import { FieldFeedbackProvider, type FieldFeedback } from "./field-feedback";
+import { SavingsForm } from "./savings-form";
+import { InternationalBondForm } from "./international-bond-form";
+import { productType, LEGACY_DEBT_PRODUCTS } from "../presentation/asset-classification";
+import { englishLabel } from "@/lib/english-labels";
+
 import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import {
@@ -7,23 +17,24 @@ import {
   CheckCircleIcon,
   CircleNotchIcon,
   LockSimpleIcon,
-  PlusIcon,
-  TrashIcon,
   WarningCircleIcon,
   XCircleIcon,
   XIcon,
 } from "@phosphor-icons/react/dist/ssr";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 
 import { addPositionAction, editPositionAction, type EditActionResult } from "@/app/actions/edit-month";
+import { Button } from "@/components/ui/button";
+import { fixedIncomeName, fixedIncomeAllocation, brazilianFixedIncomeSchema, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
+import { automaticAllocation } from "@/modules/portfolio/domain/automatic-allocation";
+import { isMarketKind, marketAllocation } from "@/modules/portfolio/domain/market-assets";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Picker, type PickerOption } from "@/components/ui/picker";
+import { Picker } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
 import type { EditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import type { MonthPosition, MonthQuote } from "@/modules/portfolio/application/get-month-positions";
 import {
   ASSET_KIND_DEFINITIONS,
-  ASSET_KINDS,
   baseCurrencyOf,
   buildAssetKey,
   cleanName,
@@ -35,29 +46,21 @@ import {
   type AssetKind,
 } from "@/modules/portfolio/domain/asset-kinds";
 import {
-  ASSET_CLASSES,
   ASSET_TYPE_LABELS,
   ASSET_TYPES,
   classificationIssue,
-  fitClassification,
-  redemptionsOf,
-  subclassesOf,
   type AssetType,
 } from "@/modules/portfolio/domain/classification";
-import { normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { indexerOfSubclass, supportsAutoIncome, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
-import { FlowHeading, FlowSteps } from "@/modules/portfolio/ui/flow-steps";
-import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
+import { treasuryYieldLabel, treasuryIndexerLabel } from "@/modules/portfolio/domain/treasury-purchase";
+import type { TreasuryCatalogBond } from "@/modules/quotes/domain/treasury";
 import { prefetchTreasuryCatalog, TreasuryPicker } from "@/modules/portfolio/ui/treasury-picker";
-import { formatBrl, formatPriceBrl, parseLocaleNumber } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatBrl, formatPriceBrl, formatCurrency, parseLocaleNumber, normalizeLocaleNumberInput } from "@/modules/portfolio/presentation/portfolio-format";
 import {
-  AllocationPicker,
   backdropClass,
   Field,
   inputClass,
-  LiquidityPicker,
   primaryButtonClass,
-  RedemptionPicker,
   secondaryButtonClass,
 } from "@/modules/portfolio/ui/edit-dialogs";
 import { providerLabel } from "@/modules/quotes/domain/quote-refresh";
@@ -67,34 +70,49 @@ import {
   type TickerCheckResponse,
 } from "@/modules/quotes/domain/ticker-check";
 
-// Formulário único da posição (specs 043 e 066): inclusão guiada por etapas
-// obrigatórias e edição com três abas. Geral identifica a posição; Ativo,
-// o que depende do tipo; Rateio, a divisão entre classificações. Na edição,
-// tipo, instituição e ticker são só leitura, e nome, vencimento e liquidez,
-// que são do ativo, valem para todos os meses. Na inclusão, os dados da etapa
-// atual precisam estar completos antes de avançar à conferência e salvar.
-// Salvar grava na hora, com desfazer; só um mês aberto aceita edição (spec 034).
 
 export type PositionFormMonth = { id: string; label: string; isCurrent: boolean; quotes: MonthQuote[]; referenceDate: Date };
 export type PositionFormTarget = { mode: "add" } | { mode: "edit"; position: MonthPosition };
 
 type TabKey = "geral" | "ativo" | "rateio" | "revisar";
-/** Classificação do rateio; `rate` é a rentabilidade dela (spec 079), % do CDI ou % ao ano. */
+
 type AllocationRow = { key: number; assetClass: string; subclass: string; duration: string; weight: string; rate: string };
 
 function rateText(rate: number | null | undefined) {
-  return rate === null || rate === undefined ? "" : String(rate).replace(".", ",");
+  return rate === null || rate === undefined ? "" : String(rate);
 }
 type Issue = { tab: TabKey; message: string };
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "geral", label: "Geral" },
-  { key: "ativo", label: "Ativo" },
-  { key: "rateio", label: "Rateio" },
+  { key: "geral", label: "Overall" },
+  { key: "ativo", label: "Asset" },
 ];
-const NEW_INSTITUTION = "nova:";
-const DEFAULT_ACCOUNT_NAME = "Principal";
 const CHECK_DEBOUNCE_MS = 500;
+
+const POSITION_CATEGORIES = [
+  { value: "listed", label: "Stocks & Listed Funds", hint: "Stocks, ETFs, UCITS, REITs, FIIs and ETCs" },
+  { value: "fixed", label: "Fixed Income", hint: "CDBs, LCIs, LCAs and Bonds" },
+  { value: "crypto", label: "Cryptocurrency", hint: "Coins, Altcoins and Stablecoins" },
+  { value: "treasury", label: "Tesouro Direto", hint: "Brazilian Government Bonds" },
+  { value: "savings", label: "Savings", hint: "Savings Accounts" },
+] as const;
+type PositionCategory = typeof POSITION_CATEGORIES[number]["value"];
+const CATEGORY_KINDS = {
+  listed: ["us-market", "eu-market", "br-market"],
+  fixed: ["international-bond", "fixed-income"],
+} as const satisfies Record<string, readonly AssetKind[]>;
+const SAVINGS_PRODUCTS = [
+  { country: "Ireland", value: "revolut-instant", label: "Revolut Instant Access Savings", currency: "EUR" },
+  { country: "Brazil", value: "itau-reserve", label: "Itaú Reserve", currency: "BRL" },
+] as const;
+const SAVINGS_COUNTRIES = [...new Set(SAVINGS_PRODUCTS.map(({ country }) => country))]
+  .map(country => ({ value: country, label: country }));
+
+function kindOption(value: AssetKind) {
+  const { label, hint } = ASSET_KIND_DEFINITIONS[value];
+  return { value, label: englishLabel(label), hint };
+}
+
 
 const popupClass =
   "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(600px,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl outline-none transition-[scale,opacity] duration-150 ease-out data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0";
@@ -111,13 +129,13 @@ export function PositionFormDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Continua definido depois de fechar, para o conteúdo não sumir na animação. */
+
   target: PositionFormTarget | null;
-  /** Muda a cada abertura e recomeça o formulário. */
+
   formKey: number;
   catalog: EditingCatalog;
   month: PositionFormMonth;
-  /** Conta e ativo (`conta:ativo`) que já têm posição na competência. */
+
   occupied: Set<string>;
   onSaved: (result: EditActionResult) => void;
 }) {
@@ -163,30 +181,56 @@ function PositionForm({
   const [showIssues, setShowIssues] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
+  const bondFormId = useId();
+  const [bondSaving, setBondSaving] = useState(false);
+  const [bondIssues, setBondIssues] = useState<string[]>(["Bond details"]);
 
-  // Geral.
+
+  // General settings.
+  const [reviewProduct, setReviewProduct] = useState<string | null>(editing?.productType && (LEGACY_DEBT_PRODUCTS as readonly string[]).includes(editing.productType) ? editing.productType : null);
+  const [fiProduct, setFiProduct] = useState<"CDB" | "LCI" | "LCA">("CDB");
+  const [fiIssuer, setFiIssuer] = useState("");
+  const [fiIndexer, setFiIndexer] = useState<"CDI" | "PRE" | "IPCA">("CDI");
+  const [fiQuantity, setFiQuantity] = useState("");
+  const [fiRate, setFiRate] = useState("");
+  const [category, setCategory] = useState<PositionCategory | null>(null);
+  const [savingsCountry, setSavingsCountry] = useState<string | null>(null);
+  const [savingsProductId, setSavingsProductId] = useState<string | null>(null);
+  const savingsProduct = SAVINGS_PRODUCTS.find(({ value }) => value === savingsProductId);
+  const groupedKind = category === "listed" || category === "fixed";
+  const kindLabel = category === "listed" ? "Market" : "Fixed Income Type";
   const [kind, setKind] = useState<AssetKind | null>(null);
-  const [institutionValue, setInstitutionValue] = useState<string | null>(null);
-  const [createdInstitution, setCreatedInstitution] = useState<{ key: string; name: string } | null>(null);
+  const bondEntry = !editing && kind === "international-bond";
+  const savingsEntry = !editing && kind === "savings";
+  const delegatedEntry = bondEntry || savingsEntry;
+  const busy = isSaving || (delegatedEntry && bondSaving);
+  const [verificationEpoch, setVerificationEpoch] = useState(0);
   const [assetName, setAssetName] = useState(editing?.assetName ?? "");
   const [value, setValue] = useState(editing ? editableValue(editing) : "");
-  // A inclusão cadastra o saldo atual, sem exigir uma escolha contábil (spec 066).
-  const initialKind = "OPENING" as const;
-  const [strategy, setStrategy] = useState(editing?.strategy ?? "");
-  // Ativo.
+
+  const initialKind = "CONTRIBUTION" as const;
+  const [latestPurchaseDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [selectedTreasury, setSelectedTreasury] = useState<TreasuryCatalogBond | null>(null);
+  const [contractedRate, setContractedRate] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [commission, setCommission] = useState("0");
+  const firstFutureDay = new Date(Date.parse(latestPurchaseDay) + 86_400_000).toISOString().slice(0, 10);
+  const [purchaseDate, setPurchaseDate] = useState(latestPurchaseDay);
+  const strategy = "";
+  // Asset details.
   const [tickerText, setTickerText] = useState("");
   const [coinChoice, setCoinChoice] = useState<{ symbol: string; id: string } | null>(null);
   const [coinCandidates, setCoinCandidates] = useState<{ symbol: string; coins: CoinCandidate[] } | null>(null);
   const [manualPrice, setManualPrice] = useState("");
-  // Tesouro (spec 070): a posição pode ser informada pelo valor em reais, como o
-  // saldo que o banco mostra; a quantidade de títulos sai pelo preço.
+
+
   const [valueKind, setValueKind] = useState<"quantity" | "amount">("quantity");
   const [maturity, setMaturity] = useState(editing?.maturityDate ?? "");
-  const [liquidity, setLiquidity] = useState(editing?.liquidity ?? "");
-  // Tipo do ativo (spec 068): na edição, escolhido numa lista fixa; na
-  // inclusão, é o próprio tipo escolhido na primeira etapa.
+
+
   const [assetType, setAssetType] = useState<AssetType | null>(editing?.assetType ?? null);
-  // Rateio: na inclusão, segue o tipo e o ativo escolhidos até ser mexido.
+
   const [rows, setRows] = useState<AllocationRow[] | null>(() =>
     editing
       ? editing.allocations.map((allocation, index) => ({
@@ -199,82 +243,53 @@ function PositionForm({
         }))
       : null,
   );
-  const [nextRowKey, setNextRowKey] = useState(100);
-  // Rendimento automático (spec 079): na renda fixa e no caixa em reais. A
-  // rentabilidade é de cada classificação Pós-fixado (% do CDI) ou Prefixado
-  // (% ao ano); a flag é da posição.
+
+
   const [autoIncome, setAutoIncome] = useState(editing?.autoIncome ?? false);
-  const [appliedOn, setAppliedOn] = useState(() => defaultAppliedOn(month.referenceDate));
+  const [appliedOn, setAppliedOn] = useState(() => defaultAppliedOn());
 
   const quoteOf = (symbol: string) => month.quotes.find((entry) => entry.symbol === symbol)?.valueBrl ?? null;
 
-  // Instituição: existente ou nova, criada ao salvar com a conta "Principal"
-  // (spec 040); a conta não aparece na interface.
-  const institutionOptions: PickerOption[] = [
-    ...catalog.institutions.map((institution) => ({ value: institution.id, label: institution.name })),
-    ...(createdInstitution
-      ? [{ value: `${NEW_INSTITUTION}${createdInstitution.key}`, label: createdInstitution.name, hint: "nova" }]
-      : []),
-  ];
-  const institutionName = editing
-    ? editing.institutionName
-    : institutionValue?.startsWith(NEW_INSTITUTION)
-      ? (createdInstitution?.name ?? null)
-      : (catalog.institutions.find((entry) => entry.id === institutionValue)?.name ?? null);
-  const account = resolveAccount(institutionValue, createdInstitution, catalog);
 
-  const createInstitution = (text: string) => {
-    const name = cleanName(text);
-    const key = normalizeKey(name);
+  const account = catalog.portfolioAccountId ? { accountId: catalog.portfolioAccountId } : {};
 
-    if (!key) {
-      return;
-    }
-
-    // Um nome igual sem acentos, maiúsculas ou pontuação é a mesma instituição.
-    const existing = catalog.institutions.find((institution) => normalizeKey(institution.name) === key);
-
-    if (existing) {
-      setInstitutionValue(existing.id);
-      return;
-    }
-
-    setCreatedInstitution({ key, name });
-    setInstitutionValue(`${NEW_INSTITUTION}${key}`);
+  const resetFields = () => {
+    setBondIssues(["Bond details"]);
+    setFiProduct("CDB"); setFiIssuer(""); setFiIndexer("CDI"); setFiRate(""); setFiQuantity("");
+    setSelectedTreasury(null); setContractedRate("");
+    setAssetName(""); setValue(""); setTickerText(""); setManualPrice("");
+    setCoinChoice(null); setCoinCandidates(null); setSide("BUY");
+    setPurchasePrice(""); setCommission("0"); setPurchaseDate(latestPurchaseDay);
+    setValueKind("quantity"); setMaturity("");
+    setAssetType(null); setRows(null); setAutoIncome(false);
+    setAppliedOn(defaultAppliedOn()); setTab("geral");
+    setShowIssues(false); setError(null); setVerificationEpoch((current) => current + 1);
+  };
+  const chooseKind = (next: AssetKind | null) => {
+    if (next === kind) return;
+    resetFields();
+    setKind(next);
+    if (next === "fixed-income") setAutoIncome(true);
+    if (next === "treasury") void prefetchTreasuryCatalog().catch(() => undefined);
   };
 
-  const chooseKind = (next: string) => {
-    setKind(next as AssetKind);
-    setManualPrice("");
-    setValueKind("quantity");
 
-    if (next === "treasury") {
-      // A lista de títulos já começa a carregar enquanto o usuário escolhe a instituição.
-      void prefetchTreasuryCatalog().catch(() => undefined);
-    }
-
-    if (!ASSET_KIND_DEFINITIONS[next as AssetKind].allowsMaturity) {
-      setMaturity("");
-    }
-  };
-
-  // Ativo da inclusão: a identidade é a mesma que o servidor calcula, e um
-  // ativo existente com a mesma chave é reaproveitado (spec 040).
   const definition = kind ? ASSET_KIND_DEFINITIONS[kind] : null;
-  const typedName = cleanName(assetName);
-  const symbol =
-    definition?.ticker === "usd"
-      ? USD_SYMBOL
+  const inputSymbol =
+    (definition?.ticker === "usd" || definition?.ticker === "eur")
+      ? normalizeTicker(kind!, "")
       : definition?.ticker === "market" && kind
         ? normalizeTicker(kind, tickerText)
         : null;
-  const chosenCoinId = kind === "crypto" && symbol && coinChoice?.symbol === symbol ? coinChoice.id : null;
+  const chosenCoinId = kind === "crypto" && inputSymbol && coinChoice?.symbol === inputSymbol ? coinChoice.id : null;
   const check = useTickerCheck(
     month.id,
     !editing && definition?.ticker === "market" ? kind : null,
-    symbol,
+    kind === "eu-market" ? tickerText.trim().toUpperCase() || null : inputSymbol,
     chosenCoinId,
+    verificationEpoch,
   );
+  const symbol = kind === "eu-market" && check.state === "done" && check.response.status === "found" ? check.response.symbol : inputSymbol;
   const checkedCoins = check.state === "done" && check.response.status === "found" ? check.response.coins : undefined;
 
   if (symbol && checkedCoins && coinCandidates?.symbol !== symbol) {
@@ -284,29 +299,43 @@ function PositionForm({
   const coins = kind === "crypto" && symbol && coinCandidates?.symbol === symbol ? coinCandidates.coins : null;
   const checkedCoinId =
     check.state === "done" && check.response.status === "found" ? (check.response.coinId ?? null) : null;
+  const automaticName = !editing && definition?.ticker === "market";
+  const response = check.state === "done" ? check.response : null;
+  const identity = response?.status === "found" ? response.identity : undefined;
+  const purchaseEntry = !editing && kind !== null && (isMarketKind(kind) || kind === "crypto" || kind === "treasury");
+  const tradeCurrency = identity?.currency ?? (kind === "crypto" ? "USD" : kind === "treasury" ? "BRL" : null);
+  const priceNative = response?.status === "found" ? response.priceNative ?? null : null;
+  const enteredPurchaseAmount = parseLocaleNumber(purchasePrice);
+  const treasuryUnits = parseLocaleNumber(value);
+  const purchaseUnit = kind === "treasury" ? enteredPurchaseAmount !== null && treasuryUnits !== null && treasuryUnits > 0 ? enteredPurchaseAmount / treasuryUnits : null : enteredPurchaseAmount;
+  const purchaseFee = kind === "treasury" ? 0 : parseLocaleNumber(commission);
+  const fixedIncomeEntry = !editing && kind === "fixed-income";
+  const fixedContract: BrazilianFixedIncome | null = fixedIncomeEntry ? { product: fiProduct, issuer: fiIssuer.trim(), indexer: fiIndexer, rate: normalizeLocaleNumberInput(fiRate) ?? "", basis: "BUSINESS_252", ...(fiQuantity.trim() ? { purchaseQuantity: normalizeLocaleNumberInput(fiQuantity) ?? "" } : {}) } : null;
+  const typedName = fixedContract ? fixedIncomeName(fixedContract, maturity, appliedOn) : automaticName
+    ? cleanName(selectedTreasury?.name ?? catalog.assets.find((asset) => symbol !== null && asset.quoteSymbol === symbol)?.name ?? (response?.status === "found" ? response.name : null) ?? symbol ?? "").slice(0, 80)
+    : cleanName(assetName);
   const treasuryMaturity = (editing?.quoteSymbol ?? (kind === "treasury" ? symbol : null))?.startsWith("TD:")
     ? (editing?.quoteSymbol ?? symbol)!.slice(-10) : null;
   const maturityDate = treasuryMaturity ?? ((editing ? allowsMaturityOf(editing) : definition?.allowsMaturity) && maturity ? maturity : null);
   const assetKey =
-    !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? institutionName : symbol)
-      ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: institutionName ?? "", maturityDate })
+    !editing && definition && normalizeKey(typedName) && (definition.ticker === null ? typedName : symbol)
+      ? buildAssetKey({ name: typedName, ticker: symbol, institutionName: "Portfolio", maturityDate })
       : null;
-  const catalogAsset = assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey) : undefined;
+  const catalogAsset = !fixedIncomeEntry && assetKey ? catalog.assets.find((asset) => asset.normalizedKey === assetKey || (definition?.ticker === "market" && symbol !== null && asset.quoteSymbol === symbol)) : undefined;
   const isNewAsset = !editing && assetKey !== null && !catalogAsset;
-  const response = check.state === "done" ? check.response : null;
   const needsManualPrice =
     isNewAsset &&
     definition?.ticker === "market" &&
-    (response?.status === "unavailable" || (response?.status === "found" && !month.isCurrent));
+    !purchaseEntry && (response?.status === "unavailable" || (response?.status === "found" && !month.isCurrent));
   const manualPriceValue = parseLocaleNumber(manualPrice);
   const treasury = !editing && kind === "treasury";
-  // No Tesouro novo, o preço oficial vem sugerido e pode ser trocado pelo seu.
+
   const officialTreasuryPrice =
     treasury && isNewAsset && response?.status === "found" && month.isCurrent ? response.priceBrl : null;
-  const showPriceField = needsManualPrice || officialTreasuryPrice !== null;
+  const showPriceField = !treasury && (needsManualPrice || officialTreasuryPrice !== null);
   const ownTreasuryPrice = officialTreasuryPrice !== null && manualPriceValue !== null && manualPriceValue > 0;
 
-  // Cotação para a prévia do total e para saber se o ativo pode ser salvo.
+
   let price: number | null = null;
   let missingQuoteSymbol: string | null = null;
   let tickerIssue: string | null = null;
@@ -316,14 +345,15 @@ function PositionForm({
   } else if (catalogAsset) {
     price = catalogAsset.quoteSymbol ? quoteOf(catalogAsset.quoteSymbol) : null;
     missingQuoteSymbol = catalogAsset.quoteSymbol && !price ? catalogAsset.quoteSymbol : null;
-  } else if (definition?.ticker === "usd") {
-    price = quoteOf(USD_SYMBOL);
-    missingQuoteSymbol = price ? null : USD_SYMBOL;
+  } else if (definition?.ticker === "usd" || definition?.ticker === "eur") {
+    price = quoteOf(symbol!);
   } else if (definition?.ticker === "market") {
     if (!symbol) {
-      tickerIssue = "Informe um ticker válido.";
+      tickerIssue = "Enter a valid ticker.";
+    } else if (identity && !identity.exposure) {
+      tickerIssue = "This fund cannot be added until its asset class has been identified.";
     } else if (!tickerCheckAllowsSaving(response)) {
-      tickerIssue = check.state === "checking" || check.state === "idle" ? "Aguarde a conferência do ticker." : "Confira o ticker.";
+      tickerIssue = check.state === "checking" || check.state === "idle" ? "Wait for ticker verification." : "Verify the ticker.";
     } else if (response.status === "known" || (response.status === "found" && month.isCurrent)) {
       price = ownTreasuryPrice ? manualPriceValue : response.priceBrl;
     } else if (needsManualPrice) {
@@ -333,21 +363,21 @@ function PositionForm({
 
   const quoted = editing ? Boolean(editing.quoteSymbol) : catalogAsset ? Boolean(catalogAsset.quoteSymbol) : Boolean(definition?.ticker);
   const quoteSymbol = editing ? editing.quoteSymbol : (catalogAsset?.quoteSymbol ?? symbol);
-  const amountMode = treasury && valueKind === "amount";
+  const amountMode = treasury && !purchaseEntry && valueKind === "amount";
   const valueLabel =
     !editing && !kind
-      ? "Quantidade ou saldo"
+      ? "Quantity or balance"
       : amountMode
-        ? "Valor da posição (R$)"
+        ? "Position value (BRL)"
         : treasury
-          ? "Quantidade de títulos"
-          : quoteSymbol === USD_SYMBOL
-            ? "Saldo (US$)"
+          ? "Number of securities"
+          : quoteSymbol === USD_SYMBOL || quoteSymbol === "EUR"
+            ? `Balance (${quoteSymbol})`
             : quoted
-              ? "Quantidade"
-              : "Saldo (R$)";
+              ? "Quantity"
+              : "Balance (BRL)";
   const parsedValue = parseLocaleNumber(value);
-  // Valor da posição em reais e, no Tesouro pelo valor, os títulos que ele compra.
+
   const positionTotal =
     parsedValue === null ? null : amountMode ? parsedValue : quoted ? (price === null ? null : parsedValue * price) : parsedValue;
   const impliedQuantity = amountMode && parsedValue !== null && price ? parsedValue / price : null;
@@ -355,7 +385,7 @@ function PositionForm({
     account?.accountId && catalogAsset && occupied.has(`${account.accountId}:${catalogAsset.id}`),
   );
 
-  // Rateio da inclusão: o do ativo existente ou o padrão do tipo.
+
   const derivedRows: AllocationRow[] =
     catalogAsset && catalogAsset.allocations.length > 0
       ? catalogAsset.allocations.map((allocation, index) => ({
@@ -367,12 +397,12 @@ function PositionForm({
           rate: rateText(allocation.ratePercent),
         }))
       : kind
-        ? [{ key: 0, ...defaultAllocation(kind, symbol), weight: "100", rate: "" }]
+        ? (fixedContract ? [fixedIncomeAllocation(fixedContract, appliedOn, maturity)] : kind === "treasury" && selectedTreasury ? [{ assetClass: "Renda Fixa", subclass: /IPCA|Renda|Educa/i.test(selectedTreasury.type) ? "IPCA" : /Selic|Reserva|IGPM/i.test(selectedTreasury.type) ? "Pós-fixado" : "Prefixado", duration: "Longo" }] : editing ? [defaultAllocation(kind, symbol)] : isMarketKind(kind) ? identity ? marketAllocation(identity) : [] : automaticAllocation(kind, symbol)).map((seed, key) => ({ key, ...seed, weight: "100", rate: fixedContract?.rate ?? "" }))
         : [{ key: 0, assetClass: "", subclass: "", duration: "", weight: "100", rate: "" }];
   const allocationRows = rows ?? derivedRows;
   const weightSum = allocationRows.reduce((total, row) => total + (parseLocaleNumber(row.weight) ?? 0), 0);
-  // A classificação vem da lista fixa (spec 068); uma antiga, fora dela, só
-  // continua se a posição editada já a tinha.
+
+
   const knownRow = (row: AllocationRow) =>
     classificationIssue(row) === null ||
     Boolean(
@@ -388,74 +418,91 @@ function PositionForm({
       knownRow(row) &&
       (parseLocaleNumber(row.weight) ?? 0) > 0,
   );
-  const balanced = Math.abs(weightSum - 100) <= 0.01;
+  const balanced = (!editing && allocationRows.length === 0) || Math.abs(weightSum - 100) <= 0.01;
 
-  const changeRows = (change: (current: AllocationRow[]) => AllocationRow[]) => setRows(change(allocationRows));
-  // Classe, subclasse e resgate dependem uns dos outros: trocar a classe limpa
-  // o que não vale nela e já escolhe a única opção, quando há só uma.
-  const updateRow = (key: number, field: keyof Omit<AllocationRow, "key">, text: string) =>
-    changeRows((current) =>
-      current.map((row) => {
-        if (row.key !== key) return row;
-        const changed = { ...row, [field]: text };
-        const next = field === "assetClass" ? { ...changed, ...fitClassification(changed) } : changed;
-        // Outro indexador, outra taxa: o % do CDI não vale como % ao ano.
-        return indexerOfSubclass(next.subclass) === indexerOfSubclass(row.subclass) ? next : { ...next, rate: "" };
-      }),
-    );
 
-  // Rentabilidade por classificação (spec 079): cada classificação Pós-fixado
-  // ou Prefixado de uma renda fixa ou caixa em reais tem a sua.
   const incomeType = editing ? (editing.quoteSymbol ? null : editing.assetType) : isNewAsset ? kind : null;
   const rowIndexer = (row: AllocationRow): AutoIncomeIndexer | null =>
     supportsAutoIncome(incomeType) ? indexerOfSubclass(row.subclass) : null;
   const incomeAvailable = allocationRows.some((row) => rowIndexer(row) !== null);
-  const wantsAutoIncome = incomeAvailable && autoIncome;
+  const wantsAutoIncome = incomeAvailable && (fixedIncomeEntry || autoIncome);
   const rowRate = (row: AllocationRow) => (rowIndexer(row) && row.rate.trim() ? row.rate.trim() : null);
 
   const issues: Issue[] = [];
+  const tradeDateLabel = kind === "treasury" ? "Purchase date" : "Trade date";
+  const treasuryRate = normalizeLocaleNumberInput(contractedRate);
+  const treasuryRateValid = treasuryRate !== null && /^-?\d+(?:\.\d{1,8})?$/.test(treasuryRate) && Number(treasuryRate) > -100 && Number(treasuryRate) <= 1000;
+  const treasuryQuantityValid = parsedValue !== null && Math.abs(parsedValue * 100 - Math.round(parsedValue * 100)) < 1e-7;
+  const validTradeDate = Boolean(purchaseDate) && purchaseDate <= latestPurchaseDay;
+  const validMaturity = Boolean(maturity) && maturity > latestPurchaseDay && maturity > appliedOn;
+  const validFixedRate = brazilianFixedIncomeSchema.shape.rate.safeParse(normalizeLocaleNumberInput(fiRate) ?? "").success &&
+    (fiIndexer === "CDI" || (parseLocaleNumber(fiRate) ?? Infinity) <= 100);
+  let tradeAmountIssue: string | null = null;
+  if (purchaseEntry && parsedValue !== null && parsedValue > 0 && purchaseUnit !== null && purchaseUnit > 0 && purchaseFee !== null && purchaseFee >= 0) {
+    const quantity = normalizeLocaleNumberInput(value)!;
+    const enteredPrice = normalizeLocaleNumberInput(purchasePrice)!;
+    try {
+      if (kind === "treasury") {
+        purchaseCost(quantity, treasuryUnitPriceFromTotal(enteredPrice, quantity), "0", 1, "BUY", enteredPrice);
+      } else {
+        purchaseCost(quantity, enteredPrice, normalizeLocaleNumberInput(commission)!, 1, side);
+      }
+    } catch (error) {
+      tradeAmountIssue = error instanceof Error ? error.message : "Review the trade amounts.";
+      issues.push({ tab: "ativo", message: tradeAmountIssue });
+    }
+  }
 
+  if (fixedIncomeEntry && maturity && !validMaturity) issues.push({ tab: "ativo", message: "Choose a maturity date in the future." });
+  if (purchaseEntry && !validTradeDate) issues.push({ tab: "ativo", message: "Choose a transaction date on or before today." });
+
+  const fixedQuantityValid = Boolean(fixedContract?.purchaseQuantity) && brazilianFixedIncomeSchema.shape.purchaseQuantity.safeParse(fixedContract?.purchaseQuantity).success;
+  if (fixedIncomeEntry && !fixedQuantityValid) issues.push({ tab: "ativo", message: "Enter a positive quantity with up to eight decimal places." });
+  if (fixedIncomeEntry && (!fiIssuer.trim() || fiIssuer.trim().length > 40 || !appliedOn || !maturity || maturity <= appliedOn || appliedOn > latestPurchaseDay || !validFixedRate || !brazilianFixedIncomeSchema.safeParse({ ...fixedContract, purchaseQuantity: undefined }).success || parsedValue === null || parsedValue <= 0)) issues.push({ tab: "ativo", message: "Enter the issuer, invested amount, purchase date, maturity and contracted rate." });
+  if (purchaseEntry && (purchaseUnit === null || purchaseUnit <= 0 || purchaseFee === null || purchaseFee < 0 || !purchaseDate || !tradeCurrency || parsedValue === null || parsedValue <= 0)) {
+    issues.push({ tab: "ativo", message: kind === "treasury" ? "Enter the total invested, a positive quantity and purchase date." : "Enter the execution price, a positive quantity, commission (zero if none) and trade date." });
+  }
+
+  if (purchaseEntry && kind === "treasury" && (!selectedTreasury || !treasuryRateValid || !treasuryQuantityValid)) issues.push({ tab: "ativo", message: "Choose a security, enter the contracted annual rate and use quantities in increments of 0.01." });
+  if (purchaseEntry && side === "SELL" && !catalogAsset) issues.push({ tab: "ativo", message: "You must own this asset before selling it." });
   if (!editing) {
     if (!kind) {
-      issues.push({ tab: "geral", message: "Escolha o tipo do ativo." });
-    }
-    if (!institutionName) {
-      issues.push({ tab: "geral", message: "Escolha a instituição." });
+      issues.push({ tab: "geral", message: "Choose the asset type." });
     }
   }
   if (!typedName) {
-    issues.push({ tab: editing ? "geral" : "ativo", message: "Informe o nome do ativo." });
+    issues.push({ tab: editing ? "geral" : "ativo", message: "Enter the asset name." });
   }
   if (!editing && (parsedValue === null || parsedValue < 0)) {
     issues.push({
       tab: "ativo",
-      message: !editing && !kind ? "Informe a quantidade ou o saldo." : quoted && quoteSymbol !== USD_SYMBOL ? "Informe a quantidade." : "Informe o saldo.",
+      message: !editing && !kind ? "Enter the quantity or balance." : quoted && quoteSymbol !== USD_SYMBOL ? "Enter the quantity." : "Enter the balance.",
     });
   }
-  if (duplicate) {
-    issues.push({ tab: "ativo", message: "Este ativo já tem posição nesta instituição." });
+  if (duplicate && !purchaseEntry) {
+    issues.push({ tab: "ativo", message: "This asset already has a position in your portfolio." });
   }
   if (!editing && kind) {
     if (tickerIssue && !catalogAsset) {
       issues.push({ tab: "ativo", message: tickerIssue });
     }
     if (needsManualPrice && (manualPriceValue === null || manualPriceValue <= 0)) {
-      issues.push({ tab: "ativo", message: treasury ? "Informe o preço do título em R$." : "Informe a cotação em R$." });
+      issues.push({ tab: "ativo", message: treasury ? "Enter the security price in BRL." : "Enter the quote in BRL." });
     }
     if (officialTreasuryPrice !== null && manualPrice.trim() !== "" && !ownTreasuryPrice) {
-      issues.push({ tab: "ativo", message: "Informe um preço do título válido ou deixe em branco para usar o oficial." });
+      issues.push({ tab: "ativo", message: "Enter a valid security price or leave blank to use the official price." });
     }
-    if (missingQuoteSymbol) {
+    if (missingQuoteSymbol && !purchaseEntry) {
       issues.push({
         tab: "ativo",
-        message: `Não há cotação de ${missingQuoteSymbol} nesta competência. Informe-a na página de cotações antes.`,
+        message: `No quote exists for ${missingQuoteSymbol} in this reporting month. Enter it on the Quotes page first.`,
       });
     }
   }
   if (!rowsComplete) {
-    issues.push({ tab: "rateio", message: "Escolha classe, subclasse e resgate da lista e informe o peso de cada classificação." });
+    issues.push({ tab: "ativo", message: "Choose a class, subclass and redemption term from the list and enter each allocation weight." });
   } else if (!balanced) {
-    issues.push({ tab: "rateio", message: `O rateio soma ${formatWeight(weightSum)}%; precisa somar 100%.` });
+    issues.push({ tab: "ativo", message: `The allocation adds up to ${formatWeight(weightSum)}%; it must total 100%.` });
   }
 
   const badRate = allocationRows.findIndex((row) => {
@@ -464,29 +511,21 @@ function PositionForm({
   });
 
   if (badRate >= 0) {
-    issues.push({ tab: "rateio", message: `Revise a rentabilidade da classificação ${badRate + 1}.` });
+    issues.push({ tab: "ativo", message: `Review the rate of return for classification ${badRate + 1}.` });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowIndexer(row))) {
     issues.push({
-      tab: "rateio",
-      message: "Com o rendimento automático, cada classificação precisa ser pós-fixada ou prefixada.",
+      tab: "ativo",
+      message: "With automatic accrual, every classification must be floating-rate or fixed-rate.",
     });
   } else if (wantsAutoIncome && allocationRows.some((row) => !rowRate(row))) {
-    issues.push({ tab: "rateio", message: "Informe a rentabilidade para calcular o rendimento automaticamente." });
+    issues.push({ tab: "ativo", message: "Enter the rate of return to calculate accrual automatically." });
   }
   if (wantsAutoIncome && !editing && !appliedOn) {
-    issues.push({ tab: "rateio", message: "Informe o dia da aplicação." });
+    issues.push({ tab: "ativo", message: "Enter the investment date." });
   }
 
   const tabsWithIssues = new Set(issues.map((issue) => issue.tab));
-  const flowKeys: TabKey[] = ["geral", "ativo", "rateio", "revisar"];
-  const flowStep = flowKeys.indexOf(tab);
-  const nextStep = () => {
-    const blocking = issues.find((issue) => issue.tab === tab) ?? (tab === "rateio" ? issues[0] : null);
-    if (blocking) { setShowIssues(true); setTab(blocking.tab); return; }
-    setShowIssues(false); setTab(flowKeys[flowStep + 1]);
-  };
-
-  const visibleIssue = showIssues ? (issues.find((issue) => issue.tab === tab) ?? issues[0] ?? null) : null;
+  const visibleIssue = (showIssues || !editing) ? (issues.find((issue) => issue.tab === tab) ?? issues[0] ?? null) : null;
 
   const submit = () => {
     setError(null);
@@ -505,7 +544,7 @@ function PositionForm({
       subclass: row.subclass.trim(),
       duration: row.duration.trim(),
       weightPercent: row.weight.trim().replace(",", "."),
-      ratePercent: rowRate(row),
+      ratePercent: editing ? normalizeLocaleNumberInput(row.rate) : rowRate(row),
     }));
 
     startSaving(async () => {
@@ -520,9 +559,9 @@ function PositionForm({
             allocations,
             asset: {
               name: typedName,
-              liquidity: normalizeLiquidity(liquidity),
               maturityDate,
               ...(assetType ? { assetType } : {}),
+              ...(assetType === "fixed-income" && reviewProduct ? { displayProduct: reviewProduct } : {}),
               ...income,
             },
           },
@@ -531,7 +570,7 @@ function PositionForm({
         result = await addPositionAction({
           monthId: month.id,
           addition: {
-            ...(account.accountId ? { accountId: account.accountId } : { newAccount: account.newAccount }),
+            ...account,
             ...(catalogAsset
               ? { assetId: catalogAsset.id }
               : {
@@ -540,15 +579,16 @@ function PositionForm({
                     kind,
                     ticker: symbol,
                     maturityDate,
-                    liquidity: normalizeLiquidity(liquidity),
                     quoteCheckToken:
                       response?.status === "found" || response?.status === "unavailable" ? response.token : null,
                     manualPriceBrl: needsManualPrice || ownTreasuryPrice ? manualPrice.trim() : null,
                     ...income,
                     ...(wantsAutoIncome ? { appliedOn } : {}),
+                    ...(fixedContract ? { fixedIncomeContract: fixedContract } : {}),
                   },
                 }),
-            value: value.trim(),
+            value: purchaseEntry || fixedIncomeEntry ? normalizeLocaleNumberInput(value) ?? value.trim() : value.trim(),
+            ...(purchaseEntry && tradeCurrency && purchaseUnit !== null && purchaseFee !== null ? { purchase: { side, price: kind === "treasury" ? "1" : normalizeLocaleNumberInput(purchasePrice)!, ...(kind === "treasury" ? { amountInvested: normalizeLocaleNumberInput(purchasePrice)! } : {}), commission: kind === "treasury" ? "0" : normalizeLocaleNumberInput(commission)!, currency: tradeCurrency, occurredOn: purchaseDate, ...(kind === "treasury" ? { contractedRate: normalizeLocaleNumberInput(contractedRate)! } : {}) } } : {}),
             ...(amountMode ? { valueKind: "amount" as const } : {}),
             initialKind,
             strategy: strategy || null,
@@ -562,39 +602,69 @@ function PositionForm({
       if (result.ok) {
         onSaved(result);
       } else {
-        if (!editing && /conferência do ticker .* expirou/i.test(result.message)) {
+        if (!editing && /Ticker verification for .* has expired/i.test(result.message)) {
           check.refresh();
           setTab("ativo");
-          setError("A conferência venceu. Estamos atualizando a cotação; confira os dados e continue. Seu preenchimento foi preservado.");
+          setError("Verification expired. We are refreshing the quote; review the details and continue. Your entries have been preserved.");
         } else setError(result.message);
       }
     });
   };
 
-  const strategyOptions: PickerOption[] = [
-    { value: "", label: "Sem estratégia" },
-    ...catalog.strategies.map((entry) => ({ value: entry, label: entry })),
-  ];
   const market = !editing && definition?.ticker === "market";
-  const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? (kind ? baseCurrencyOf(kind, symbol) : null);
+  const baseCurrency = editing?.baseCurrency ?? catalogAsset?.baseCurrency ?? identity?.currency ?? (kind && !isMarketKind(kind) ? baseCurrencyOf(kind, symbol) : null);
   const canEditMaturity = !treasuryMaturity && kind !== "treasury" && (editing ? allowsMaturityOf(editing) : Boolean(definition?.allowsMaturity));
 
 
+  const fieldFeedback: Record<string, FieldFeedback> = {};
+  const requireField = (label: string, valid: boolean) => { fieldFeedback[label] = { valid }; };
+  requireField("Asset type", Boolean(editing ? assetType : category));
+  if (groupedKind) requireField(kindLabel, Boolean(kind));
+  if (category === "savings") {
+    requireField("Country", Boolean(savingsCountry));
+    if (savingsCountry) requireField("Savings Product", Boolean(savingsProduct));
+  }
+  if (editing) requireField("Asset name", Boolean(typedName));
+  if (!editing && kind && !delegatedEntry) {
+    if (fixedIncomeEntry) {
+      requireField("Issuer", Boolean(fiIssuer.trim()) && fiIssuer.trim().length <= 40);
+      requireField("Quantity Purchased", fixedQuantityValid);
+      requireField("Amount invested", parsedValue !== null && parsedValue > 0);
+      requireField("Purchase date", Boolean(appliedOn) && appliedOn <= latestPurchaseDay);
+      requireField("Maturity date", validMaturity);
+      requireField(fiIndexer === "CDI" ? "Percentage of CDI" : fiIndexer === "IPCA" ? "Annual yield above IPCA" : "Annual yield", validFixedRate);
+    } else if (purchaseEntry) {
+      requireField(kind === "treasury" ? "Tesouro Direto security" : "Ticker", Boolean(symbol) && !tickerIssue);
+      requireField(kind === "treasury" ? "Titles Purchased" : "Quantity", parsedValue !== null && parsedValue > 0 && (kind !== "treasury" || treasuryQuantityValid));
+      requireField(kind === "treasury" ? "Total Invested" : side === "SELL" ? "Sale price" : "Purchase price", purchaseUnit !== null && purchaseUnit > 0);
+      requireField(tradeDateLabel, validTradeDate);
+      if (kind === "treasury") requireField(treasuryYieldLabel(selectedTreasury?.indexer), treasuryRateValid);
+      else requireField("Commission", purchaseFee !== null && purchaseFee >= 0);
+      if (needsManualPrice) requireField("Quote in BRL", manualPriceValue !== null && manualPriceValue > 0);
+    } else {
+      requireField("Asset name", Boolean(typedName));
+      requireField(valueLabel, parsedValue !== null && parsedValue >= 0);
+    }
+  }
+  const remainingFields = Object.entries(fieldFeedback).filter(([, state]) => !state.valid).map(([label]) => label);
+  const activeIssues = delegatedEntry ? bondIssues : remainingFields;
+  const ready = delegatedEntry ? bondIssues.length === 0 : issues.length === 0;
+
   return (
-    <>
+    <FieldFeedbackProvider fields={fieldFeedback}>
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {editing ? `Editar ${editing.assetName}` : "Adicionar posição"}
+            {editing ? `Edit ${editing.assetName}` : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {editing
-              ? `${editing.institutionName} · ${month.label}`
-              : `${month.label} · preencha cada etapa e confira antes de salvar.`}
+              ? englishLabel(month.label)
+              : `${englishLabel(month.label)} · enter the position details and save.`}
           </Dialog.Description>
         </div>
         <Dialog.Close
-          aria-label="Fechar"
+          aria-label="Close"
           className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <XIcon aria-hidden="true" size={14} weight="bold" />
@@ -603,7 +673,7 @@ function PositionForm({
 
       <Tabs.Root value={tab} onValueChange={(next) => setTab(next as TabKey)} className="flex min-h-0 flex-1 flex-col">
         {editing ? <Tabs.List
-          aria-label="Seções da posição"
+          aria-label="Position sections"
           className="relative mx-5 mt-4 grid shrink-0 grid-cols-3 rounded-xl border border-border bg-background/40 p-1 sm:mx-6"
         >
           <Tabs.Indicator className="absolute top-1 bottom-1 left-[var(--active-tab-left)] w-[var(--active-tab-width)] rounded-lg bg-white/[0.07] transition-[left,width] duration-200 ease-out" />
@@ -615,125 +685,134 @@ function PositionForm({
                 key={entry.key}
                 value={entry.key}
                 disabled={locked}
-                title={locked ? "Escolha o tipo do ativo na aba Geral para liberar." : undefined}
+                title={locked ? "Choose the asset type in the General tab to enable this." : undefined}
                 data-locked={locked ? "" : undefined}
                 className="relative z-10 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-active:text-foreground data-disabled:cursor-not-allowed data-disabled:text-muted-foreground/50 data-disabled:hover:text-muted-foreground/50"
               >
                 {locked ? (
                   <LockSimpleIcon aria-hidden="true" size={12} weight="bold" className="shrink-0" />
                 ) : null}
-                {entry.label}
-                {entry.key === "rateio" && !locked ? (
-                  <span
-                    className={cn(
-                      "font-mono text-[10px]",
-                      balanced && rowsComplete ? "text-muted-foreground" : "text-warning-foreground",
-                    )}
-                  >
-                    {formatWeight(weightSum)}%
-                  </span>
-                ) : null}
+                {englishLabel(entry.label)}
                 {showIssues && !locked && tabsWithIssues.has(entry.key) ? (
-                  <span aria-label="com pendências" className="size-1.5 rounded-full bg-warning-foreground" />
+                  <span aria-label="with pending items" className="size-1.5 rounded-full bg-warning-foreground" />
                 ) : null}
               </Tabs.Tab>
             );
           })}
-        </Tabs.List> : <FlowSteps steps={["Posição", "Ativo", "Rateio", "Conferir"]} current={flowStep} />}
+        </Tabs.List> : null}
 
         {!editing && catalogAsset ? (
           <div className="mx-5 mt-3 sm:mx-6" data-asset-existing="">
             <StatusLine tone="success">
-              {`${catalogAsset.name} já existe: a posição usa este ativo e o rateio da posição mais recente dele.`}
+              {"Existing asset found. Its saved classification will be used."}
             </StatusLine>
           </div>
         ) : null}
 
-        {/* Altura mínima: trocar de aba não faz o diálogo pular de tamanho. */}
+
         <div className="min-h-[min(19rem,40dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
-          <Tabs.Panel value="geral" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Identifique sua posição" description="Escolha onde ela está e como você quer identificá-la." /> : null}
+          <PositionSection single={!editing} value="geral" className="space-y-4 outline-none">
             {editing ? (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Tipo do ativo">
+              <div className="grid gap-3">
+                <Field label="Asset type">
                   <Picker
-                    aria-label="Tipo do ativo"
-                    options={ASSET_TYPES.map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
+                    aria-label="Asset type"
+                    options={ASSET_TYPES.filter((entry) => !["brl-cash", "usd-balance", "eur-balance"].includes(entry) || entry === editing.assetType).map((entry) => ({ value: entry, label: ASSET_TYPE_LABELS[entry] }))}
                     value={assetType}
-                    onValueChange={(next) => setAssetType(next as AssetType)}
+                    onValueChange={(next) => { setAssetType(next as AssetType); setReviewProduct(null); }}
                   />
                 </Field>
-                <ReadOnly label="Instituição" value={editing.institutionName} />
+                {assetType === "fixed-income" ? <Field label="Product"><Picker aria-label="Debt product" value={reviewProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={setReviewProduct} placeholder="Select the product from your statement" /></Field> : null}
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Tipo do ativo">
+              <div className="grid gap-3">
+                <Field label={"Asset type"}>
                   <Picker
-                    aria-label="Tipo do ativo"
-                    options={ASSET_KINDS.map((entry) => ({
-                      value: entry,
-                      label: ASSET_KIND_DEFINITIONS[entry].label,
-                      hint: ASSET_KIND_DEFINITIONS[entry].hint,
-                    }))}
-                    value={kind}
-                    onValueChange={chooseKind}
-                    placeholder="Escolha o tipo"
+                    aria-label={"Asset type"}
+                    options={[...POSITION_CATEGORIES]}
+                    value={category}
+                    onValueChange={(value) => {
+                      const next = value as PositionCategory;
+                      if (category === next) return;
+                      setCategory(next);
+                      setSavingsCountry(null);
+                      setSavingsProductId(null);
+                      chooseKind(next === "crypto" || next === "treasury" ? next : null);
+                    }}
+                    placeholder="Choose the type"
                   />
                 </Field>
-                <Field label="Instituição">
-                  <Picker
-                    aria-label="Instituição"
-                    options={institutionOptions}
-                    value={institutionValue}
-                    onValueChange={setInstitutionValue}
-                    onCreate={createInstitution}
-                    placeholder="Selecione ou digite"
-                    emptyMessage="Digite para criar uma instituição"
-                  />
-                </Field>
+                {groupedKind ? (
+                  <Field label={kindLabel}>
+                    <Picker aria-label={kindLabel} options={CATEGORY_KINDS[category].map(kindOption)}
+                      value={kind} onValueChange={value => chooseKind(value as AssetKind)} placeholder={`Choose the ${kindLabel.toLowerCase()}`} />
+                  </Field>
+                ) : null}
+                {category === "savings" ? (
+                  <Field label="Country">
+                    <Picker aria-label="Country" options={SAVINGS_COUNTRIES} value={savingsCountry} placeholder="Choose the country"
+                      onValueChange={country => {
+                        if (country === savingsCountry) return;
+                        setSavingsCountry(country);
+                        setSavingsProductId(null);
+                        chooseKind(null);
+                      }} />
+                  </Field>
+                ) : null}
+                {category === "savings" && savingsCountry ? (
+                  <Field label="Savings Product">
+                    <Picker aria-label="Savings Product"
+                      options={SAVINGS_PRODUCTS.filter(product => product.country === savingsCountry).map(({ value, label, currency }) => ({ value, label, hint: currency }))}
+                      value={savingsProductId} placeholder="Choose the savings product" onValueChange={value => {
+                        if (value === savingsProductId) return;
+                        setBondIssues(["Savings details"]);
+                        setSavingsProductId(value);
+                        chooseKind("savings");
+                      }} />
+                  </Field>
+                ) : null}
+
               </div>
             )}
 
             {editing ? <>
-            <Field label="Nome do ativo">
+            <Field label="Asset name">
               <input
-                aria-label="Nome do ativo"
+                aria-label="Asset name"
                 value={assetName}
                 onChange={(event) => setAssetName(event.target.value)}
                 autoComplete="off"
-                placeholder={market ? "Como ETF - VOO" : "Como CDB Banco X 110%"}
+                placeholder={market ? "For example, ETF - VOO" : "For example, Bank X CDB 110%"}
                 className={inputClass}
               />
             </Field>
             {editing ? (
-              <p className="-mt-1.5 text-[11px] text-muted-foreground">Tipo e nome são do ativo e valem para todos os meses.</p>
+              <p className="-mt-1.5 text-[11px] text-muted-foreground">The asset type and name apply to every month.</p>
             ) : null}
 
             </> : null}
             <div className="grid grid-cols-2 gap-3">
               {editing ? <ReadOnly label={valueLabel} value={value} mono /> : null}
-              <Field label="Estratégia">
-                <Picker aria-label="Estratégia" options={strategyOptions} value={strategy} onValueChange={setStrategy} />
-              </Field>
+
             </div>
-            {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Para mudar a quantidade ou o saldo, use Movimentar.</p> : null}
+            {editing ? <p className="-mt-1.5 text-[11px] text-muted-foreground" data-testid="position-form-value-hint">Use Transactions to change the quantity or balance.</p> : null}
 
-          </Tabs.Panel>
+          </PositionSection>
 
-          <Tabs.Panel value="ativo" className="space-y-4 outline-none">
-            {!editing ? <FlowHeading title="Informe o ativo e o saldo atual" description="A cotação é conferida automaticamente. Depois, informe a quantidade ou o saldo desta posição." /> : null}
+          {savingsEntry && savingsProduct ? <SavingsForm key={savingsProduct.value} currency={savingsProduct.currency} defaultName={savingsProduct.label} formId={bondFormId} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : bondEntry ? <InternationalBondForm formId={bondFormId} month={month} account={account} onSaved={onSaved} onPendingChange={setBondSaving} onValidationChange={setBondIssues} /> : <>
+          <PositionSection single={!editing} value="ativo" className="space-y-4 outline-none">
+            {!editing ? <SectionHeading title={fixedIncomeEntry ? "Investment details" : kind === "treasury" ? "Purchase details" : purchaseEntry ? "Trade details" : "Enter the asset and current balance"} description={fixedIncomeEntry || kind === "treasury" ? null : purchaseEntry ? "Record a buy or sell. Commission is included in your gains." : "The quote is verified automatically. Then enter the quantity or balance for this position."} /> : null}
             {!editing && !kind ? (
-              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">
-                Escolha o tipo do ativo na aba Geral.
+              <p className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-xs text-muted-foreground">{category ? "Complete the selection above." : "Choose the asset type above."}
               </p>
             ) : (
               <>
                 {editing ? (
                   <div className="grid grid-cols-2 gap-3">
-                    <ReadOnly label="Ticker" value={editing.ticker ?? "Sem ticker · saldo"} mono />
-                    <ReadOnly label="Moeda base" value={editing.baseCurrency} mono />
+                    <ReadOnly label="Ticker" value={editing.ticker ?? "No ticker · balance"} mono />
+                    <ReadOnly label="Base currency" value={editing.baseCurrency} mono />
                     {editing.unitPriceBrl !== null ? (
-                      <ReadOnly label={`Cotação de ${month.label}`} value={formatPriceBrl(editing.unitPriceBrl)} mono />
+                      <ReadOnly label={`Quote for ${englishLabel(month.label)}`} value={formatPriceBrl(editing.unitPriceBrl)} mono />
                     ) : null}
                   </div>
                 ) : null}
@@ -741,11 +820,13 @@ function PositionForm({
                 {market && kind ? (
                   <>
                     {kind === "treasury" ? (
-                      <Field label="Título do Tesouro">
+                      <Field label="Tesouro Direto security">
                         <TreasuryPicker value={symbol} onSelect={(bond) => {
+                          setSelectedTreasury(bond); setCommission("0");
+                          setPurchasePrice(""); setContractedRate(""); setValue("");
                           setTickerText(bond.symbol);
                           setMaturity(bond.maturityDate);
-                          if (!assetName.trim()) setAssetName(bond.name);
+                          setAssetName(bond.name);
                         }} />
                       </Field>
                     ) : <Field label="Ticker">
@@ -756,22 +837,35 @@ function PositionForm({
                         autoCapitalize="characters"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder={kind === "crypto" ? "ETH" : kind.startsWith("br") ? "GPCA11" : "VOO"}
+                        placeholder={kind === "crypto" ? "ETH" : kind === "eu-market" ? "UETW" : kind.startsWith("br") ? "GPCA11" : "VOO"}
                         className={cn(inputClass, "font-mono uppercase")}
                       />
                     </Field>}
                     <TickerStatus
                       kind={kind}
                       text={tickerText}
-                      symbol={symbol}
+                      symbol={kind === "eu-market" ? tickerText.trim() || null : symbol}
                       check={check}
                       monthLabel={month.label}
                       isCurrent={month.isCurrent}
                     />
+                    {purchaseEntry && kind !== "treasury" && response?.status === "found" && tradeCurrency && priceNative !== null ? <p className="font-mono text-sm text-muted-foreground">Market price {formatCurrency(priceNative, tradeCurrency, false, kind === "crypto" ? 8 : 2)}</p> : null}
+                    {response?.status === "matches" ? <Field label="Matching listings">
+                      <div className="space-y-2" aria-label="Matching European listings">
+                        {response.listings.map((listing) => <button key={listing.symbol} type="button"
+                          aria-label={`${listing.symbol} · ${listing.exchange} · ${listing.currency ?? "Currency unavailable"} · ${listing.name}`}
+                          disabled={!listing.currency || !["EUR", "USD", "BRL"].includes(listing.currency)}
+                          className="w-full rounded-xl border border-border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => setTickerText(listing.symbol)}>
+                          <span className="block font-semibold">{listing.symbol} · {listing.exchange} · {listing.currency ?? "Currency unavailable"}</span>
+                          <span className="block text-sm text-muted-foreground">{listing.name}</span>
+                        </button>)}
+                      </div>
+                    </Field> : null}
                     {coins && coins.length > 1 && symbol ? (
-                      <Field label={`Moeda · ${coins.length} com o símbolo ${symbol}`}>
+                      <Field label={`Currency · ${coins.length} with symbol ${symbol}`}>
                         <Picker
-                          aria-label="Moeda na CoinGecko"
+                          aria-label="CoinGecko coin"
                           options={coins.map((coin) => ({ value: coin.id, label: coin.name, hint: coin.id }))}
                           value={chosenCoinId ?? checkedCoinId ?? coins[0].id}
                           onValueChange={(id) => setCoinChoice({ symbol, id })}
@@ -780,9 +874,9 @@ function PositionForm({
                     ) : null}
                     {showPriceField ? (
                       <div className="space-y-1.5">
-                        <Field label={treasury ? "Preço do título (R$)" : "Cotação em R$"}>
+                        <Field label={treasury ? "Security price (BRL)" : "Quote in BRL"}>
                           <input
-                            aria-label={treasury ? "Preço do título" : "Cotação em R$"}
+                            aria-label={treasury ? "Security price" : "Quote in BRL"}
                             inputMode="decimal"
                             value={manualPrice}
                             onChange={(event) => setManualPrice(event.target.value)}
@@ -797,8 +891,8 @@ function PositionForm({
                         {officialTreasuryPrice !== null ? (
                           <p className="text-[11px] leading-5 text-muted-foreground" data-testid="treasury-price-hint">
                             {ownTreasuryPrice
-                              ? `Vale o seu preço, só para você neste mês. O oficial é ${formatPriceBrl(officialTreasuryPrice)}.`
-                              : `Preço oficial: ${formatPriceBrl(officialTreasuryPrice)}. Deixe em branco para usá-lo ou digite o seu.`}
+                              ? `Your price applies only to your portfolio this month. The official price is ${formatPriceBrl(officialTreasuryPrice)}.`
+                              : `Official price: ${formatPriceBrl(officialTreasuryPrice)}. Leave blank to use it or enter your own price.`}
                           </p>
                         ) : null}
                       </div>
@@ -806,38 +900,97 @@ function PositionForm({
                   </>
                 ) : null}
 
-                {!editing ? <Field label="Nome do ativo"><input aria-label="Nome do ativo" value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={market ? "Como ETF - VOO" : "Como CDB Banco X"} className={inputClass} /></Field> : null}
+                {!editing && !automaticName && !fixedIncomeEntry ? <Field label={"Asset name"}><input aria-label={"Asset name"} value={assetName} onChange={(event) => setAssetName(event.target.value)} autoComplete="off" placeholder={"For example, Bank X CDB"} className={inputClass} /></Field> : null}
+                {!editing && kind && !fixedIncomeEntry && (identity || automaticName && typedName) ? <div aria-label="Identified asset" className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+                  {typedName ? <p className="font-medium">{typedName.replace(/^ETF\s*[-–:]\s*/i, "")}</p> : null}
+                  <p className="mt-1 text-sm text-muted-foreground">{[...new Set([productType(identity?.assetType ?? kind, identity?.exposure === "real-estate" && kind === "br-market" ? "FII" : identity?.instrumentType, null, null, allocationRows[0]?.subclass), ...new Set(allocationRows.map(row => englishLabel(row.assetClass)))])].filter(value => Boolean(value) && value.toLowerCase() !== typedName.replace(/^ETF\s*[-–:]\s*/i, "").toLowerCase()).join(" · ")}</p>
+                </div> : null}
+                {identity && !identity.exposure ? <p role="alert" className="text-sm text-destructive">This fund cannot be added until its asset class has been identified.</p> : null}
+                {fixedIncomeEntry ? <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Product"><Picker aria-label="Fixed-income product" searchable={false} value={fiProduct} options={LEGACY_DEBT_PRODUCTS.map((value) => ({ value, label: value }))} onValueChange={(value) => setFiProduct(value as typeof fiProduct)} /></Field>
+                    <Field label="Issuer"><input aria-label="Issuer" value={fiIssuer} onChange={(event) => setFiIssuer(event.target.value)} maxLength={40} placeholder="Itaú" className={inputClass} /></Field>
+                    <Field label="Quantity Purchased"><input aria-label="Quantity Purchased" inputMode="decimal" value={fiQuantity} onChange={(event) => setFiQuantity(event.target.value)} className={inputClass} /></Field>
+                    <Field label={"Amount invested (BRL)"}><input aria-label={"Amount invested"} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
+                    <Field label={"Purchase date"}><DatePicker aria-label={"Purchase date"} value={appliedOn} onChange={setAppliedOn} max={latestPurchaseDay} /></Field>
+                    <Field label="Maturity date"><DatePicker aria-label="Maturity date" value={maturity} onChange={setMaturity} min={firstFutureDay} /></Field>
+                    <Field label="Return type"><Picker aria-label="Return type" searchable={false} value={fiIndexer} options={[{ value: "CDI", label: "Floating Rate · CDI" }, { value: "PRE", label: "Fixed Rate" }, { value: "IPCA", label: "Inflation Linked · IPCA+" }]} onValueChange={(value) => { setFiIndexer(value as typeof fiIndexer); setFiRate(""); }} /></Field>
+                    <Field label={fiIndexer === "CDI" ? "Percentage of CDI (%)" : fiIndexer === "IPCA" ? "Annual yield above IPCA (%)" : "Annual yield (%)"}><input aria-label="Contracted rate" inputMode="decimal" value={fiRate} onChange={(event) => setFiRate(event.target.value)} placeholder={fiIndexer === "CDI" ? "105" : fiIndexer === "IPCA" ? "6.50" : "12.50"} className={inputClass} /></Field>
+
+                  </div>
+
+                </> : null}
+                {purchaseEntry ? <>
+                  {kind !== "treasury" ? <div role="group" aria-label="Trade side" className="flex gap-2">
+                    {(["BUY", "SELL"] as const).map((next) => <Button key={next} type="button" variant={side === next ? "default" : "outline"} aria-pressed={side === next} onClick={() => setSide(next)}>{next === "BUY" ? "Buy" : "Sell"}</Button>)}
+                  </div> : null}
+                  {kind === "treasury" ? <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Purchase date"><DatePicker aria-label="Purchase date" value={purchaseDate} onChange={(day) => { if (day === purchaseDate) return; setPurchaseDate(day); setContractedRate(""); }} max={latestPurchaseDay} /></Field>
+                      <Field label="Titles Purchased"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
+                      <Field label="Total Invested (BRL)"><input aria-label="Total invested" inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="10000.00" className={inputClass} /></Field>
+                      <Field label={treasuryYieldLabel(selectedTreasury?.indexer)}><input aria-label="Contracted annual rate" inputMode="decimal" value={contractedRate} onChange={(event) => setContractedRate(event.target.value)} placeholder="7.23" className={inputClass} /></Field>
+                    </div>
+                  </> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label={`${side === "SELL" ? "Sale" : "Purchase"} price (${tradeCurrency ?? "…"})`}><input aria-label={side === "SELL" ? "Sale price" : "Purchase price"} inputMode="decimal" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} placeholder="0.00" className={inputClass} /></Field>
+                    <Field label="Quantity"><input aria-label="Quantity" inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} placeholder="10.60" className={inputClass} /></Field>
+                    <Field label={`Commission (${tradeCurrency ?? "…"})`}><input aria-label="Commission" inputMode="decimal" value={commission} onChange={(event) => setCommission(event.target.value)} className={inputClass} /></Field>
+                    <Field label="Trade date"><DatePicker aria-label="Trade date" value={purchaseDate} onChange={setPurchaseDate} max={latestPurchaseDay} /></Field>
+                  </div>}
+                </> : null}
+                {kind === "treasury" ? <>
+                  {selectedTreasury ? <details className="rounded-xl border border-border p-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Security details</summary><div className="mt-3 flex flex-col gap-4">
+                    <ReadOnly label="Purchase price at quote date" value={selectedTreasury.purchasePrice ? formatPriceBrl(selectedTreasury.purchasePrice) : "Unavailable"} />
+                    <ReadOnly label="Gross redemption price at quote date" value={formatPriceBrl(selectedTreasury.valueBrl)} />
+                    <ReadOnly label="Annual rate at quote date" value={selectedTreasury.offered === false ? "No longer offered for purchase" : `${treasuryIndexerLabel(selectedTreasury.indexer)} ${selectedTreasury.purchaseRate ?? "—"}%`} />
+                    {selectedTreasury.paymentType === "M" ? <ReadOnly label="Income starts" value={String(selectedTreasury.targetYear)} /> : null}
+                    <ReadOnly label="Final payment date" value={selectedTreasury.maturityDate.split("-").reverse().join("/")} />
+                    {selectedTreasury.isin ? <ReadOnly label="ISIN" value={selectedTreasury.isin} mono /> : null}
+                    <ReadOnly label="Quote date" value={selectedTreasury.quoteDate.split("-").reverse().join("/")} />
+                  </div></details> : null}
+                </> : null}
+
+                {purchaseEntry && kind !== "crypto" && identity ? <details key={verificationEpoch} className="rounded-xl border border-border p-3 text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">Details</summary>
+                  <div className="mt-3 flex flex-col gap-4">
+                    {identity ? <>
+                      <ReadOnly label="Exchange" value={`${identity.exchange} · ${identity.currency}`} />
+                      {identity.isin ? <ReadOnly label="ISIN" value={identity.isin} mono /> : null}
+                      {identity.source.startsWith("https://") ? <a href={identity.source} target="_blank" rel="noreferrer" className="text-xs text-primary underline underline-offset-4">Fund information</a> : null}
+                    </> : null}
+                    {response?.status === "found" ? <p className="text-xs text-muted-foreground">Quote: {response.quoteDate} · {providerLabel(response.provider)}</p> : null}
+                  </div>
+                </details> : null}
                 {!editing ? <div className="space-y-3 border-t border-border/60 pt-4">
-                  {treasury ? (
-                    <Field label="Informar a posição por">
+                  {treasury && !purchaseEntry ? (
+                    <Field label="Enter the position using">
                       <Picker
-                        aria-label="Informar a posição por"
+                        aria-label="Enter the position using"
                         options={[
-                          { value: "quantity", label: "Quantidade de títulos" },
-                          { value: "amount", label: "Valor da posição (R$)", hint: "saldo no banco" },
+                          { value: "quantity", label: "Number of securities" },
+                          { value: "amount", label: "Position value (BRL)", hint: "account balance" },
                         ]}
                         value={valueKind}
                         onValueChange={(next) => setValueKind(next as "quantity" | "amount")}
                       />
                     </Field>
                   ) : null}
-                  <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field>
-                  {impliedQuantity !== null ? (
+                  {!purchaseEntry && !fixedIncomeEntry ? <Field label={valueLabel}><input aria-label={valueLabel} inputMode="decimal" value={value} onChange={(event) => setValue(event.target.value)} className={cn(inputClass, "text-right font-mono")} /></Field> : null}
+                  {purchaseEntry && tradeCurrency && parsedValue !== null && purchaseUnit !== null && purchaseFee !== null ? <p className="font-mono text-sm text-primary" data-testid="purchase-total">{side === "SELL" ? "Net proceeds" : kind === "treasury" ? "Total invested" : "Total cost"} {formatCurrency((parsedValue * purchaseUnit) + (side === "SELL" ? -purchaseFee : purchaseFee), tradeCurrency)} {kind !== "treasury" ? <span className="text-xs text-muted-foreground">{side === "SELL" ? "after commission" : "including commission"}</span> : null}</p> : !purchaseEntry && impliedQuantity !== null ? (
                     <p className="font-mono text-sm text-primary" data-testid="position-form-total">
-                      {formatNumberText(impliedQuantity, 6)} títulos <span className="text-[11px] text-muted-foreground">pelo preço de {formatPriceBrl(price ?? 0)}</span>
+                      {formatNumberText(impliedQuantity, 6)}securities <span className="text-[11px] text-muted-foreground">at a price of {formatPriceBrl(price ?? 0)}</span>
                     </p>
-                  ) : quoted && !amountMode && positionTotal !== null ? (
-                    <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "pelo seu preço" : "pela cotação conferida"}</span></p>
+                  ) : !purchaseEntry && quoted && !amountMode && positionTotal !== null ? (
+                    <p className="font-mono text-sm text-primary" data-testid="position-form-total">{formatBrl(positionTotal)} <span className="text-[11px] text-muted-foreground">{ownTreasuryPrice ? "using your price" : "using the verified quote"}</span></p>
                   ) : null}
                 </div> : null}
-                {!editing && baseCurrency ? <ReadOnly label="Moeda base" value={baseCurrency} mono /> : null}
+                {!editing && !purchaseEntry && !fixedIncomeEntry && baseCurrency ? <ReadOnly label={kind && isMarketKind(kind) ? "Trading currency" : "Base currency"} value={baseCurrency} mono /> : null}
 
-                {/* Na inclusão, o vencimento faz parte da identidade do ativo:
-                    um título de mesmo nome e outro prazo é um ativo novo. */}
-                {canEditMaturity ? (
-                  <Field label="Vencimento (opcional)">
+
+                {canEditMaturity && !fixedIncomeEntry && true ? (
+                  <Field label="Maturity (optional)">
                     <DatePicker
-                      aria-label="Vencimento"
+                      aria-label="Maturity"
                       value={maturity}
                       min="2000-01-01"
                       max="2100-12-31"
@@ -846,164 +999,21 @@ function PositionForm({
                     />
                   </Field>
                 ) : null}
-                {treasuryMaturity ? <ReadOnly label="Vencimento do título" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
+                {treasuryMaturity && !purchaseEntry ? <ReadOnly label="Security maturity" value={treasuryMaturity.split("-").reverse().join("/")} mono /> : null}
 
-                {editing || isNewAsset ? (
-                  <Field label="Liquidez (opcional)">
-                    <LiquidityPicker value={liquidity} onChange={setLiquidity} />
-                  </Field>
-                ) : catalogAsset ? (
-                  <ReadOnly label="Liquidez do ativo" value={catalogAsset.liquidity ?? "Não informada"} />
-                ) : null}
               </>
             )}
-          </Tabs.Panel>
+          </PositionSection>
 
-          <Tabs.Panel value="rateio" className="outline-none">
-            {!editing ? <FlowHeading title="Defina o rateio" description="Confirme a classificação que será usada nas metas da carteira. Os pesos precisam somar 100%." /> : null}
-            {editing ? (
-              <p className="text-[11px] leading-5 text-muted-foreground">
-                Divida a posição entre classificações. A soma dos pesos precisa dar 100%.
-              </p>
-            ) : null}
-            <div className="mt-3 space-y-2.5">
-              {allocationRows.map((row, index) => (
-                <div key={row.key} className="rounded-xl border border-border/70 bg-background/30 p-3" data-allocation-row>
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(row.assetClass) }} />
-                    <span className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
-                      Classificação {index + 1}
-                    </span>
-                    {allocationRows.length > 1 ? (
-                      <button
-                        type="button"
-                        aria-label={`Remover classificação ${index + 1}`}
-                        onClick={() => changeRows((current) => current.filter((entry) => entry.key !== row.key))}
-                        className="ml-auto grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50"
-                      >
-                        <TrashIcon aria-hidden="true" size={13} />
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_88px]">
-                    <Field label="Classe">
-                      <AllocationPicker
-                        label={`Classe da classificação ${index + 1}`}
-                        values={ASSET_CLASSES}
-                        value={row.assetClass}
-                        onChange={(next) => updateRow(row.key, "assetClass", next)}
-                      />
-                    </Field>
-                    <Field label="Subclasse">
-                      <AllocationPicker
-                        label={`Subclasse da classificação ${index + 1}`}
-                        values={subclassesOf(row.assetClass)}
-                        value={row.subclass}
-                        onChange={(next) => updateRow(row.key, "subclass", next)}
-                        placeholder={row.assetClass ? "Escolha" : "Escolha a classe"}
-                        disabled={!row.assetClass}
-                      />
-                    </Field>
-                    <Field label="Resgate">
-                      <RedemptionPicker
-                        label={`Resgate da classificação ${index + 1}`}
-                        values={redemptionsOf(row.assetClass)}
-                        value={row.duration}
-                        onChange={(next) => updateRow(row.key, "duration", next)}
-                        disabled={!row.assetClass}
-                      />
-                    </Field>
-                    <Field label="Peso (%)">
-                      <input
-                        aria-label={`Peso da classificação ${index + 1}`}
-                        inputMode="decimal"
-                        value={row.weight}
-                        onChange={(event) => updateRow(row.key, "weight", event.target.value)}
-                        className={cn(inputClass, "text-right font-mono")}
-                      />
-                    </Field>
-                  </div>
-                  {rowIndexer(row) ? (
-                    <RateField
-                      index={index}
-                      indexer={rowIndexer(row)!}
-                      value={row.rate}
-                      onChange={(next) => updateRow(row.key, "rate", next)}
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                changeRows((current) => [
-                  ...current,
-                  {
-                    key: nextRowKey,
-                    assetClass: "",
-                    subclass: "",
-                    duration: "",
-                    weight: formatWeight(Math.max(100 - weightSum, 0)),
-                    rate: "",
-                  },
-                ]);
-                setNextRowKey((key) => key + 1);
-              }}
-              className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <PlusIcon aria-hidden="true" size={13} weight="bold" />
-              Adicionar classificação
-            </button>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
-              <div
-                className={cn("h-full rounded-full transition-[width] duration-200", balanced ? "bg-primary" : "bg-warning-foreground")}
-                style={{ width: `${Math.min(weightSum, 100)}%` }}
-              />
-            </div>
-            <p
-              aria-live="polite"
-              className={cn("mt-2 text-xs font-medium", balanced ? "text-primary" : "text-warning-foreground")}
-            >
-              Soma: {formatWeight(weightSum)}%
-              {balanced ? "" : weightSum < 100 ? ` · faltam ${formatWeight(100 - weightSum)}%` : ` · sobram ${formatWeight(weightSum - 100)}%`}
-            </p>
-            {incomeAvailable ? (
-              <AutoIncomeToggle
-                automatic={autoIncome}
-                onAutomaticChange={setAutoIncome}
-                appliedOn={editing ? null : appliedOn}
-                onAppliedOnChange={setAppliedOn}
-                month={month}
-              />
-            ) : null}
-          </Tabs.Panel>
-          {!editing ? <Tabs.Panel value="revisar" className="space-y-5 outline-none">
-            <FlowHeading title="Confira sua nova posição" description="Revise os dados e o saldo atual antes de cadastrar. Você pode voltar para fazer ajustes." />
-            <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border/60 pb-5">
-              <ReviewValue label="Ativo" value={typedName} />
-              <ReviewValue label="Instituição" value={institutionName ?? "—"} />
-              <ReviewValue label="Tipo" value={definition?.label ?? "—"} />
-              <ReviewValue label={valueLabel} value={value} mono />
-              {symbol ? <ReviewValue label="Ticker" value={symbol} mono /> : null}
-              {price !== null ? <ReviewValue label={ownTreasuryPrice || (treasury && needsManualPrice) ? "Preço informado" : "Cotação conferida"} value={formatPriceBrl(price)} mono /> : null}
-              {impliedQuantity !== null ? <ReviewValue label="Quantidade de títulos" value={formatNumberText(impliedQuantity, 6)} mono /> : null}
-            </dl>
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Valor da posição</span><strong className="font-mono text-xl font-medium text-primary">{positionTotal !== null ? formatBrl(positionTotal) : "—"}</strong></div>
-            <div className="space-y-2 border-t border-border/60 pt-4 text-xs text-muted-foreground">
-              {allocationRows.map((row) => <p key={row.key} className="flex justify-between gap-3"><span className="min-w-0">{row.assetClass} · {row.subclass} · {row.duration}{rowRate(row) ? ` · ${rowRate(row)}${rowIndexer(row) === "CDI" ? "% do CDI" : "% ao ano"}` : ""}</span><span className="shrink-0 font-mono text-foreground">{row.weight}%</span></p>)}
-              <p>Estratégia: {strategy || "Sem estratégia"}</p>
-              {wantsAutoIncome ? <p>Rendimento automático desde {appliedOn.split("-").reverse().join("/")}</p> : null}
-              {maturityDate ? <p>Vencimento: {maturityDate.split("-").reverse().join("/")}</p> : null}
-            </div>
-          </Tabs.Panel> : null}
+
+
+          </>}
         </div>
       </Tabs.Root>
 
-      {/* A contagem de pendências fica no rodapé para os testes, que rodam
-          sobre os dados reais, saberem se o formulário está pronto sem salvar. */}
+
       <footer
-        data-issue-count={issues.length}
+        data-issue-count={delegatedEntry ? bondIssues.length : issues.length}
         className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 px-5 py-4 sm:px-6"
       >
         <div className="min-w-0 flex-1 basis-56" aria-live="polite">
@@ -1012,33 +1022,44 @@ function PositionForm({
               <XCircleIcon aria-hidden="true" className="mt-px shrink-0" size={13} weight="fill" />
               {error}
             </p>
+          ) : !editing ? (
+            <div className="space-y-1.5" data-testid="position-form-progress">
+              <p className={cn("flex items-center gap-1.5 text-[11px]", ready ? "text-primary" : "text-destructive")}>
+                {ready ? <CheckCircleIcon aria-hidden="true" size={13} weight="fill" /> : <WarningCircleIcon aria-hidden="true" size={13} />}
+                {ready ? "Ready to add" : activeIssues.length ? `${activeIssues.length} required ${activeIssues.length === 1 ? "field" : "fields"} remaining` : tradeAmountIssue ?? visibleIssue?.message ?? "Review the details"}
+              </p>
+            </div>
           ) : visibleIssue ? (
             <p className="flex items-start gap-1.5 text-[11px] leading-snug text-warning-foreground" data-testid="position-form-issue">
               <WarningCircleIcon aria-hidden="true" className="mt-px shrink-0" size={13} weight="fill" />
-              {TABS.find((entry) => entry.key === visibleIssue.tab)?.label}: {visibleIssue.message}
+              {englishLabel(TABS.find((entry) => entry.key === visibleIssue.tab)?.label)}: {visibleIssue.message}
             </p>
           ) : null}
         </div>
         <div className="ml-auto flex gap-2">
-          {editing || flowStep === 0 ? <Dialog.Close className={secondaryButtonClass} disabled={isSaving}>Cancelar</Dialog.Close> : <button type="button" onClick={() => { setTab(flowKeys[flowStep - 1]); setShowIssues(false); }} disabled={isSaving} className={secondaryButtonClass}>Voltar</button>}
-          {!editing && tab !== "revisar" ? <button type="button" onClick={nextStep} className={primaryButtonClass}>Continuar</button> : <button type="button" onClick={submit} disabled={isSaving} className={primaryButtonClass}>
-            {isSaving ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
-            {isSaving ? "Salvando…" : editing ? "Salvar" : "Adicionar posição"}
-          </button>}
+          <Dialog.Close className={secondaryButtonClass} disabled={busy}>Cancel</Dialog.Close>
+          <button type={delegatedEntry ? "submit" : "button"} form={delegatedEntry ? bondFormId : undefined} onClick={delegatedEntry ? undefined : submit} disabled={busy || (!editing && !ready) || Boolean(identity && !identity.exposure)} className={primaryButtonClass}>
+            {busy ? <CircleNotchIcon aria-hidden="true" className="animate-spin" size={14} weight="bold" /> : null}
+            {busy ? "Saving…" : editing ? "Save" : purchaseEntry ? kind === "treasury" ? "Add purchase" : "Record trade" : "Add position"}
+          </button>
         </div>
       </footer>
-    </>
+    </FieldFeedbackProvider>
   );
 }
 
-function ReviewValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="min-w-0"><dt className="text-[10px] tracking-[0.06em] text-muted-foreground uppercase">{label}</dt><dd className={cn("mt-1.5 break-words text-sm leading-5 text-foreground", mono && "font-mono")}>{value}</dd></div>;
+function SectionHeading({ title, description }: { title: string; description: string | null }) {
+  return <div className="mb-4"><h2 className="text-base font-semibold">{title}</h2>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div>;
+}
+
+function PositionSection({ single, value, className, children }: { single: boolean; value: string; className?: string; children: ReactNode }) {
+  return single ? <section className={cn("mb-5", className)}>{children}</section> : <Tabs.Panel value={value} className={className}>{children}</Tabs.Panel>;
 }
 
 function ReadOnly({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{label}</span>
+      <span className="mb-1 block text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
       <p
         className={cn(
           "flex h-9 items-center truncate rounded-lg border border-border/60 bg-white/[0.02] px-2.5 text-xs text-foreground/80",
@@ -1051,46 +1072,19 @@ function ReadOnly({ label, value, mono = false }: { label: string; value: string
   );
 }
 
-/** Saldos sem cotação e saldos em dólar aceitam vencimento (spec 040). */
+
 function allowsMaturityOf(position: Pick<MonthPosition, "quoteSymbol">) {
   return !position.quoteSymbol || position.quoteSymbol === USD_SYMBOL;
 }
 
 function editableValue(position: MonthPosition) {
-  return (position.quoteSymbol ? position.quantityText : position.totalBrl.toFixed(2)).replace(".", ",");
+  return (position.quoteSymbol ? position.quantityText : position.totalBrl.toFixed(2));
 }
 
 function formatWeight(value: number) {
-  return value.toLocaleString("pt-BR", { maximumFractionDigits: 4, useGrouping: false });
+  return value.toLocaleString("en-GB", { maximumFractionDigits: 8, useGrouping: false });
 }
 
-/**
- * Conta da instituição escolhida: a "Principal", ou a primeira; numa
- * instituição sem conta ou nova, uma conta "Principal" criada ao salvar.
- */
-function resolveAccount(
-  institutionValue: string | null,
-  createdInstitution: { key: string; name: string } | null,
-  catalog: EditingCatalog,
-): { accountId: string; newAccount?: undefined } | { accountId?: undefined; newAccount: { institutionId: string | null; institutionName: string | null; name: string } } | null {
-  if (!institutionValue) {
-    return null;
-  }
-
-  if (institutionValue.startsWith(NEW_INSTITUTION)) {
-    return createdInstitution
-      ? { newAccount: { institutionId: null, institutionName: createdInstitution.name, name: DEFAULT_ACCOUNT_NAME } }
-      : null;
-  }
-
-  const accounts = catalog.accounts.filter((account) => account.institutionId === institutionValue);
-  const principal =
-    accounts.find((account) => normalizeKey(account.name) === normalizeKey(DEFAULT_ACCOUNT_NAME)) ?? accounts[0];
-
-  return principal
-    ? { accountId: principal.id }
-    : { newAccount: { institutionId: institutionValue, institutionName: null, name: DEFAULT_ACCOUNT_NAME } };
-}
 
 type TickerCheckState = (
   | { state: "idle" }
@@ -1099,18 +1093,15 @@ type TickerCheckState = (
   | { state: "done"; response: TickerCheckResponse }
 ) & { refresh: () => void };
 
-/**
- * Confere o ticker no provedor do tipo escolhido, meio segundo depois da última
- * tecla. Um texto que mudou cancela a consulta anterior, e só o resultado do
- * texto atual é mostrado.
- */
+
 function useTickerCheck(
   monthId: string,
   kind: AssetKind | null,
   symbol: string | null,
   coinId: string | null,
+  epoch: number,
 ): TickerCheckState {
-  const key = kind && symbol ? `${kind}:${symbol}:${coinId ?? ""}` : null;
+  const key = kind && symbol ? `${epoch}:${kind}:${symbol}:${coinId ?? ""}` : null;
   const [result, setResult] = useState<{ key: string; response: TickerCheckResponse | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -1179,29 +1170,28 @@ function TickerStatus({
   monthLabel: string;
   isCurrent: boolean;
 }) {
-  const provider = providerLabel(ASSET_KIND_DEFINITIONS[kind].provider ?? "provider");
+  const provider = providerLabel(isMarketKind(kind) ? "yahoo" : ASSET_KIND_DEFINITIONS[kind].provider ?? "provider");
   let content: ReactNode;
 
   if (!text.trim()) {
     content = <StatusLine tone="muted">{tickerHint(kind)}</StatusLine>;
+
   } else if (!symbol && ASSET_KIND_DEFINITIONS[kind].provider === "yahoo" && /^[A-Z0-9]{1,4}$/.test(text.trim())) {
-    // Na B3 só o ticker completo é conferido; "PETR" ainda está sendo digitado.
-    content = <StatusLine tone="muted">Digite o ticker completo, como PETR4 ou GPCA11.</StatusLine>;
+
+    content = <StatusLine tone="muted">Enter the complete ticker, such as PETR4 or GPCA11.</StatusLine>;
   } else if (!symbol) {
-    content = <StatusLine tone="error">Ticker inválido para {ASSET_KIND_DEFINITIONS[kind].label}.</StatusLine>;
+    content = <StatusLine tone="error">Invalid ticker for {englishLabel(ASSET_KIND_DEFINITIONS[kind].label)}.</StatusLine>;
   } else if (check.state === "checking" || check.state === "idle") {
-    content = <StatusLine tone="checking">Verificando {symbol} no {provider}…</StatusLine>;
+    content = <StatusLine tone="checking">{kind === "treasury" ? "Verifying security…" : <>Verifying {symbol} with {provider}…</>}</StatusLine>;
   } else if (check.state === "error") {
     content = (
-      <StatusLine tone="warning">
-        Não foi possível conferir o ticker agora.{" "}
+      <StatusLine tone="warning">Could not verify the ticker right now.{" "}
         <button
           type="button"
           onClick={check.retry}
           className="inline-flex items-center gap-1 font-semibold underline-offset-2 outline-none hover:underline focus-visible:underline"
         >
-          <ArrowClockwiseIcon aria-hidden="true" size={11} weight="bold" />
-          Tentar de novo
+          <ArrowClockwiseIcon aria-hidden="true" size={11} weight="bold" />Try again
         </button>
       </StatusLine>
     );
@@ -1209,26 +1199,37 @@ function TickerStatus({
     const response = check.response;
 
     switch (response.status) {
+      case "matches":
+        content = <StatusLine tone="muted">No unambiguous EUR listing was found. Check the trading currency and select your investment.</StatusLine>;
+        break;
       case "found":
+        if (isMarketKind(kind) || kind === "crypto" || kind === "treasury") {
+          content = <StatusLine tone="success">Verified</StatusLine>;
+          break;
+        }
         content = (
           <StatusLine tone="success">
-            {symbol} encontrado{response.name ? ` (${response.name})` : ""} no {providerLabel(response.provider)}:{" "}
-            {formatPriceBrl(response.priceBrl)} hoje.
-            {isCurrent ? null : ` Informe a cotação de ${monthLabel}.`}
+            {symbol} found{response.name ? ` (${response.name})` : ""} on {providerLabel(response.provider)}:{" "}
+            {formatPriceBrl(response.priceBrl)} · {response.quoteDate}.
+            {isCurrent ? null : ` Enter the quote for ${monthLabel}.`}
           </StatusLine>
         );
         break;
       case "known":
+        if (kind === "treasury") {
+          content = <StatusLine tone="success">Verified</StatusLine>;
+          break;
+        }
         content = (
           <StatusLine tone="success">
-            {symbol} já tem cotação nesta competência: {formatPriceBrl(response.priceBrl)}.
+            {symbol}already has a quote in this reporting month: {formatPriceBrl(response.priceBrl)}.
           </StatusLine>
         );
         break;
       case "unavailable":
         content = (
           <StatusLine tone="warning">
-            {providerLabel(response.provider)} indisponível: {response.message} Informe a cotação para salvar.
+            {providerLabel(response.provider)}unavailable: {response.message}Enter a quote to save.
           </StatusLine>
         );
         break;
@@ -1283,105 +1284,19 @@ function StatusLine({
 
 const NUMBER_TEXT_FORMATS = new Map<number, Intl.NumberFormat>();
 
-/** Número em pt-BR sem símbolo de moeda, como sugestão de campo ou quantidade. */
+
 function formatNumberText(value: number, digits = 8) {
   let format = NUMBER_TEXT_FORMATS.get(digits);
 
   if (!format) {
-    format = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: digits });
+    format = new Intl.NumberFormat("en-GB", { minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: digits });
     NUMBER_TEXT_FORMATS.set(digits, format);
   }
 
   return format.format(value);
 }
 
-/** Dia da aplicação sugerido: hoje, dentro da competência; num mês passado, o último dia dele. */
-function defaultAppliedOn(referenceDate: Date) {
-  const first = referenceDate.toISOString().slice(0, 10);
-  const last = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return today < first ? first : today > last ? last : today;
-}
 
-/**
- * Rentabilidade e rendimento automático (spec 079), na aba Rateio: a taxa é
- * opcional, e passa a ser obrigatória com o cálculo ligado. Numa aplicação
- * nova, o dia da aplicação diz desde quando o valor rende, como no banco.
- */
-/**
- * Rentabilidade de uma classificação (spec 079), dentro do cartão dela: % do
- * CDI no pós-fixado, % ao ano no prefixado. Opcional; exigida pelo cálculo
- * automático.
- */
-function RateField({
-  index,
-  indexer,
-  value,
-  onChange,
-}: {
-  index: number;
-  indexer: AutoIncomeIndexer;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3" data-testid="allocation-rate">
-      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Rentabilidade</span>
-      <label className="relative block w-36 shrink-0">
-        <input
-          aria-label={`Rentabilidade da classificação ${index + 1}`}
-          inputMode="decimal"
-          value={value}
-          placeholder={indexer === "CDI" ? "100" : "12,5"}
-          onChange={(event) => onChange(event.target.value)}
-          className={cn(inputClass, "h-8 pr-14 text-right font-mono")}
-        />
-        <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[10px] text-muted-foreground">
-          {indexer === "CDI" ? "% CDI" : "% a.a."}
-        </span>
-      </label>
-    </div>
-  );
-}
-
-/**
- * Rendimento automático da posição (spec 079), numa linha discreta abaixo do
- * rateio; numa inclusão, com o dia da aplicação, desde quando o valor rende.
- */
-function AutoIncomeToggle({
-  automatic,
-  onAutomaticChange,
-  appliedOn,
-  onAppliedOnChange,
-  month,
-}: {
-  automatic: boolean;
-  onAutomaticChange: (value: boolean) => void;
-  appliedOn: string | null;
-  onAppliedOnChange: (value: string) => void;
-  month: PositionFormMonth;
-}) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2" data-testid="auto-income">
-      <label className="flex cursor-pointer items-center gap-2.5 text-xs text-foreground">
-        <input
-          type="checkbox"
-          checked={automatic}
-          onChange={(event) => onAutomaticChange(event.target.checked)}
-          className="size-4 shrink-0 accent-primary"
-        />
-        Calcular rendimento automaticamente
-      </label>
-      {automatic && appliedOn !== null ? (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Aplicado em</span>
-          <div className="w-40">
-            {/* Uma aplicação antiga entra com o valor e o dia originais e rende desde ele, como no banco. */}
-            <DatePicker aria-label="Dia da aplicação" value={appliedOn} min="2000-01-01" max={defaultAppliedOn(month.referenceDate)} onChange={onAppliedOnChange} />
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+function defaultAppliedOn() {
+  return new Date().toISOString().slice(0, 10);
 }

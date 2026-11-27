@@ -1,32 +1,35 @@
 "use client";
+import { VIEW_COLUMNS, POSITION_COLUMNS, DEFAULT_POSITION_COLUMNS, holdingCellText, holdingDisplayValue, holdingMetricDescription, type HoldingColumn, type HoldingView } from "./holding-table-columns";
+import type { HoldingAnalytics } from "../application/get-holdings-analytics";
+import { SavingsMovementButton } from "./savings-movement-dialog";
+import { PortfolioLedgerPanel } from "./portfolio-ledger";
+import type { PortfolioLedger } from "../application/get-portfolio-ledger";
+import { positionTitle, showPositionTicker } from "../presentation/position-display";
+
+import { nativeUnitPrice } from "../presentation/position-display";
+
+/** Investment table and responsive filters. Sort columns and filter using the classifications stored by the position form. */
+
+import { englishLabel } from "@/lib/english-labels";
 
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ArrowsDownUpIcon,
   CaretRightIcon,
-  CopyIcon,
   CurrencyCircleDollarIcon,
-  LockKeyIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   TableIcon,
   XIcon,
 } from "@phosphor-icons/react/dist/ssr";
-import {
-  createColumnHelper,
-  createSortedRowModel,
-  rowSortingFeature,
-  tableFeatures,
-  useTable,
-  type SortingState,
-} from "@tanstack/react-table";
+import type { SortingState } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { parseAsArrayOf, parseAsString, parseAsStringLiteral, useQueryStates } from "nuqs";
-import { Fragment, useCallback, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
+import { parseAsArrayOf, parseAsString, useQueryStates } from "nuqs";
+import { useCallback, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 
 import {
-  cloneLatestMonthAction,
   startPortfolioAction,
   undoChangeAction,
   type EditActionResult,
@@ -37,111 +40,74 @@ import type { MonthPosition, MonthPositions } from "@/modules/portfolio/applicat
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
 import { formatDay } from "@/modules/portfolio/presentation/maturity";
 import {
-  allocationLabel,
-  classesOf,
+  primaryClassOf,
   typeOf,
+  marketOf,
+  normalizeTypeFilter,
   filterOptions,
   filterPositions,
-  groupPositions,
-  hasClassFilter,
-  matchedValueBrl,
-  strategyOf,
   type PositionFilters,
 } from "@/modules/portfolio/presentation/position-filters";
 import {
-  formatBrl,
+  formatCurrency,
   formatMonthCompact,
-  formatPriceBrl,
+  formatUnitPrice,
   formatSharePercent,
 } from "@/modules/portfolio/presentation/portfolio-format";
 import { positionHref } from "@/modules/portfolio/presentation/position-page";
-import { parseMonthParam, toMonthParam } from "@/modules/portfolio/presentation/reference-month";
+import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { headerPrimaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, takeHandedOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { EmptyPortfolio } from "@/modules/portfolio/ui/empty-portfolio";
-import { MaturityBadge } from "@/modules/portfolio/ui/maturity-badge";
 import { MultiSelectFilter } from "@/modules/portfolio/ui/multi-select-filter";
 import { PositionsFilterSheet, type FilterGroup } from "@/modules/portfolio/ui/positions-filter-sheet";
 import { PositionFormDialog, type PositionFormTarget } from "@/modules/portfolio/ui/position-form-dialog";
 
 const QUICK_CLASSES = ["Caixa", "Cripto", "Renda Fixa", "Renda Variável", "Reserva"];
-const GROUP_OPTIONS = ["instituicao", "classe", "tipo"] as const;
-const GROUP_LABELS: Record<(typeof GROUP_OPTIONS)[number], string> = {
-  instituicao: "Instituição",
-  classe: "Classe",
-  tipo: "Tipo",
-};
 const list = parseAsArrayOf(parseAsString).withDefault([]);
-
-const features = tableFeatures({
-  rowSortingFeature,
-  sortedRowModel: createSortedRowModel(),
-});
-const helper = createColumnHelper<typeof features, MonthPosition>();
 
 type ColumnMeta = { align: "left" | "right"; calculated: boolean; hide: string };
 
-// Cotação, moeda e liquidez saíram da tabela para compactá-la (spec 044); ficam
-// na linha expandida e nos filtros.
+
 const COLUMN_META: Record<string, ColumnMeta> = {
   assetName: { align: "left", calculated: false, hide: "" },
-  institutionName: { align: "left", calculated: false, hide: "hidden sm:table-cell" },
-  // O tipo ganha coluna só em telas largas; nas demais, fica sob o nome do ativo.
-  assetType: { align: "left", calculated: false, hide: "hidden 2xl:table-cell" },
-  strategy: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
-  classes: { align: "left", calculated: false, hide: "hidden lg:table-cell" },
+
   maturityDate: { align: "left", calculated: false, hide: "hidden xl:table-cell" },
   quantity: { align: "right", calculated: false, hide: "hidden md:table-cell" },
   totalBrl: { align: "right", calculated: true, hide: "" },
-  totalUsd: { align: "right", calculated: true, hide: "hidden xl:table-cell" },
   share: { align: "right", calculated: true, hide: "hidden md:table-cell" },
 };
-
-const columns = helper.columns([
-  helper.accessor("assetName", { header: "Ativo" }),
-  helper.accessor("institutionName", { header: "Instituição" }),
-  helper.accessor((row) => typeOf(row), { id: "assetType", header: "Tipo" }),
-  helper.accessor((row) => strategyOf(row), { id: "strategy", header: "Estratégia" }),
-  helper.accessor((row) => classesOf(row).join(", "), { id: "classes", header: "Classes" }),
-  // Sem vencimento ordena depois de qualquer data, nos dois sentidos de ordem.
-  helper.accessor((row) => row.maturityDate ?? undefined, {
-    id: "maturityDate",
-    header: "Vencimento",
-    sortUndefined: "last",
-  }),
-  helper.accessor("quantity", { header: "Quantidade" }),
-  helper.accessor("totalBrl", { header: "Total R$" }),
-  helper.accessor((row) => row.totalUsd ?? -1, { id: "totalUsd", header: "Total US$" }),
-  helper.accessor("share", { header: "%" }),
-]);
-
-// Seta de expansão e colunas; as ações ficam na página da posição.
-const COLUMN_COUNT = columns.length + 1;
 
 type FormState = { open: boolean; target: PositionFormTarget | null; key: number };
 
 export function PositionsWorkspace({
   month,
   catalog,
+  ledger,
+  analytics = {},
 }: {
   month: MonthPositions | null;
   catalog: EditingCatalog;
+  ledger?: PortfolioLedger | null;
+  analytics?: Record<string,HoldingAnalytics>;
 }) {
+  const [view,setView]=useState<HoldingView>("position");
+  const [displaySold,setDisplaySold]=useState(false);
+  const [visibleColumns,setVisibleColumns]=useState<string[]>(DEFAULT_POSITION_COLUMNS);
+  const shownColumns=view==="position"?POSITION_COLUMNS.filter(column=>visibleColumns.includes(column.id)):VIEW_COLUMNS[view];
+  const columnCount=shownColumns.length+2;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useQueryStates(
     {
       classe: list,
       subclasse: list,
+      mercado: list,
       tipo: list,
-      inst: list,
-      estrategia: list,
       moeda: list,
       venc: list,
-      liq: list,
       q: parseAsString.withDefault(""),
       ordem: parseAsString.withDefault("totalBrl.desc"),
-      agrupar: parseAsStringLiteral(GROUP_OPTIONS),
     },
     { clearOnDefault: true },
   );
@@ -149,7 +115,6 @@ export function PositionsWorkspace({
   const [form, setForm] = useState<FormState>({ open: false, target: null, key: 0 });
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [toast, setToast] = useState<EditToastState | null>(null);
-  const [isSaving, startSaving] = useTransition();
   const [isUndoing, startUndo] = useTransition();
   const [isOpening, startOpening] = useTransition();
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -175,7 +140,7 @@ export function PositionsWorkspace({
       }
     });
 
-  // Uma remoção feita na página da posição volta para cá com o desfazer (spec 080).
+
   useEffect(() => {
     const handed = takeHandedOffToast();
 
@@ -186,38 +151,25 @@ export function PositionsWorkspace({
 
   const filters: PositionFilters = {
     classes: query.classe,
-    subclasses: query.subclasse,
-    types: query.tipo,
-    institutions: query.inst,
-    strategies: query.estrategia,
-    currencies: query.moeda,
+    subclasses: [],
+    markets: query.mercado,
+    types: query.tipo.map(normalizeTypeFilter).filter(Boolean),
+    currencies: query.moeda.map((currency) => ["BTC", "Altcoins"].includes(currency) ? "USD" : currency),
     maturities: query.venc,
-    liquidities: query.liq,
     search: query.q,
   };
-  const positions = month?.positions ?? [];
+  const positions = (month?.positions ?? []).filter((position) => displaySold || !position.liquidated);
   const filtered = filterPositions(positions, filters);
-  // Filtros em cascata da esquerda para a direita (spec 044): cada filtro só
-  // oferece o que existe com os filtros à esquerda dele.
+
+
   const options = filterOptions(positions, filters);
   const sorting = parseSorting(query.ordem);
-
-  const table = useTable({
-    features,
-    columns,
-    data: filtered,
-    state: { sorting },
-    onSortingChange: (updater) => {
-      const next = typeof updater === "function" ? updater(sorting) : updater;
-      const first = next[0];
-      void setQuery({ ordem: first ? `${first.id}.${first.desc ? "desc" : "asc"}` : null });
-    },
-  });
 
   if (!month || month.positions.length === 0) {
     return (
       <>
         <EmptyPositions month={month} catalog={catalog} />
+        {ledger && month ? <div className="mx-auto w-full max-w-[1472px] px-5 pb-24 sm:px-7 xl:px-12"><PortfolioLedgerPanel ledger={ledger} selectedMonth={toMonthParam(month.referenceDate)} /></div> : null}
         <EditToast toast={toast} onDismiss={dismissToast} onUndo={undo} undoing={isUndoing} />
       </>
     );
@@ -225,48 +177,39 @@ export function PositionsWorkspace({
 
   const canEdit = !month.isLocked;
   const monthLabel = formatMonthCompact(month.referenceDate);
-  const sortedPositions = table.getRowModel().rows.map((row) => row.original);
-  const groups = query.agrupar ? groupPositions(sortedPositions, query.agrupar, filters) : null;
+  const sort=sorting[0];
+  const mobileSortColumns = [{ id: "assetName", label: "Asset" }, ...shownColumns];
+  const currentSortColumn = POSITION_COLUMNS.find(column => column.id === (sort?.id ?? "totalBrl"));
+  if (currentSortColumn && !mobileSortColumns.some(column => column.id === currentSortColumn.id)) {
+    mobileSortColumns.push(currentSortColumn);
+  }
+  const sortedPositions = [...filtered].sort((a,b)=>{
+    const column=[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].find(c=>c.id===sort?.id);
+    const left=sort?.id==='assetName'?positionTitle(a.assetName,a.ticker,a.bondIssuer):sort?.id==='totalBrl'?a.totalBrl:column?.get(a,analytics[a.id]);
+    const right=sort?.id==='assetName'?positionTitle(b.assetName,b.ticker,b.bondIssuer):sort?.id==='totalBrl'?b.totalBrl:column?.get(b,analytics[b.id]);
+    if(left==null)return right==null?0:1;if(right==null)return -1;
+    return (typeof left==='number'&&typeof right==='number'?left-right:String(left).localeCompare(String(right)))*(sort?.desc?-1:1);
+  });
   const filteredTotal = sortedPositions.reduce((total, position) => total + position.totalBrl, 0);
-  const matchedTotal = hasClassFilter(filters)
-    ? sortedPositions.reduce((total, position) => total + matchedValueBrl(position, filters), 0)
-    : null;
   const activeFilterCount =
     filters.classes.length +
-    filters.subclasses.length +
+    (filters.markets?.length ?? 0) +
     filters.types.length +
-    filters.institutions.length +
-    filters.strategies.length +
     filters.currencies.length +
     filters.maturities.length +
-    filters.liquidities.length +
     (filters.search ? 1 : 0);
-  const occupied = new Set(month.positions.map((position) => `${position.accountId}:${position.assetId}`));
+  const occupied = new Set(month.positions.filter(position=>!position.historicalSold).map((position) => `${position.accountId}:${position.assetId}`));
   const liquidatedCount = month.positions.filter((position) => position.liquidated).length;
   const filterGroups: FilterGroup[] = [
-    { key: "classe", label: "Classe", options: options.classes, selected: filters.classes, onChange: (next) => void setQuery({ classe: next }) },
-    { key: "subclasse", label: "Subclasse", options: options.subclasses, selected: filters.subclasses, onChange: (next) => void setQuery({ subclasse: next }) },
-    { key: "tipo", label: "Tipo", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
-    { key: "inst", label: "Instituição", options: options.institutions, selected: filters.institutions, onChange: (next) => void setQuery({ inst: next }) },
-    { key: "estrategia", label: "Estratégia", options: options.strategies, selected: filters.strategies, onChange: (next) => void setQuery({ estrategia: next }) },
-    { key: "moeda", label: "Moeda", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
-    { key: "venc", label: "Vencimento", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
-    { key: "liq", label: "Liquidez", options: options.liquidities, selected: filters.liquidities, onChange: (next) => void setQuery({ liq: next }) },
+    { key: "tipo", label: "Product Type", options: options.types, selected: filters.types, onChange: (next) => void setQuery({ tipo: next }) },
+    { key: "mercado", label: "Market", options: options.markets, selected: filters.markets ?? [], onChange: (next) => void setQuery({ mercado: next }) },
+    { key: "moeda", label: "Currency", options: options.currencies, selected: filters.currencies, onChange: (next) => void setQuery({ moeda: next }) },
+    { key: "venc", label: "Maturity", options: options.maturities, selected: filters.maturities, onChange: (next) => void setQuery({ venc: next }) },
   ];
   const activeCount = month.positions.length - liquidatedCount;
 
   const openForm = (target: PositionFormTarget) =>
     setForm((current) => ({ open: true, target, key: current.key + 1 }));
-
-  const cloneMonth = () =>
-    startSaving(async () => {
-      const result = await cloneLatestMonthAction();
-      notify(result);
-
-      if (result.ok && result.month) {
-        router.push(`/posicoes?mes=${result.month}`);
-      }
-    });
 
   const toggleExpanded = (position: MonthPosition) =>
     setExpanded((current) => {
@@ -289,31 +232,28 @@ export function PositionsWorkspace({
     });
 
   const clearFilters = () =>
-    void setQuery({ classe: null, subclasse: null, tipo: null, inst: null, estrategia: null, moeda: null, venc: null, liq: null, q: null });
+    void setQuery({ classe: null, subclasse: null, mercado: null, tipo: null, moeda: null, venc: null, q: null });
 
-  // A linha abre a página da posição (spec 016), com a query da tabela para a
-  // volta reabrir os mesmos filtros.
+
   const openPosition = (position: MonthPosition, href: string) => {
     setOpeningId(position.id);
     startOpening(() => router.push(href));
   };
 
-  const renderRow = (position: MonthPosition, rowKey: string, valueBrl: number) => (
+  const renderRow = (position: MonthPosition, rowKey: string) => (
     <PositionRow
       key={rowKey}
       position={position}
-      referenceDay={month.referenceDay}
-      valueBrl={valueBrl}
-      usdRate={month.usdRate}
       href={positionHref(position.accountId, position.assetId, searchParams)}
       expanded={expanded.has(position.id)}
       opening={isOpening && openingId === position.id}
       onOpen={openPosition}
       onToggle={toggleExpanded}
+      shownColumns={shownColumns}
+      analytics={analytics[position.id]}
     />
   );
 
-  const cloneTarget = parseMonthParam(catalog.clone.targetMonth ?? undefined);
 
   return (
     <div className="relative mx-auto w-full max-w-[1472px] px-5 py-8 pb-24 sm:px-7 sm:py-10 xl:px-12 xl:py-12">
@@ -321,61 +261,42 @@ export function PositionsWorkspace({
 
       <header className="flex flex-col gap-6 border-b border-border/70 pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Posições</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Carteira do mês</h1>
+          <p className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">Positions</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-[2.65rem]">Holdings</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground" data-testid="positions-count">
-            {activeCount} {activeCount === 1 ? "posição" : "posições"}
-            {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidada" : "liquidadas"}` : ""}
+            {activeCount} {activeCount === 1 ? "Position" : "Positions"}
+            {liquidatedCount > 0 ? ` · ${liquidatedCount} ${liquidatedCount === 1 ? "liquidated" : "liquidated"}` : ""}
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
           <p className="font-mono text-xs text-muted-foreground">
-            {formatBrl(month.totalBrl)}
-            {month.usdRate ? ` · US$ ${formatUsd(month.totalBrl / month.usdRate)}` : ""}
+            {portfolioEquivalent(month.totalBrl, "USD", month.usdRate, month.eurRate ?? null)}
           </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {/* As cotações do mês ficam só aqui, em Posições, e não no topo: a
-                ilha do topo mostra o caminho Posições → Cotações (spec 048). */}
+
             <Link
               href={`/posicoes/cotacoes?mes=${toMonthParam(month.referenceDate)}`}
-              aria-label="Cotações do mês"
+              aria-label="Monthly quotes"
               className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <CurrencyCircleDollarIcon aria-hidden="true" className="text-primary" size={16} weight="duotone" />
-              Cotações
+              <CurrencyCircleDollarIcon aria-hidden="true" className="text-primary" size={16} weight="duotone" />Quotes
             </Link>
-            {/* Só o mês aberto aceita edição (spec 034); um mês fechado é aberto
-                pelo cadeado da linha do tempo. */}
+
             {canEdit ? (
               <button type="button" onClick={() => openForm({ mode: "add" })} className={headerPrimaryButtonClass}>
-                <PlusIcon aria-hidden="true" size={14} weight="bold" />
-                Adicionar posição
+                <PlusIcon aria-hidden="true" size={14} weight="bold" />Add position
               </button>
             ) : null}
-            {month.isLatest && catalog.clone.allowed && cloneTarget ? (
-              <button type="button" disabled={isSaving} onClick={cloneMonth} className={headerPrimaryButtonClass}>
-                <CopyIcon aria-hidden="true" size={14} weight="bold" />
-                Criar {formatMonthCompact(cloneTarget)} a partir de {monthLabel}
-              </button>
-            ) : null}
+
           </div>
         </div>
       </header>
 
-      {month.isLocked ? (
-        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
-          <LockKeyIcon aria-hidden="true" className="text-muted-foreground" size={16} weight="duotone" />
-          <p data-testid="month-locked" className="text-xs text-muted-foreground">
-            {monthLabel} está fechado. Para editar, abra o mês pelo cadeado na linha do tempo.
-          </p>
-        </div>
-      ) : null}
 
-      {/* No celular (spec 077), as classes rolam numa linha só, a busca ocupa a
-          linha com o botão Filtros, e os filtros e o agrupamento abrem numa folha
-          de baixo para cima. No computador, tudo continua na própria linha. */}
-      <section aria-label="Filtros" className="mt-6 space-y-3">
-        <div className="-mx-5 flex items-center gap-2 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden">
+
+
+      <section aria-label="Filters" className="mt-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
           {QUICK_CLASSES.filter((assetClass) => options.classes.includes(assetClass)).map((assetClass) => {
             const active = filters.classes.includes(assetClass);
 
@@ -393,7 +314,7 @@ export function PositionsWorkspace({
                 )}
               >
                 <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(assetClass) }} />
-                {assetClass}
+                {englishLabel(assetClass)}
               </button>
             );
           })}
@@ -401,7 +322,7 @@ export function PositionsWorkspace({
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative flex h-10 min-w-0 flex-1 items-center sm:h-8 sm:min-w-[200px] sm:max-w-[280px]">
-            <span className="sr-only">Buscar posição</span>
+            <span className="sr-only">Search positions</span>
             <MagnifyingGlassIcon
               aria-hidden="true"
               className="pointer-events-none absolute left-3 text-muted-foreground sm:left-2.5"
@@ -411,7 +332,7 @@ export function PositionsWorkspace({
               type="search"
               value={filters.search}
               onChange={(event) => void setQuery({ q: event.target.value || null })}
-              placeholder="Buscar posição"
+              placeholder="Search positions"
               className="h-10 w-full rounded-xl border border-border bg-card/60 pr-2.5 pl-9 text-xs text-foreground outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-8 sm:rounded-lg sm:pl-8"
             />
           </label>
@@ -419,24 +340,16 @@ export function PositionsWorkspace({
           <PositionsFilterSheet
             className="sm:hidden"
             groups={filterGroups}
-            grouping={{
-              value: query.agrupar,
-              options: [{ value: null, label: "Nenhum" }, ...GROUP_OPTIONS.map((option) => ({ value: option, label: GROUP_LABELS[option] }))],
-              onChange: (value) => void setQuery({ agrupar: value as (typeof GROUP_OPTIONS)[number] | null }),
-            }}
             resultCount={sortedPositions.length}
+            additionalActiveCount={filters.classes.length}
             onClear={clearFilters}
           />
 
           <div className="hidden sm:contents">
-            <MultiSelectFilter label="Classe" options={options.classes} selected={filters.classes} onChange={(next) => void setQuery({ classe: next })} />
-            <MultiSelectFilter label="Subclasse" options={options.subclasses} selected={filters.subclasses} onChange={(next) => void setQuery({ subclasse: next })} />
-            <MultiSelectFilter label="Tipo" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
-            <MultiSelectFilter label="Instituição" options={options.institutions} selected={filters.institutions} onChange={(next) => void setQuery({ inst: next })} />
-            <MultiSelectFilter label="Estratégia" options={options.strategies} selected={filters.strategies} onChange={(next) => void setQuery({ estrategia: next })} />
-            <MultiSelectFilter label="Moeda" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
-            <MultiSelectFilter label="Vencimento" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
-            <MultiSelectFilter label="Liquidez" options={options.liquidities} selected={filters.liquidities} onChange={(next) => void setQuery({ liq: next })} />
+            <MultiSelectFilter label="Product Type" options={options.types} selected={filters.types} onChange={(next) => void setQuery({ tipo: next })} />
+            <MultiSelectFilter label="Market" options={options.markets} selected={filters.markets ?? []} onChange={(next) => void setQuery({ mercado: next })} />
+            <MultiSelectFilter label="Currency" options={options.currencies} selected={filters.currencies} onChange={(next) => void setQuery({ moeda: next })} />
+            <MultiSelectFilter label="Maturity" options={options.maturities} selected={filters.maturities} onChange={(next) => void setQuery({ venc: next })} />
 
             {activeFilterCount > 0 ? (
               <button
@@ -444,132 +357,53 @@ export function PositionsWorkspace({
                 onClick={clearFilters}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
               >
-                <XIcon aria-hidden="true" size={12} weight="bold" />
-                Limpar filtros
+                <XIcon aria-hidden="true" size={12} weight="bold" />Clear filters
               </button>
             ) : null}
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
-                <span className="px-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">Agrupar</span>
-                {([null, ...GROUP_OPTIONS] as const).map((option) => (
-                  <button
-                    key={option ?? "nenhum"}
-                    type="button"
-                    aria-pressed={query.agrupar === option}
-                    onClick={() => void setQuery({ agrupar: option })}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-                      query.agrupar === option
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {option === null ? "Nenhum" : GROUP_LABELS[option]}
-                  </button>
-                ))}
-              </div>
-            </div>
+
           </div>
         </div>
       </section>
 
-      <section className="premium-panel mt-5 overflow-hidden rounded-[24px]" aria-label="Posições da competência">
+      <section className="premium-panel mt-5 rounded-[24px]" aria-label="Positions for the reporting month">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+          <div role="tablist" aria-label="Holdings view" className="flex flex-wrap gap-1">{(['position','price','performance','risk'] as const).map(item=><button key={item} type="button" role="tab" aria-selected={view===item} onClick={()=>setView(item)} className={cn("rounded-lg px-3 py-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-primary",view===item?"bg-primary/15 text-primary":"text-muted-foreground hover:text-foreground")}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div>
+          <div className="flex items-center gap-4"><label className="flex items-center gap-2 text-xs text-muted-foreground">Display Sold<button type="button" role="switch" aria-label="Display Sold" aria-checked={displaySold} onClick={()=>setDisplaySold(old=>!old)} className={cn("relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary",displaySold?"bg-primary":"bg-muted")}><span className={cn("inline-block size-3.5 rounded-full transition-transform",displaySold?"translate-x-[18px] bg-primary-foreground":"translate-x-0.5 bg-muted-foreground")}/></button></label>{view==='position'?<details className="relative"><summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden"><TableIcon aria-hidden size={13}/>Columns</summary><fieldset className="absolute right-0 top-full z-30 mt-2 max-h-96 w-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xl"><legend className="sr-only">Customize Position Columns</legend>{POSITION_COLUMNS.map(column=><label key={column.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(column.id)} onChange={e=>setVisibleColumns(old=>e.target.checked?[...old,column.id]:old.filter(id=>id!==column.id))} className="accent-primary"/>{column.label}</label>)}</fieldset></details>:null}</div>
+        </div>
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:hidden">
+          <label htmlFor="mobile-holdings-sort" className="shrink-0 text-xs text-muted-foreground">Sort by</label>
+          <select id="mobile-holdings-sort" aria-label="Sort holdings" value={sort?.id ?? "totalBrl"} onChange={event => void setQuery({ ordem: `${event.target.value}.${sort?.desc ? "desc" : "asc"}` })} className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-2 text-xs">
+            {mobileSortColumns.map(column => <option key={column.id} value={column.id}>{column.label}</option>)}
+          </select>
+          <button type="button" aria-label={sort?.desc ? "Sort ascending" : "Sort descending"} onClick={() => void setQuery({ ordem: `${sort?.id ?? "totalBrl"}.${sort?.desc ? "asc" : "desc"}` })} className="grid size-10 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground">{sort?.desc ? <ArrowDownIcon size={16} /> : <ArrowUpIcon size={16} />}</button>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
+          <table className="mobile-record-table holdings-record-table w-full border-collapse text-left">
             <thead>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr
-                  key={headerGroup.id}
-                  className="border-b border-border/60 text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase"
-                >
-                  <th className="w-9 py-3 pr-0 pl-3 sm:pl-4">
-                    <span className="sr-only">Expandir</span>
-                  </th>
-                  {headerGroup.headers.map((header) => {
-                    const meta = COLUMN_META[header.column.id];
-                    const sorted = header.column.getIsSorted();
-
-                    return (
-                      <th
-                        key={header.id}
-                        aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}
-                        className={cn("px-4 py-3", meta.hide)}
-                      >
-                        <button
-                          type="button"
-                          onClick={header.column.getToggleSortingHandler()}
-                          className={cn(
-                            "inline-flex items-center gap-1 uppercase outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-                            meta.align === "right" && "w-full justify-end",
-                            sorted && "text-foreground",
-                          )}
-                        >
-                          {meta.calculated ? (
-                            <span title="Calculado" className="font-mono normal-case text-muted-foreground/60">
-                              ƒ
-                            </span>
-                          ) : null}
-                          <table.FlexRender header={header} />
-                          {sorted === "asc" ? (
-                            <ArrowUpIcon aria-hidden="true" size={10} weight="bold" />
-                          ) : sorted === "desc" ? (
-                            <ArrowDownIcon aria-hidden="true" size={10} weight="bold" />
-                          ) : null}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
+              <tr className="border-b border-border/60 text-[10px] font-semibold text-muted-foreground"><th className="w-9"><span className="sr-only">Expand</span></th>{[{id:'assetName',label:'Asset'},...shownColumns].map(column=><th key={column.id} className={cn("px-4 py-3 whitespace-nowrap",column.id!=='assetName'&&"text-right")} aria-sort={sort?.id===column.id?(sort.desc?'descending':'ascending'):'none'}><button type="button" onClick={()=>void setQuery({ordem:`${column.id}.${sort?.id===column.id&&!sort.desc?'desc':'asc'}`})} className="inline-flex items-center gap-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">{column.label}{sort?.id===column.id?(sort.desc?<ArrowDownIcon size={10}/>:<ArrowUpIcon size={10}/>):<ArrowsDownUpIcon size={10} className="opacity-50"/>}</button></th>)}</tr>
             </thead>
             <tbody className="divide-y divide-border/55">
               {sortedPositions.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                    Nenhuma posição corresponde aos filtros.
+                  <td colSpan={columnCount} className="px-6 py-10 text-center text-sm text-muted-foreground">No positions match the filters.
                   </td>
                 </tr>
-              ) : groups ? (
-                groups.map((group) => (
-                  <Fragment key={group.key}>
-                    <tr className="bg-white/[0.02]">
-                      <td colSpan={COLUMN_COUNT} className="px-5 py-2.5 sm:px-6">
-                        <div className="flex items-center gap-2.5">
-                          {query.agrupar === "classe" ? (
-                            <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor(group.label) }} />
-                          ) : null}
-                          <span className="text-xs font-semibold text-foreground">{group.label}</span>
-                          <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
-                          <span className="ml-auto font-mono text-xs text-foreground">{formatBrl(group.totalBrl)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                    {group.items.map((item) => renderRow(item.position, `${group.key}-${item.position.id}`, item.valueBrl))}
-                  </Fragment>
-                ))
               ) : (
-                sortedPositions.map((position) => renderRow(position, position.id, position.totalBrl))
+                sortedPositions.map((position) => renderRow(position, position.id))
               )}
             </tbody>
             <tfoot>
               <tr className="border-t border-border/70 text-xs">
-                <td colSpan={COLUMN_COUNT} className="px-5 py-4 sm:px-6">
+                <td colSpan={columnCount} className="px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                     <span className="text-muted-foreground">
-                      {sortedPositions.length} de {month.positions.length} posições
+                      {sortedPositions.length} of {positions.length} Positions
                     </span>
-                    <FooterValue label="Total filtrado" value={formatBrl(filteredTotal)} />
-                    {month.usdRate ? (
-                      <FooterValue label="Em dólar" value={`US$ ${formatUsd(filteredTotal / month.usdRate)}`} />
-                    ) : null}
-                    <FooterValue
-                      label="Da carteira"
-                      value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)}
-                    />
-                    {matchedTotal !== null ? (
-                      <FooterValue label="Parcela nas classes selecionadas" value={formatBrl(matchedTotal)} emphasis />
-                    ) : null}
+                    <FooterValue label="Total USD" value={portfolioEquivalent(filteredTotal, "USD", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Total BRL" value={portfolioEquivalent(filteredTotal, "BRL", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Total EUR" value={portfolioEquivalent(filteredTotal, "EUR", month.usdRate, month.eurRate ?? null)} />
+                    <FooterValue label="Allocation" value={formatSharePercent(month.totalBrl === 0 ? 0 : (filteredTotal / month.totalBrl) * 100)} />
                   </div>
                 </td>
               </tr>
@@ -577,6 +411,8 @@ export function PositionsWorkspace({
           </table>
         </div>
       </section>
+
+      {ledger ? <PortfolioLedgerPanel ledger={ledger} selectedMonth={toMonthParam(month.referenceDate)} /> : null}
 
       <PositionFormDialog
         open={form.open}
@@ -602,31 +438,26 @@ export function PositionsWorkspace({
 
 function PositionRow({
   position,
-  referenceDay,
-  valueBrl,
-  usdRate,
   href,
   expanded,
   opening,
   onOpen,
   onToggle,
+  shownColumns,
+  analytics,
 }: {
   position: MonthPosition;
-  referenceDay: string;
-  valueBrl: number;
-  usdRate: number | null;
+  shownColumns: HoldingColumn[];
+  analytics?: HoldingAnalytics;
   href: string;
   expanded: boolean;
   opening: boolean;
   onOpen: (position: MonthPosition, href: string) => void;
   onToggle: (position: MonthPosition) => void;
 }) {
-  const isPartial = Math.abs(valueBrl - position.totalBrl) > 0.005;
-  const [first, ...others] = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const detailsId = `detalhes-${position.id}`;
 
-  // A linha inteira abre a posição; o nome do ativo é o link real, para o
-  // teclado, o leitor de tela e o clique com Ctrl ou Cmd.
+
   const openFromRow = (event: MouseEvent<HTMLTableRowElement>) => {
     if (event.defaultPrevented || event.button !== 0) {
       return;
@@ -661,12 +492,12 @@ function PositionRow({
           opening && "bg-primary/[0.04] opacity-70",
         )}
       >
-        <td className="py-4 pr-0 pl-3 align-top sm:pl-4">
+        <td data-record-toggle className="py-4 pr-0 pl-3 align-top sm:pl-4">
           <button
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            aria-label={`${expanded ? "Recolher" : "Expandir"} ${position.assetName}`}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${position.assetName}`}
             onClick={() => onToggle(position)}
             className="grid size-6 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
           >
@@ -691,96 +522,31 @@ function PositionRow({
             }}
             className="rounded-sm text-sm font-medium text-foreground/90 underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            {position.assetName}
+            <AssetClassDot position={position} className="mr-2 align-middle" />{positionTitle(position.assetName, position.ticker, position.bondIssuer)}
           </Link>
+          {position.fixedIncomeEstimate ? <span className="ml-2 text-[10px] text-muted-foreground">Published IPCA</span> : null}
           {position.liquidated ? (
             <span
               data-testid="position-liquidated"
               className="ml-2 inline-flex items-center rounded-full border border-border px-1.5 py-px align-middle text-[9px] font-semibold tracking-[0.08em] text-muted-foreground uppercase"
-            >
-              Liquidada
+            >Liquidated
             </span>
           ) : null}
-          <p className="mt-1 font-mono text-[9px] text-muted-foreground">
-            {position.ticker ?? "SALDO"}
-            <span className="font-sans 2xl:hidden"> · {typeOf(position)}</span>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 font-sans text-[10px] text-muted-foreground">
+            {[position.assetType !== "international-bond" && showPositionTicker(position.assetName, position.ticker) && position.ticker !== position.valueCurrency ? position.ticker : null,
+              typeOf(position)?.toLowerCase() !== positionTitle(position.assetName, position.ticker, position.bondIssuer).toLowerCase() ? typeOf(position) || "Review Product Type" : null,
+              marketOf(position) !== "Other Markets" ? marketOf(position) : null,
+              position.valueCurrency].filter(Boolean).join(" · ")}
           </p>
-          {position.maturityDate ? (
-            <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1.5 xl:hidden" />
-          ) : null}
-          <p className="mt-1 text-[10px] text-muted-foreground sm:hidden">{position.institutionName}</p>
+          {position.maturityDate ? <p className={cn("mt-1.5 font-mono text-[10px] text-muted-foreground", position.assetType !== "international-bond" && !["CDB", "LCI", "LCA"].includes(typeOf(position) ?? "") && "xl:hidden")}>{formatDay(parseDay(position.maturityDate))}</p> : null}
         </Cell>
-        <Cell id="institutionName">
-          <p className="text-xs text-foreground/80">{position.institutionName}</p>
-        </Cell>
-        <Cell id="assetType">
-          <span className="text-xs whitespace-nowrap text-foreground/80" data-testid="position-type">{typeOf(position)}</span>
-        </Cell>
-        <Cell id="strategy">
-          <span className="text-xs whitespace-nowrap text-foreground/80">{strategyOf(position)}</span>
-        </Cell>
-        <Cell id="classes">
-          {first ? (
-            <div className="flex max-w-[300px] items-center gap-1.5" data-testid="position-classes">
-              <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(first.assetClass) }} />
-              <span className="truncate text-xs text-foreground/80" title={allocationLabel(first)}>
-                {allocationLabel(first)}
-                {others.length > 0 ? (
-                  <span className="text-muted-foreground"> {formatWeightPercent(first.weight)}</span>
-                ) : null}
-              </span>
-              {others.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => onToggle(position)}
-                  aria-label={`Ver as ${others.length + 1} classificações de ${position.assetName}`}
-                  title={`Mais ${others.length} ${others.length === 1 ? "classificação" : "classificações"}`}
-                  className="shrink-0 rounded-md bg-white/[0.05] px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  …+{others.length}
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">—</span>
-          )}
-        </Cell>
-        <Cell id="maturityDate">
-          {position.maturityDate ? (
-            <>
-              <p className="font-mono text-xs text-foreground/80">{formatDay(parseDay(position.maturityDate))}</p>
-              <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} className="mt-1" />
-            </>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">—</span>
-          )}
-        </Cell>
-        <Cell id="quantity">
-          <QuantityText position={position} />
-        </Cell>
-        <Cell id="totalBrl">
-          <span className="font-mono text-xs font-medium whitespace-nowrap text-foreground sm:text-sm">
-            {formatBrl(valueBrl)}
-          </span>
-          {isPartial ? (
-            <p className="mt-0.5 font-mono text-[9px] whitespace-nowrap text-muted-foreground">
-              de {formatBrl(position.totalBrl)}
-            </p>
-          ) : null}
-        </Cell>
-        <Cell id="totalUsd">
-          <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
-            {position.totalUsd === null ? "—" : `US$ ${formatUsd(position.totalUsd)}`}
-          </span>
-        </Cell>
-        <Cell id="share">
-          <span className="font-mono text-xs text-muted-foreground">{formatSharePercent(position.share)}</span>
-        </Cell>
+        {shownColumns.map(column=>{const value=holdingDisplayValue(column,position,analytics);const signed=['unrealized','unrealizedPercent','daily','dailyPercent','totalGain','totalPercent','change','changePercent','annualized'].includes(column.id)||column.id.startsWith('perf-');return <td key={column.id} data-label={column.label} title={holdingMetricDescription(column,position,value,analytics)} className={cn("px-4 py-4 text-right align-top font-mono text-xs whitespace-nowrap",signed&&typeof value==='number'?(value<0?'text-destructive':value>0||column.id==='unrealized'||column.id==='unrealizedPercent'?'text-primary':'text-muted-foreground'):'text-foreground/85')}>{holdingCellText(column,position,analytics)}</td>;})}
       </tr>
       {expanded ? (
-        <tr id={detailsId} data-testid="position-details" className="bg-white/[0.012]">
-          <td colSpan={COLUMN_COUNT} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
-            <PositionDetails position={position} usdRate={usdRate} referenceDay={referenceDay} />
+        <tr id={detailsId} data-record-details data-testid="position-details" className="bg-white/[0.012]">
+          <td colSpan={shownColumns.length+2} className="px-5 pt-1 pb-5 sm:pl-[3.25rem] sm:pr-6">
+            <PositionDetails position={position} />
+            {position.assetType === "savings" ? <div className="mt-4"><SavingsMovementButton assetId={position.assetId} name={position.assetName} /></div> : null}
           </td>
         </tr>
       ) : null}
@@ -788,74 +554,45 @@ function PositionRow({
   );
 }
 
-/** Linha expandida: o rateio completo e os dados que não cabem nas colunas. */
+
 function PositionDetails({
   position,
-  usdRate,
-  referenceDay,
 }: {
   position: MonthPosition;
-  usdRate: number | null;
-  referenceDay: string;
 }) {
-  const allocations = [...position.allocations].sort((left, right) => right.weight - left.weight);
   const details: { label: string; value: ReactNode }[] = [
-    { label: "Instituição", value: position.institutionName },
-    { label: "Estratégia", value: strategyOf(position) },
-    { label: "Moeda", value: <span className="font-mono">{position.baseCurrency}</span> },
+    { label: "Product Type", value: typeOf(position) || "Review Product Type" },
+    { label: "Asset Class", value: <span className="inline-flex items-center gap-2"><AssetClassDot position={position} />{englishLabel(primaryClassOf(position))}</span> },
+    { label: "Market", value: marketOf(position) },
+    { label: "Currency", value: <span className="font-mono">{position.valueCurrency}</span> },
+    ...(position.securityQuantity !== null && position.unitPriceNative != null && !position.bondAtCost ? [{
+      label: "Unit Price",
+      value: <span className="font-mono">{position.unitPriceNative == null ? "Not Specified" : formatUnitPrice(position.unitPriceNative, position.valueCurrency)}</span>,
+    }] : []),
+    ...(position.securityQuantity !== null ? [{ label: "Quantity", value: <QuantityText position={position} /> }] : []),
     {
-      label: "Cotação",
-      value: (
-        <span className="font-mono">{position.unitPriceBrl === null ? "Saldo, sem cotação" : formatPriceBrl(position.unitPriceBrl)}</span>
-      ),
-    },
-    { label: "Quantidade", value: <QuantityText position={position} /> },
-    { label: "Liquidez", value: position.liquidity ?? "Não informada" },
-    {
-      label: "Vencimento",
+      label: "Maturity",
       value: position.maturityDate ? (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex flex-wrap items-center gap-2">
           <span className="font-mono">{formatDay(parseDay(position.maturityDate))}</span>
-          <MaturityBadge maturityDate={position.maturityDate} referenceDay={referenceDay} />
         </span>
       ) : (
-        "Não informado"
+        "No Maturity Date"
       ),
     },
     {
-      label: "Total em dólar",
-      value: <span className="font-mono">{usdRate ? `US$ ${formatUsd(position.totalBrl / usdRate)}` : "—"}</span>,
+      label: "Value",
+      value: <span className="font-mono">{position.nativeValue === null ? "Not Specified" : formatCurrency(position.nativeValue, position.valueCurrency)}</span>,
     },
   ];
 
   return (
-    <div className="grid gap-5 rounded-2xl border border-border/60 bg-background/30 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-      <div>
-        <p className="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">Rateio</p>
-        {allocations.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">Sem rateio.</p>
-        ) : (
-          <ul className="mt-2.5 space-y-2" data-testid="position-details-allocations">
-            {allocations.map((allocation) => (
-              <li key={allocationLabel(allocation)} className="flex items-center gap-2.5 text-xs">
-                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(allocation.assetClass) }} />
-                <span className="min-w-0 truncate text-foreground/85">{allocationLabel(allocation)}</span>
-                <span className="ml-auto shrink-0 font-mono text-muted-foreground">
-                  {formatWeightPercent(allocation.weight)}
-                </span>
-                <span className="w-24 shrink-0 text-right font-mono text-foreground/80">
-                  {formatBrl((position.totalBrl * allocation.weight) / 100)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
+    <div className="space-y-5 rounded-2xl border border-border/60 bg-background/30 p-4">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-xs md:grid-cols-3 xl:grid-cols-4">
         {details.map((detail) => (
-          <div key={detail.label} className="min-w-0">
-            <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{detail.label}</dt>
-            <dd className="mt-1 truncate text-foreground/85">{detail.value}</dd>
+          <div key={detail.label} className={cn("min-w-0", detail.label === "Unit Price" && "col-span-2 md:col-span-1")}>
+            <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(detail.label)}</dt>
+            <dd className="mt-1 [overflow-wrap:anywhere] text-foreground/85">{detail.value}</dd>
           </div>
         ))}
       </dl>
@@ -864,13 +601,9 @@ function PositionDetails({
 }
 
 function QuantityText({ position }: { position: MonthPosition }) {
-  return (
-    <span className="font-mono text-xs text-foreground/85">
-      {position.quoteSymbol
-        ? position.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 8 })
-        : formatBrl(position.quantity)}
-    </span>
-  );
+  if (position.securityQuantity === null) return <span className="text-xs text-muted-foreground">—</span>;
+  const unit = position.assetType === "crypto" ? position.ticker : position.assetType === "international-bond" || position.assetType === "treasury" ? "bonds" : "units";
+  return <span className="font-mono text-xs text-foreground/85">{Number(position.securityQuantity).toLocaleString("en-GB", { maximumFractionDigits: 8 })}{unit ? ` ${unit}` : ""}</span>;
 }
 
 function Cell({ id, children }: { id: string; children: ReactNode }) {
@@ -878,6 +611,7 @@ function Cell({ id, children }: { id: string; children: ReactNode }) {
 
   return (
     <td
+      data-record-heading={id === "assetName" ? "" : undefined}
       className={cn(
         "px-4 py-4 align-top",
         meta.align === "right" && "text-right",
@@ -893,7 +627,7 @@ function Cell({ id, children }: { id: string; children: ReactNode }) {
 function FooterValue({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-2">
-      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{label}</span>
+      <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(label)}</span>
       <span className={cn("font-mono text-sm", emphasis ? "text-primary" : "text-foreground")}>{value}</span>
     </span>
   );
@@ -902,36 +636,35 @@ function FooterValue({ label, value, emphasis = false }: { label: string; value:
 function parseSorting(value: string): SortingState {
   const [id, direction] = value.split(".");
 
-  return id && COLUMN_META[id] ? [{ id, desc: direction !== "asc" }] : [{ id: "totalBrl", desc: true }];
+  return id && (id==='assetName'||[...POSITION_COLUMNS,...VIEW_COLUMNS.price,...VIEW_COLUMNS.performance,...VIEW_COLUMNS.risk].some(c=>c.id===id)) ? [{ id, desc: direction !== "asc" }] : [{ id: "totalBrl", desc: true }];
 }
 
-function formatUsd(value: number) {
-  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function portfolioEquivalent(totalBrl: number, currency: "BRL" | "USD" | "EUR", usdRate: number | null, eurRate: number | null) {
+  const value = nativeUnitPrice(totalBrl, currency, usdRate, eurRate);
+  return value === null ? `${currency} —` : formatCurrency(value, currency);
 }
 
-function formatWeightPercent(weight: number) {
-  return `${weight.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+function AssetClassDot({ position, className }: { position: MonthPosition; className?: string }) {
+  const assetClass = primaryClassOf(position);
+  return <span aria-hidden="true" title={englishLabel(assetClass)} className={cn("inline-block size-2 shrink-0 rounded-full", className)} style={{ backgroundColor: categoryColor(assetClass) }} />;
 }
+
+
 
 function parseDay(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-/**
- * Competência sem posições. No mês aberto, ou sem competência nenhuma, como o
- * usuário novo (spec 055), oferece incluir a primeira posição ali mesmo ou
- * restaurar um backup; `?incluir=1`, vindo da Visão Geral, já abre o
- * formulário. Um mês fechado sem posições só avisa.
- */
+
 function EmptyPositions({ month, catalog }: { month: MonthPositions | null; catalog: EditingCatalog }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [form, setForm] = useState<FormState>({ open: false, target: null, key: 0 });
   const [toast, setToast] = useState<EditToastState | null>(null);
   const [isStarting, startStarting] = useTransition();
-  // Pedido de incluir que espera a competência aberta: `?incluir=1`, ou o
-  // clique antes de a primeira competência existir.
+
+
   const [pendingAdd, setPendingAdd] = useState(() => searchParams.get("incluir") === "1");
   const sequence = useRef(0);
   const dismissToast = useCallback(() => setToast(null), []);
@@ -955,7 +688,7 @@ function EmptyPositions({ month, catalog }: { month: MonthPositions | null; cata
         <span className="grid size-12 place-items-center rounded-2xl border border-border bg-card text-primary">
           <TableIcon aria-hidden="true" size={22} weight="duotone" />
         </span>
-        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Nenhuma posição nesta competência</h1>
+        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">No positions in this reporting month</h1>
       </div>
     );
   }
@@ -981,7 +714,7 @@ function EmptyPositions({ month, catalog }: { month: MonthPositions | null; cata
 
   return (
     <>
-      <EmptyPortfolio title="Nenhuma posição ainda" onAdd={add} adding={isStarting || (pendingAdd && !editable)} />
+      <EmptyPortfolio title="No positions yet" onAdd={add} adding={isStarting || (pendingAdd && !editable)} />
       {month ? (
         <PositionFormDialog
           open={formOpen}

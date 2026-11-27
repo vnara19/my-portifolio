@@ -1,3 +1,12 @@
+import { brazilianNetValue } from "../domain/brazilian-net-value";
+import { MATURITY_EXIT_NOTE } from "./maturity-exits";
+import { nativeHistory, datedFx, type MoneyCurrency } from "../domain/position-money";
+import { readSavings, type Savings, type SavingsCalculation } from "../domain/savings";
+import { savingsState } from "./savings";
+import { readInternationalBond, type InternationalBond } from "../domain/international-bond";
+
+/** Assemble user-scoped position, cost and transaction history without contacting market-data providers. */
+import { readFixedIncomeContract, type BrazilianFixedIncome } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { readMonthQuoteValues, readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
@@ -16,10 +25,6 @@ import { emptyRecordedMonth, recordedByMonth } from "@/modules/portfolio/domain/
 import { autoIncomeParts, indexerOfSubclass, type AutoIncomeIndexer } from "@/modules/portfolio/domain/fixed-income-policy";
 import { businessDaysBetween } from "@/modules/portfolio/domain/business-days";
 
-// Dados da página de uma posição (spec 016): a posição é a combinação de conta
-// e ativo, pelos identificadores, em todas as competências. O ativo em outras
-// contas entra para o recorte "Todas as contas" e para dizer onde ele estava
-// quando a posição falta na conta.
 
 export type PositionScopeView = {
   slots: HistorySlot[];
@@ -38,57 +43,61 @@ export type OtherAccountHolding = {
 export type PositionHistoryView = {
   accountId: string;
   assetId: string;
+  displayCurrency?: MoneyCurrency;
+  native?: { account: PositionScopeView; all: PositionScopeView; prices: PriceHistory | null; estimated: boolean; error?: string };
   assetName: string;
   ticker: string | null;
   quoteSymbol: string | null;
   baseCurrency: string;
-  /** AAAA-MM-DD, quando informado na inclusão (spec 026). */
+
   maturityDate: string | null;
-  /** Prazo de liquidez do ativo, opcional (spec 039). */
-  liquidity: string | null;
-  institutionName: string;
-  accountName: string;
+
   selectedMonth: string;
   monthStatus: PortfolioMonthStatus;
-  /** Dia de referência do aviso de vencimento, como na tabela de Posições. */
+
   referenceDay: string;
-  /** Câmbio da competência selecionada. */
+  treasurySelicStockBrl?: number | null;
+  treasuryQuote?: { day: string; price: number } | null;
+
   usdRate: number | null;
-  /** Total de cada classe na competência selecionada, para a parcela da posição. */
+
   classTotals: Record<string, number>;
   otherAccounts: OtherAccountHolding[];
   account: PositionScopeView;
-  /** Nulo quando o ativo nunca esteve em outra conta. */
+
   all: PositionScopeView | null;
   prices: PriceHistory | null;
-  /**
-   * Histórico de cotações do símbolo (spec 053): `pending` enquanto o job
-   * agendado não o carregou, `failed` quando a última tentativa falhou.
-   */
+
+
   history: { state: "ready" | "pending" | "failed"; error: string | null } | null;
-  /** Movimentações da posição nesta conta (spec 056), da mais recente para a mais antiga. */
+
   transactions: PositionTransactionView[];
-  /** Rendimento automático na competência selecionada (specs 060 e 079). */
+
+  savings?: { terms: Savings; state: SavingsCalculation | null; error?: string };
+  bond?: InternationalBond | null;
   cdi: CdiView | null;
-  /** Rentabilidade das classificações, com ou sem o cálculo automático (spec 079). */
+
   rate: { parts: RatePart[]; automatic: boolean } | null;
 };
 
-/** Rentabilidade de uma classificação: % do CDI no pós-fixado, taxa ao ano no prefixado. */
+
 export type RatePart = { indexer: AutoIncomeIndexer; percent: number; weight: number };
 
 export type CdiView = {
+  contract?: BrazilianFixedIncome | null;
+  inflationThrough?: string | null;
   parts: RatePart[];
-  /** AAAA-MM-DD do início do cálculo no mês. */
+
   start: string;
+  lifetime: { investedBrl: number; interestBrl: number; netBrl: number | null } | null;
   baseBrl: number;
-  /** Rendimento bruto calculado no mês, sem virar transação. */
+
   incomeBrl: number;
   balanceBrl: number;
-  /** Última taxa usada; nulo antes da primeira. */
+
   through: string | null;
   error: string | null;
-  /** Projeção bruta: no CDI, a última taxa diária mantida; no prefixado, a própria taxa. */
+
   projection: { until: string; businessDays: number; balanceBrl: number; dailyPercent: number; toMaturity: boolean } | null;
 };
 
@@ -96,24 +105,33 @@ export type PositionTransactionView = {
   id: string;
   accountId: string;
   accountLabel: string;
+  positionId?: string;
+  assetId?: string;
+  assetName?: string;
+  ticker?: string | null;
+  quoteSymbol?: string | null;
+  assetType?: string | null;
+  baseCurrency?: string;
+  moneyUnavailable?: boolean;
+  fixedIncomePurchase?: { quantity: string | null; contract: NonNullable<ReturnType<typeof readFixedIncomeContract>>; maturityDate: string };
+  bondPurchase?: InternationalBond | null;
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
-  /** Perna de uma transferência interna, como a liquidação de um título (spec 059). */
+
   transferId: string | null;
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   occurredOn: string;
   quantity: number;
   unitPriceBrl: number | null;
   amountBrl: number;
   note: string | null;
-  /** Competência em que foi registrada. */
+
   monthId: string;
-  /** AAAA-MM */
+  /** YYYY-MM */
   month: string;
-  /**
-   * Rendimento calculado pela taxa (spec 079): uma linha por mês, até o
-   * último dia que rendeu, só de leitura.
-   */
+
+
   automatic?: boolean;
+  locked?: boolean;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,17 +159,18 @@ export async function getPositionHistory({
         where: { id: assetId },
         select: {
           name: true,
+          fixedIncomeContract: true,
           ticker: true,
           quoteSymbol: true,
           baseCurrency: true,
+          assetType: true,
           maturityDate: true,
-          liquidity: true,
           autoIncome: true,
         },
       }),
       prisma.account.findUnique({
         where: { id: accountId },
-        select: { name: true, institution: { select: { name: true } } },
+        select: { id: true },
       }),
       prisma.position.findMany({
         where: { assetId },
@@ -168,7 +187,6 @@ export async function getPositionHistory({
           totalBrl: true,
           strategy: true,
           portfolioMonth: { select: { referenceDate: true } },
-          account: { select: { name: true, institution: { select: { name: true } } } },
           allocations: { select: { assetClass: true, subclass: true, duration: true, weight: true, ratePercent: true } },
         },
       }),
@@ -182,9 +200,10 @@ export async function getPositionHistory({
       return null;
     }
 
-    // O rendimento calculado de cada mês (specs 060 e 079) entra como uma
-    // movimentação de rendimento, só de leitura, no último dia que rendeu.
-    const transactions = [...(await readTransactions(assetId)), ...automaticIncome(positions)].sort(
+
+    const accountIds = [...new Set(positions.map((position) => position.accountId))].sort();
+    const positionLabel = (id: string) => `Position ${accountIds.indexOf(id) + 1}`;
+    const transactions = [...(await readTransactions(assetId)), ...automaticIncome(positions)].map((entry) => ({ ...entry, accountLabel: positionLabel(entry.accountId) })).sort(
       (left, right) => right.occurredOn.localeCompare(left.occurredOn) || Number(Boolean(right.automatic)) - Number(Boolean(left.automatic)),
     );
     const recordedByAccount = new Map(
@@ -193,14 +212,18 @@ export async function getPositionHistory({
         recordedByMonth(transactions.filter((entry) => entry.accountId === id).reverse()),
       ]),
     );
-    // O acompanhamento começa na primeira movimentação da conta: depois dela, um
-    // mês sem movimentações é um mês em que nada aconteceu, não uma fotografia
-    // estimada (spec 073).
+
+
+    // Preserve estimated cost basis (spec 073).
     const trackedSince = new Map(
       [...recordedByAccount].map(([id, byMonth]) => [id, [...byMonth.keys()].sort()[0] ?? null]),
     );
+    const treasuryPrices = asset.quoteSymbol?.startsWith("TD:") ? await prisma.dailyQuote.findMany({where:{symbol:asset.quoteSymbol},orderBy:{quoteDate:"asc"},select:{quoteDate:true,valueBrl:true}}) : [];
     const observations: PositionObservation[] = positions.map((position) => {
       const month = monthKey(position.portfolioMonth.referenceDate);
+      const closingDay = new Date(Math.min(Date.now(), Date.UTC(position.portfolioMonth.referenceDate.getUTCFullYear(),position.portfolioMonth.referenceDate.getUTCMonth()+1,0)));
+      const observed = treasuryPrices.findLast(point=>point.quoteDate<=closingDay);
+      const treasuryPrice = observed && +closingDay-+observed.quoteDate<=7*86400000 ? observed.valueBrl : null;
       const movements = recordedByAccount.get(position.accountId)?.get(month) ?? null;
       const since = trackedSince.get(position.accountId) ?? null;
       const tracked = since !== null && month >= since;
@@ -208,15 +231,15 @@ export async function getPositionHistory({
       return {
       month: monthKey(position.portfolioMonth.referenceDate),
       accountId: position.accountId,
-      // Só a instituição: a conta saiu da interface (spec 040).
-      accountLabel: position.account.institution.name,
+
+      accountLabel: positionLabel(position.accountId),
       quantity: position.quantity.toNumber(),
       openingQuantity: position.openingQuantity.toNumber(),
-      // A migração inicializou a base de todo o legado. Ter uma base não
-      // significa conhecer as operações daquele mês (spec 058).
+
+
       recorded,
-      unitPriceBrl: position.unitPriceBrl?.toNumber() ?? null,
-      totalBrl: position.totalBrl.toNumber(),
+      unitPriceBrl: (treasuryPrice ?? position.unitPriceBrl)?.toNumber() ?? null,
+      totalBrl: treasuryPrice ? position.quantity.mul(treasuryPrice).toNumber() : position.totalBrl.toNumber(),
       strategy: position.strategy,
       allocations: position.allocations.map((allocation) => ({
         assetClass: allocation.assetClass,
@@ -226,7 +249,7 @@ export async function getPositionHistory({
       })),
     }; });
 
-    const quoted = Boolean(asset.quoteSymbol);
+    const quoted = Boolean(asset.quoteSymbol) || Boolean(readInternationalBond(asset.fixedIncomeContract));
     const monthTotals = months.map((month) => ({ month: month.month, totalBrl: month.totalBrl }));
     const selectedMonth = selected.month;
     const scope = (scopeAccountId: string | null): PositionScopeView => {
@@ -270,9 +293,25 @@ export async function getPositionHistory({
 
     const today = calendarDay(new Date());
     const lastDay = lastDayOf(selected.referenceDate);
+    const referenceDay = toDateKey(today < lastDay ? today : lastDay);
+    const treasuryQuote = treasuryPrices.findLast(point => toDateKey(point.quoteDate) <= referenceDay);
     const usdQuote = (await readMonthQuoteValues(prisma, selected.referenceDate, ["USD"])).get("USD");
 
+    const displayCurrency: MoneyCurrency = asset.assetType === "crypto" ? "USD" : asset.baseCurrency === "EUR" ? "EUR" : asset.baseCurrency === "USD" ? "USD" : "BRL";
+    const prices = asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null;
+    let native: PositionHistoryView["native"];
+    if(displayCurrency !== "BRL") {
+      const [fxSeries, daily] = await Promise.all([readQuoteSeries(prisma,[displayCurrency]), prisma.dailyQuote.findMany({where:{symbol:displayCurrency},orderBy:{quoteDate:"asc"},select:{quoteDate:true,valueBrl:true}})]);
+      const monthly=new Map(fxSeries.map(p=>[monthKey(p.referenceDate),p.valueBrl.toNumber()]));
+      const dailyFx=daily.map(p=>({day:toDateKey(p.quoteDate),rate:p.valueBrl.toNumber()}));
+      try {
+        const converted=nativeHistory({currency:displayCurrency,observations,months:monthTotals,transactions,monthly,daily:dailyFx,accountId,selectedMonth,quoted});
+        const nativePrices=prices?{...prices,points:prices.points.flatMap(point=>{const fx=datedFx(point.day,null,displayCurrency,dailyFx,monthly);return fx?[{...point,valueBrl:point.valueBrl/fx.rate,valueUsd:null}]:[];})}:null;
+        native={...converted,prices:nativePrices};
+      }catch(error){native={account:{slots:[],summary:summarizeHistory([],selectedMonth,quoted),transactions:[]},all:{slots:[],summary:summarizeHistory([],selectedMonth,quoted),transactions:[]},prices:null,estimated:false,error:error instanceof Error?error.message:"Historical currency conversion is unavailable."};}
+    }
     return {
+      displayCurrency, native,
       accountId,
       assetId,
       assetName: asset.name,
@@ -280,21 +319,22 @@ export async function getPositionHistory({
       quoteSymbol: asset.quoteSymbol,
       baseCurrency: asset.baseCurrency,
       maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,
-      liquidity: asset.liquidity,
-      institutionName: account.institution.name,
-      accountName: account.name,
       selectedMonth,
       monthStatus: selected.status,
-      referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
+      referenceDay,
+      treasuryQuote: treasuryQuote && Date.parse(referenceDay) - +treasuryQuote.quoteDate <= 7 * 86400000
+        ? { day: toDateKey(treasuryQuote.quoteDate), price: treasuryQuote.valueBrl.toNumber() } : null,
       usdRate: usdQuote?.valueBrl.toNumber() ?? null,
       classTotals,
       otherAccounts: [...others.values()],
       account: scope(accountId),
       all: others.size > 0 ? scope(null) : null,
-      prices: asset.quoteSymbol ? await getPriceHistory(asset.quoteSymbol, toDateKey(today)) : null,
+      prices,
       history: asset.quoteSymbol ? await readHistoryState(asset.quoteSymbol) : null,
       transactions: transactions.filter((entry) => entry.accountId === accountId),
-      cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate) : null,
+      savings: readSavings(asset.fixedIncomeContract) ? await (async()=>{const terms=readSavings(asset.fixedIncomeContract)!;try{return {terms,state:await savingsState(prisma,terms,toDateKey(new Date(Math.min(+today,+lastDayOf(selected.referenceDate)))))};}catch(error){return{terms,state:null,error:error instanceof Error?error.message:"Savings could not be calculated."};}})() : undefined,
+      bond: readInternationalBond(asset.fixedIncomeContract),
+      cdi: asset.autoIncome && !asset.quoteSymbol ? await readCdi(accountId, assetId, selected.id, asset.maturityDate, referenceDay, transactions) : null,
       rate: rateOf(positions, accountId, selected.id, asset.autoIncome),
     };
   } catch {
@@ -302,11 +342,7 @@ export async function getPositionHistory({
   }
 }
 
-/**
- * Rentabilidade das classificações da posição na competência (spec 079) ou,
- * fora dela, na última em que a posição aparece. Classificações iguais somam
- * os pesos.
- */
+
 function rateOf(
   positions: {
     accountId: string;
@@ -351,13 +387,8 @@ function rateParts(allocations: { subclass: string; weight: Prisma.Decimal | str
   return parts;
 }
 
-/**
- * Quadro do rendimento automático da posição na competência (specs 060 e
- * 079): o saldo bruto até o último dia que rendeu e, separada, a projeção até
- * o vencimento (ou por 12 meses), com a última taxa diária do CDI mantida e a
- * taxa prefixada, em dias úteis com os feriados nacionais.
- */
-async function readCdi(accountId: string, assetId: string, monthId: string, maturity: Date | null): Promise<CdiView | null> {
+
+async function readCdi(accountId: string, assetId: string, monthId: string, maturity: Date | null, referenceDay: string, transactions: PositionTransactionView[]): Promise<CdiView | null> {
   const prisma = (await getUserDb())!;
   const position = await prisma.position.findFirst({
     where: { accountId, assetId, portfolioMonthId: monthId, calculationStartDate: { not: null } },
@@ -368,7 +399,7 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
       calculatedIncomeBrl: true,
       incomeCalculatedThrough: true,
       incomeCalculationError: true,
-      asset: { select: { autoIncome: true, quoteSymbol: true } },
+      asset: { select: { autoIncome: true, quoteSymbol: true, fixedIncomeContract: true } },
       allocations: { select: { subclass: true, weight: true, ratePercent: true } },
     },
   });
@@ -378,6 +409,20 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
     return null;
   }
 
+  const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
+  const movements = transactions.filter(entry => entry.accountId === accountId && !entry.automatic && entry.occurredOn <= referenceDay);
+  const purchase = movements.length === 1 && movements[0].kind === "CONTRIBUTION" && !movements[0].transferId && movements[0].amountBrl > 0
+    ? movements[0]
+    : null;
+  // A single known purchase gives an unambiguous remaining tax basis.
+  const principal = purchase ? new Prisma.Decimal(purchase.amountBrl) : null;
+  const lifetime = contract && principal && purchase && !position.incomeCalculationError && position.totalBrl.gt(0) ? {
+    investedBrl: principal.toNumber(),
+    interestBrl: position.totalBrl.minus(principal).toNumber(),
+    netBrl: contract.product === "CDB" || Date.parse(referenceDay) - Date.parse(purchase.occurredOn) >= 30 * 86400000
+      ? brazilianNetValue(position.totalBrl, principal, new Date(purchase.occurredOn), new Date(referenceDay), contract.product !== "CDB").net.toNumber()
+      : null,
+  } : null;
   const from = position.incomeCalculatedThrough ? addDay(toDateKey(position.incomeCalculatedThrough)) : toDateKey(calendarDay(new Date()));
   const twelve = new Date(`${from}T00:00:00.000Z`);
   twelve.setUTCFullYear(twelve.getUTCFullYear() + 1);
@@ -388,19 +433,19 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
     : null;
   let projection: CdiView["projection"] = null;
 
-  if (until && (latest || parts.every((part) => part.indexer === "PRE"))) {
-    // Fator diário da posição: a média dos fatores das classificações pelos
-    // pesos, em dias úteis com os feriados nacionais, como os bancos (spec 079).
+  if (until && !parts.some((part) => part.indexer === "IPCA") && (latest || parts.every((part) => part.indexer === "PRE"))) {
+
+
     const total = parts.reduce((sum, part) => sum.plus(part.weight), new Prisma.Decimal(0));
     const daily = parts.reduce((sum, part) => {
       const rate = new Prisma.Decimal(part.ratePercent).div(100);
       const factor =
         part.indexer === "PRE"
-          ? new Prisma.Decimal(1).plus(rate).pow(new Prisma.Decimal(1).div(252))
+          ? new Prisma.Decimal(1).plus(rate).pow(new Prisma.Decimal(1).div(contract?.basis === "CALENDAR_365" ? 365 : 252))
           : new Prisma.Decimal(1).plus(latest!.dailyPercent.div(100).mul(rate));
       return sum.plus(factor.mul(part.weight).div(total));
     }, new Prisma.Decimal(0));
-    const businessDays = businessDaysBetween(from, until);
+    const businessDays = contract?.basis === "CALENDAR_365" ? Math.round((Date.parse(until) - Date.parse(from)) / 86400000) : businessDaysBetween(from, until);
     projection = {
       until,
       businessDays,
@@ -411,6 +456,9 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
   }
 
   return {
+    inflationThrough: parts.some((part) => part.indexer === "IPCA") ? (await prisma.rateObservation.findFirst({ where: { indexer: "IPCA", date: { lte: new Date(from) } }, orderBy: { date: "desc" }, select: { date: true } }))?.date.toISOString().slice(0, 7) ?? null : null,
+    contract,
+    lifetime,
     parts: rateParts(position.allocations),
     start: toDateKey(position.calculationStartDate),
     baseBrl: position.openingQuantity.toNumber(),
@@ -422,11 +470,8 @@ async function readCdi(accountId: string, assetId: string, monthId: string, matu
   };
 }
 
-/**
- * Rendimento calculado de cada mês (specs 060 e 079) como uma movimentação de
- * rendimento, só de leitura: a soma do mês até o último dia que rendeu.
- */
-function automaticIncome(
+
+export function automaticIncome(
   positions: {
     id: string;
     accountId: string;
@@ -434,7 +479,6 @@ function automaticIncome(
     calculatedIncomeBrl: Prisma.Decimal;
     incomeCalculatedThrough: Date | null;
     portfolioMonth: { referenceDate: Date };
-    account: { institution: { name: string } };
   }[],
 ): PositionTransactionView[] {
   return positions.flatMap((position) => {
@@ -449,14 +493,14 @@ function automaticIncome(
       {
         id: `auto-${position.id}`,
         accountId: position.accountId,
-        accountLabel: position.account.institution.name,
+        accountLabel: "",
         kind: "INCOME" as const,
         transferId: null,
         occurredOn: toDateKey(day),
         quantity: income.abs().toNumber(),
         unitPriceBrl: null,
         amountBrl: income.toNumber(),
-        note: `Rendimento automático até ${toDateKey(day).split("-").reverse().join("/")}`,
+        note: `Automatic accrual through ${toDateKey(day).split("-").reverse().join("/")}`,
         monthId: position.portfolioMonthId,
         month: monthKey(position.portfolioMonth.referenceDate),
         automatic: true,
@@ -471,9 +515,9 @@ function addDay(day: string) {
   return value.toISOString().slice(0, 10);
 }
 
-async function readTransactions(assetId: string): Promise<PositionTransactionView[]> {
+export async function readTransactions(assetId?: string): Promise<PositionTransactionView[]> {
   const rows = await (await getUserDb())!.positionTransaction.findMany({
-    where: { position: { assetId } },
+    where: assetId ? { position: { assetId } } : {},
     orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -484,10 +528,11 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
       amountBrl: true,
       note: true,
       transferId: true,
+      positionId: true,
       position: {
         select: {
+          asset: { select: { id: true, name: true, ticker: true, quoteSymbol: true, assetType: true, baseCurrency: true, fixedIncomeContract: true, appliedOn: true, maturityDate: true } },
           accountId: true,
-          account: { select: { institution: { select: { name: true } } } },
           portfolioMonthId: true,
           portfolioMonth: { select: { referenceDate: true } },
         },
@@ -495,24 +540,38 @@ async function readTransactions(assetId: string): Promise<PositionTransactionVie
     },
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    accountId: row.position.accountId,
-    accountLabel: row.position.account.institution.name,
-    kind: row.kind,
-    occurredOn: toDateKey(row.occurredOn),
-    quantity: row.quantity.toNumber(),
-    unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
-    amountBrl: row.amountBrl.toNumber(),
-    note: row.note,
-    transferId: row.transferId,
-    monthId: row.position.portfolioMonthId,
-    month: monthKey(row.position.portfolioMonth.referenceDate),
-  }));
+  return rows.map((row) => {
+    const terms = readFixedIncomeContract(row.position.asset.fixedIncomeContract);
+    return {
+      id: row.id,
+      positionId: row.positionId,
+      assetId: row.position.asset.id,
+      assetName: readInternationalBond(row.position.asset.fixedIncomeContract)?.issuer ?? row.position.asset.name,
+      ticker: row.position.asset.ticker,
+      quoteSymbol: row.position.asset.quoteSymbol,
+      assetType: row.position.asset.assetType,
+      baseCurrency: row.position.asset.baseCurrency,
+      accountId: row.position.accountId,
+      accountLabel: "",
+      kind: row.kind,
+      occurredOn: toDateKey(row.occurredOn),
+      quantity: row.quantity.toNumber(),
+      unitPriceBrl: row.unitPriceBrl?.toNumber() ?? null,
+      amountBrl: /^Net withdrawal: BRL (\d+(?:\.\d+)?);/.test(row.note ?? "") ? Number(/^Net withdrawal: BRL (\d+(?:\.\d+)?);/.exec(row.note!)![1]) : row.amountBrl.toNumber(),
+      bondPurchase: row.kind === "CONTRIBUTION" ? readInternationalBond(row.position.asset.fixedIncomeContract) : null,
+      locked: row.position.asset.assetType === "savings" || row.position.asset.assetType === "international-bond",
+      fixedIncomePurchase: terms && row.position.asset.maturityDate && row.kind === "CONTRIBUTION" && row.occurredOn.getTime() === row.position.asset.appliedOn?.getTime() ? { quantity: terms.purchaseQuantity ?? null, contract: terms, maturityDate: toDateKey(row.position.asset.maturityDate) } : undefined,
+      automatic: row.note === MATURITY_EXIT_NOTE || row.position.asset.assetType === "savings" && row.note === "Savings automatic return",
+      note: row.note,
+      transferId: row.transferId,
+      monthId: row.position.portfolioMonthId,
+      month: monthKey(row.position.portfolioMonth.referenceDate),
+    };
+  });
 }
 
 async function readHistoryState(symbol: string): Promise<PositionHistoryView["history"]> {
-  // O cadastro dos símbolos é compartilhado; o cliente com escopo o lê sem filtro.
+
   const registry = await (await getUserDb())!.quoteSymbol.findUnique({
     where: { symbol },
     select: { historySyncedUntil: true, historyError: true },
@@ -530,7 +589,7 @@ async function readHistoryState(symbol: string): Promise<PositionHistoryView["hi
 async function getPriceHistory(symbol: string, today: string): Promise<PriceHistory> {
   const prisma = (await getUserDb())!;
   const symbols = symbol === "USD" ? ["USD"] : [symbol, "USD"];
-  // Uma cotação digitada pelo usuário vale por cima da compartilhada (spec 051).
+
   const [monthly, daily] = await Promise.all([
     readQuoteSeries(prisma, symbols),
     prisma.dailyQuote.findMany({

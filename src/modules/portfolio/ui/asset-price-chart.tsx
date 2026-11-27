@@ -1,21 +1,17 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
+/** Show month-end prices alongside the position's cost basis and dated cash movements. */
+
+import { englishLabel } from "@/lib/english-labels";
+
+import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
 import { useState } from "react";
-import {
-  Line,
-  LineChart,
-  ReferenceArea,
-  ReferenceDot,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Line, LineChart, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import { monthFromKey } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPercent, formatPriceBrl } from "@/modules/portfolio/presentation/portfolio-format";
+import { formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
 import { formatUsd, monthLabel } from "@/modules/portfolio/presentation/position-page";
 import type { PriceHistory, PricePoint } from "@/modules/quotes/domain/price-history";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
@@ -23,7 +19,7 @@ import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 type Currency = "BRL" | "USD";
 
 export type PriceMarker = { day: string; kind: "CONTRIBUTION" | "WITHDRAWAL"; unitPriceBrl: number };
-type RangeKey = "6m" | "12m" | "36m" | "all";
+type RangeKey = ChartPeriod;
 
 type PriceRow = {
   t: number;
@@ -33,13 +29,9 @@ type PriceRow = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const dayFormat = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
+const dayFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
 
-/**
- * Cotação do ativo: o fechamento de cada mês, a cotação mais recente daquele
- * mês, num eixo de tempo. Mostra o mês selecionado e o preço médio estimado da
- * posição.
- */
+
 export function AssetPriceChart({
   prices,
   symbol,
@@ -53,26 +45,19 @@ export function AssetPriceChart({
   selectedMonth: string;
   averagePriceBrl: number | null;
   averageLabel: string;
-  /** Aportes e retiradas (spec 056), no dia e no preço da movimentação. */
+
   markers?: PriceMarker[];
 }) {
-  const canUseUsd = symbol !== "USD" && prices.points.some((point) => point.valueUsd !== null);
-  const [currency, setCurrency] = useState<Currency>("BRL");
+ const { formatBrl, formatPriceBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
   const [rangeKey, setRangeKey] = useState<RangeKey>("all");
-  const activeCurrency: Currency = canUseUsd ? currency : "BRL";
+  const activeCurrency: Currency = "BRL";
   const activeRange: RangeKey = rangeKey;
 
   const points = prices.points;
   const lastT = points.at(-1)?.t ?? 0;
-  const startT =
-    activeRange === "6m"
-      ? lastT - 183 * DAY_MS
-      : activeRange === "12m"
-        ? lastT - 366 * DAY_MS
-        : activeRange === "36m"
-          ? lastT - 3 * 366 * DAY_MS
-          : (points[0]?.t ?? 0);
+  const startT = activeRange === "all" ? (points[0]?.t ?? 0) : periodStart(lastT, activeRange);
 
   const rows: PriceRow[] = points
     .filter((point) => point.t >= startT)
@@ -81,8 +66,7 @@ export function AssetPriceChart({
 
   if (points.length === 0) {
     return (
-      <div className="grid h-[240px] place-items-center rounded-xl border border-dashed border-border/70 px-6 text-center text-[11px] text-muted-foreground">
-        Sem cotações registradas para {symbol}.
+      <div className="grid h-[240px] place-items-center rounded-xl border border-dashed border-border/70 px-6 text-center text-[11px] text-muted-foreground">No quotes recorded for {symbol}.
       </div>
     );
   }
@@ -97,8 +81,8 @@ export function AssetPriceChart({
   const selectedStart = monthFromKey(selectedMonth).getTime();
   const selectedEnd = new Date(Date.UTC(new Date(selectedStart).getUTCFullYear(), new Date(selectedStart).getUTCMonth() + 1, 0)).getTime();
   const format = (value: number) => (activeCurrency === "BRL" ? formatPriceBrl(value) : `US$ ${formatUsd(value)}`);
-  // Os marcadores ficam no preço em reais da movimentação; no gráfico em dólar,
-  // somem.
+
+  // Keep markers visible across the selected range.
   const visibleMarkers =
     activeCurrency === "BRL"
       ? markers
@@ -106,28 +90,12 @@ export function AssetPriceChart({
           .filter((marker) => marker.t >= domain[0] && marker.t <= domain[1] + DAY_MS * 31)
       : [];
 
-  const ranges: { key: RangeKey; label: string }[] = [
-    { key: "6m", label: "6M" },
-    { key: "12m", label: "12M" },
-    { key: "36m", label: "3A" },
-    { key: "all", label: "Tudo" },
-  ];
+  const ranges = [...CHART_PERIODS];
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {canUseUsd ? (
-            <Segmented
-              label="Moeda do gráfico"
-              options={[
-                { key: "BRL", label: "R$" },
-                { key: "USD", label: "US$" },
-              ]}
-              value={activeCurrency}
-              onChange={(next) => setCurrency(next as Currency)}
-            />
-          ) : null}
           {change !== null ? (
             <span
               data-testid="price-range-change"
@@ -136,35 +104,32 @@ export function AssetPriceChart({
                 change >= 0 ? "bg-chart-up/12 text-chart-up" : "bg-chart-down/12 text-chart-down",
               )}
             >
-              {formatPercent(change)} no período
+              {formatPercent(change)}over the period
             </span>
           ) : null}
         </div>
         <Segmented
-          label="Período do gráfico"
+          label="Chart period"
           options={ranges}
           value={activeRange}
           onChange={(next) => setRangeKey(next as RangeKey)}
         />
       </div>
 
-      <ul aria-label="Legenda" className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <ul aria-label="Legend" className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="h-0.5 w-3.5 rounded-full bg-primary" />
-          Fechamento do mês
+          <span className="h-0.5 w-3.5 rounded-full bg-primary" />Month-end price
         </li>
         {averagePriceBrl !== null && activeCurrency === "BRL" ? (
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="w-3.5 border-t border-dashed border-warning-foreground" />
+            <span className="w-3.5 border-t border-dashed border-[#a78bfa]" />
             {averageLabel}
           </li>
         ) : null}
         {visibleMarkers.length > 0 ? (
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="price-markers-legend">
-            <span className="size-2 rounded-full bg-chart-up" />
-            Aporte
-            <span className="ml-1.5 size-2 rounded-full bg-chart-down" />
-            Retirada
+            <span className="size-2 rounded-full bg-chart-up" />Contribution
+            <span className="ml-1.5 size-2 rounded-full bg-chart-down" />Withdrawal
           </li>
         ) : null}
       </ul>
@@ -184,13 +149,15 @@ export function AssetPriceChart({
               tickLine={false}
             />
             <YAxis
+              tickCount={10}
+              minTickGap={18}
               axisLine={false}
               domain={["auto", "auto"]}
               tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
               tickFormatter={(value: number) =>
                 activeCurrency === "BRL"
                   ? formatBrl(value, { compact: true })
-                  : `US$ ${value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })}`
+                  : `US$ ${value.toLocaleString("en-GB", { notation: "compact", maximumFractionDigits: 1 })}`
               }
               tickLine={false}
               width={62}
@@ -205,8 +172,8 @@ export function AssetPriceChart({
             {averagePriceBrl !== null && activeCurrency === "BRL" ? (
               <ReferenceLine
                 y={averagePriceBrl}
-                stroke="var(--warning-foreground)"
-                strokeOpacity={0.7}
+                stroke="#a78bfa"
+                strokeOpacity={1}
                 strokeDasharray="5 4"
                 ifOverflow="extendDomain"
               />
@@ -222,12 +189,10 @@ export function AssetPriceChart({
 
                 return (
                   <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-                    <p className="text-[11px] font-medium text-foreground">{pointLabel(row.point)}</p>
-                    <p className="mt-1 font-mono text-xs text-foreground">
+                    <p className="font-mono text-xs text-foreground">
                       {row.value === null ? "—" : format(row.value)}
                     </p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      Cotação de {dayFormat.format(new Date(row.t))}
+                    <p className="mt-1 text-[10px] text-muted-foreground">Quote for {dayFormat.format(new Date(row.t))}
                     </p>
                   </div>
                 );
@@ -247,7 +212,7 @@ export function AssetPriceChart({
             ))}
             <Line
               dataKey="value"
-              name="Fechamento do mês"
+              name="Month-end price"
               type="linear"
               stroke="var(--primary)"
               strokeWidth={2}
@@ -260,12 +225,12 @@ export function AssetPriceChart({
       </div>
 
       <table className="sr-only">
-        <caption>Cotação de {symbol} por mês</caption>
+        <caption>Quote for {symbol}per month</caption>
         <thead>
           <tr>
-            <th scope="col">Data</th>
-            <th scope="col">Origem</th>
-            <th scope="col">Valor</th>
+            <th scope="col">Date</th>
+            <th scope="col">Source</th>
+            <th scope="col">Value</th>
           </tr>
         </thead>
         <tbody>
@@ -294,7 +259,7 @@ function Segmented({
   onChange: (key: string) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+    <div role="group" aria-label={englishLabel(label)} className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
       {options.map((option) => (
         <button
           key={option.key}
@@ -306,17 +271,14 @@ function Segmented({
             value === option.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {option.label}
+          {englishLabel(option.label)}
         </button>
       ))}
     </div>
   );
 }
 
-/**
- * Marcas no último dia dos meses, onde fica o fechamento de cada mês, no
- * máximo sete.
- */
+
 function timeTicks(start: number, end: number) {
   if (end <= start) {
     return [start];
@@ -354,5 +316,5 @@ function timeTicks(start: number, end: number) {
 }
 
 function pointLabel(point: PricePoint) {
-  return point.open ? `Última cotação de ${monthLabel(point.month)}` : `Fechamento de ${monthLabel(point.month)}`;
+  return point.open ? `Latest quote for ${monthLabel(point.month)}` : `Closing price for ${monthLabel(point.month)}`;
 }

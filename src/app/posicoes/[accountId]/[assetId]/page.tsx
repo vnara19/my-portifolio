@@ -5,8 +5,10 @@ import { AppShell } from "@/components/product/app-shell";
 import { getUserDb } from "@/lib/user-db";
 import { getEditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import { getMonthContext } from "@/modules/portfolio/application/get-month-context";
+import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
 import { getMonthPositions } from "@/modules/portfolio/application/get-month-positions";
 import { getPositionHistory, type PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
+import { positionTitle } from "@/modules/portfolio/presentation/position-display";
 import { formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
 import { PositionDetail, type PositionEditing } from "@/modules/portfolio/ui/position-detail";
 
@@ -20,16 +22,13 @@ type PositionPageProps = {
 export async function generateMetadata({ params }: PositionPageProps): Promise<Metadata> {
   const { assetId } = await params;
   const asset = await (await getUserDb())
-    ?.asset.findUnique({ where: { id: assetId }, select: { name: true } })
+    ?.asset.findUnique({ where: { id: assetId }, select: { name: true, ticker: true } })
     .catch(() => null);
 
-  return { title: asset?.name ?? "Posição" };
+  return { title: asset ? positionTitle(asset.name, asset.ticker) : "Position" };
 }
 
-// Página da posição (spec 016): a conta e o ativo identificam a posição em
-// todas as competências; o seletor global de mês continua valendo. O botão
-// "Editar posição" abre o mesmo formulário da tabela (spec 043) para a posição
-// da competência selecionada.
+
 export default async function PositionPage({ params, searchParams }: PositionPageProps) {
   const [{ accountId, assetId }, query] = await Promise.all([params, searchParams]);
   const mes = typeof query.mes === "string" ? query.mes : undefined;
@@ -39,8 +38,13 @@ export default async function PositionPage({ params, searchParams }: PositionPag
     selected ? getMonthPositions(selected.referenceDate) : Promise.resolve(null),
     getEditingCatalog(),
   ]);
-  // A faixa de competências mostra só os meses com a posição no recorte (spec
-  // 075); um mês sem ela leva ao mais próximo que tem.
+
+
+  if (history?.quoteSymbol?.startsWith("TD:TESOURO-SELIC:")) {
+    const holdings = month?.positions.filter(position => position.quoteSymbol?.startsWith("TD:TESOURO-SELIC:") && !position.liquidated);
+    history.treasurySelicStockBrl = holdings ? holdings.reduce((total, position) => total + position.totalBrl, 0) : null;
+  }
+
   const positionMonths = history ? monthsWithPosition(history, query.contas === "todas") : null;
 
   if (history && positionMonths && positionMonths.size > 0 && !positionMonths.has(history.selectedMonth)) {
@@ -75,19 +79,37 @@ export default async function PositionPage({ params, searchParams }: PositionPag
       }
     : null;
 
+  const allAccounts = Boolean(history?.all) && query.contas === "todas";
+  const valuations = month?.positions.filter(position =>
+    position.assetId === assetId && !position.liquidated && (allAccounts || position.accountId === accountId)) ?? [];
+  const composition = month && history && valuations.length > 0
+    ? (await getPortfolioGains(month.referenceDate, month.usdRate, "USD", {
+        assetId, accountId: allAccounts ? undefined : accountId, valuations,
+      })).composition
+    : undefined;
+
+  const breakdown = composition ? {
+    totalUsd: composition.totalUsd,
+    percent: composition.percent,
+    costUsd: composition.costUsd,
+    priceUsd: composition.priceUsd,
+    fxUsd: composition.fxUsd,
+    adjustmentUsd: composition.adjustmentUsd,
+  } : composition;
+
   return (
     <AppShell
       active="positions"
       months={positionMonths && positionMonths.size > 0 ? months.filter((month) => positionMonths.has(month.month)) : months}
       selectedMonth={selected?.month ?? null}
-      context={history ? { kind: "position", label: history.assetName } : undefined}
+      context={history ? { kind: "position", label: positionTitle(history.assetName, history.ticker) } : undefined}
     >
-      <PositionDetail history={history} editing={editing} />
+      <PositionDetail history={history} editing={editing} composition={breakdown} />
     </AppShell>
   );
 }
 
-/** Competências em que a posição existe, na conta ou em todas as contas, em ordem. */
+
 function monthsWithPosition(history: PositionHistoryView, allAccounts: boolean) {
   const view = allAccounts && history.all ? history.all : history.account;
   return new Set(view.slots.filter((slot) => slot.kind === "present").map((slot) => slot.month));

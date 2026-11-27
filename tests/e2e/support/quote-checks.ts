@@ -3,11 +3,6 @@ import type { Page, Route } from "@playwright/test";
 import type { OpenCheckResponse } from "@/modules/portfolio/domain/month-rollover";
 import type { QuoteRefreshRunView, QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 
-// Os testes de interface rodam sobre os dados reais. A checagem de abertura
-// grava no banco (cria competências e metas padrão), então os cenários a
-// substituem por respostas fixas. As cotações vêm só do job agendado (spec
-// 053): a checagem devolve o resumo da última execução. As respostas usam os
-// tipos da rota, para o typecheck acusar mudanças no contrato.
 
 export const IDLE_OPEN_CHECK: OpenCheckResponse = {
   rollover: { state: "up-to-date", latestMonth: null },
@@ -32,7 +27,7 @@ export async function stubQuoteChecks(
 
 const MINUTE = 60 * 1000;
 
-// Execução de cotações concluída há cinco minutos e meio, ajustável por cenário.
+
 export function stubRun(overrides: Partial<QuoteRefreshRunView> = {}): QuoteRefreshRunView {
   const startedAt = new Date(Date.now() - 5.5 * MINUTE).toISOString();
 
@@ -50,8 +45,7 @@ export function stubRun(overrides: Partial<QuoteRefreshRunView> = {}): QuoteRefr
   };
 }
 
-// O resumo das rotas simuladas é mais novo que o lido pelo servidor ao montar
-// a página, para que o cabeçalho passe a usar o resumo simulado.
+
 export function stubSummary(lastRun: QuoteRefreshRunView, lastUpdatedAt: string | null): QuoteRefreshSummary {
   return {
     generatedAt: new Date(Date.now() + 24 * 60 * MINUTE).toISOString(),

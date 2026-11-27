@@ -1,3 +1,9 @@
+import { historicalClosingValues } from "./historical-closing-values";
+import { readSavings } from "../domain/savings";
+import { productType, listingMarket, reviewedDebtProduct } from "../presentation/asset-classification";
+import { readFixedIncomeContract } from "../domain/brazilian-fixed-income";
+import { hasSecurityQuantity, nativePositionValue, nativeUnitPrice, valuationCurrency } from "../presentation/position-display";
+import { bondCostState, readInternationalBond } from "../domain/international-bond";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { assetTypeOf, type AssetType } from "@/modules/portfolio/domain/classification";
@@ -9,7 +15,7 @@ export type MonthPositionAllocation = {
   subclass: string;
   duration: string;
   weight: number;
-  /** Rentabilidade da classificação (spec 079): % do CDI ou taxa ao ano. */
+
   ratePercent?: number | null;
 };
 
@@ -20,22 +26,26 @@ export type MonthPosition = {
   assetName: string;
   ticker: string | null;
   quoteSymbol: string | null;
-  institutionName: string;
-  accountName: string;
   strategy: string | null;
   baseCurrency: string;
-  /** Vencimento do ativo (AAAA-MM-DD), quando informado na inclusão (spec 026). */
+
   maturityDate: string | null;
-  /** Prazo de liquidez do ativo, opcional (spec 039). */
-  liquidity: string | null;
-  /** Conta corrente (spec 059): recebe o dinheiro de títulos liquidados. */
+
+
   cashAccount: boolean;
-  /** Tipo do ativo (spec 068): o escolhido ou, nos antigos, o deduzido. */
+
   assetType: AssetType;
-  /** O tipo foi deduzido, sem escolha do usuário. */
+
   assetTypeInferred: boolean;
-  /** Rendimento calculado automaticamente pela taxa de cada classificação (spec 079). */
+  productType?: string;
+  market?: string;
+
+  fixedIncomeEstimate?: boolean;
+  bondAtCost?: boolean;
+  bondIssuer?: string;
+  bondValuationDate?: string | null;
   autoIncome?: boolean;
+  fixedIncomeBasis?: "BUSINESS_252" | "CALENDAR_365";
   appliedOn?: string | null;
   calculationStartDate?: string | null;
   calculatedIncomeBrl?: number;
@@ -43,11 +53,14 @@ export type MonthPosition = {
   incomeCalculationError?: string | null;
   quantity: number;
   quantityText: string;
-  /**
-   * Liquidada (spec 076): uma retirada zerou a posição neste mês. Ela aparece
-   * no mês da saída e não passa ao seguinte.
-   */
+  securityQuantity: string | null;
+  valueCurrency: "BRL" | "USD" | "EUR";
+  nativeValue: number | null;
+  unitPriceNative?: number | null;
+
+
   liquidated: boolean;
+  historicalSold?: boolean;
   unitPriceBrl: number | null;
   totalBrl: number;
   totalUsd: number | null;
@@ -67,18 +80,16 @@ export type MonthPositions = {
   referenceDate: Date;
   status: PortfolioMonthStatus;
   isLatest: boolean;
-  /** Mês fechado: editar exige abri-lo na linha do tempo (spec 034). */
+
   isLocked: boolean;
-  /** Competência do mês corrente, a única em que a cotação de hoje vale para o mês. */
+
   isCurrent: boolean;
-  /**
-   * Dia de referência para os avisos de vencimento: hoje na competência
-   * corrente e o último dia do mês nas demais, para o histórico não mostrar
-   * como vencido o que venceu depois.
-   */
+
+
   referenceDay: string;
   totalBrl: number;
   usdRate: number | null;
+  eurRate?: number | null;
   quotes: MonthQuote[];
   positions: MonthPosition[];
 };
@@ -121,15 +132,12 @@ export async function getMonthPositions(
                   quoteSymbol: true,
                   baseCurrency: true,
                   maturityDate: true,
-                  liquidity: true,
                   cashAccount: true,
+                  fixedIncomeContract: true,
                   autoIncome: true,
                   appliedOn: true,
                   assetType: true,
                 },
-              },
-              account: {
-                select: { name: true, institution: { select: { name: true } } },
               },
               allocations: {
                 select: { assetClass: true, subclass: true, duration: true, weight: true, ratePercent: true },
@@ -148,10 +156,20 @@ export async function getMonthPositions(
       return null;
     }
 
-    // Cotação do mês para o usuário: a compartilhada ou a digitada por ele (spec 051).
+
     const storedQuotes = await readMonthQuoteValues(prisma, month.referenceDate);
+    const listingQuotes = await prisma.marketQuote.findMany({
+      where: { symbol: { in: month.positions.flatMap((p) => p.asset.quoteSymbol ? [p.asset.quoteSymbol] : []) }, referenceDate: { lte: month.referenceDate }, instrumentType: { in: ["REIT", "EU_REIT", "ETF", "EU_ETF", "EU_ETC", "EU_ETN", "EU_STOCK", "EU_FUND", "ACAO", "EQUITY", "MUTUALFUND"] } },
+      orderBy: { referenceDate: "desc" }, distinct: ["symbol"], select: { symbol: true, instrumentType: true },
+    });
+    const instruments = new Map(listingQuotes.map((q) => [q.symbol, q.instrumentType]));
     const quoteBySymbol = new Map([...storedQuotes].map(([symbol, quote]) => [symbol, quote.valueBrl]));
     const usdRate = quoteBySymbol.get("USD")?.toNumber() ?? null;
+    const closingValues = await historicalClosingValues(month.referenceDate, month.positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
+    for (const position of month.positions) {
+      const close = position.asset.quoteSymbol ? closingValues.get(position.asset.quoteSymbol) : undefined;
+      if (close !== undefined) { position.unitPriceBrl = new Prisma.Decimal(close); position.totalBrl = position.quantity.mul(close); }
+    }
     const totalBrl = month.positions
       .reduce((total, position) => total.plus(position.totalBrl), new Prisma.Decimal(0))
       .toNumber();
@@ -175,11 +193,12 @@ export async function getMonthPositions(
       referenceDate: month.referenceDate,
       status: month.status,
       isLatest: latest?.id === month.id,
-      isLocked: month.status !== "DRAFT",
+      isLocked: false,
       isCurrent: month.referenceDate.getTime() === currentReferenceMonth().getTime(),
       referenceDay: toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay),
       totalBrl,
       usdRate,
+      eurRate: quoteBySymbol.get("EUR")?.toNumber() ?? null,
       quotes: symbols.map((symbol) => {
         const stored = quoteBySymbol.get(symbol);
 
@@ -193,6 +212,15 @@ export async function getMonthPositions(
       positions: month.positions
         .map((position) => {
           const positionTotal = position.totalBrl.toNumber();
+          const assetType = assetTypeOf(position.asset);
+          const bond = readInternationalBond(position.asset.fixedIncomeContract);
+          const fixedIncome = readFixedIncomeContract(position.asset.fixedIncomeContract);
+          const displayProduct = productType(assetType, /fundo de investimento imobili[aá]rio/i.test(position.asset.name) ? "FII" : instruments.get(position.asset.quoteSymbol ?? "") ?? storedQuotes.get(position.asset.quoteSymbol ?? "")?.instrumentType, fixedIncome?.product ?? reviewedDebtProduct(position.asset.fixedIncomeContract) ?? position.asset.name.match(/^(CDB|LCI|LCA)\b/i)?.[1]?.toUpperCase(), bond?.family, position.allocations.find((a) => a.assetClass === "Cripto" || a.subclass === "Stablecoin")?.subclass ?? (position.asset.quoteSymbol === "BTC" ? "BTC" : null));
+          const asOf = toDateKey(today.getTime() < lastDay.getTime() ? today : lastDay);
+          const securityQuantity = bond
+            ? bond.faceValuePerBond ? position.quantity.div(bond.faceValuePerBond).toFixed() : null
+            : fixedIncome?.purchaseQuantity && position.quantity.gt(0) ? fixedIncome.purchaseQuantity
+            : hasSecurityQuantity(assetType, position.asset.quoteSymbol) ? position.quantity.toString() : null;
 
           return {
             id: position.id,
@@ -201,16 +229,20 @@ export async function getMonthPositions(
             assetName: position.asset.name,
             ticker: position.asset.ticker,
             quoteSymbol: position.asset.quoteSymbol,
-            institutionName: position.account.institution.name,
-            accountName: position.account.name,
             strategy: position.strategy,
             baseCurrency: position.asset.baseCurrency,
             maturityDate: position.asset.maturityDate ? toDateKey(position.asset.maturityDate) : null,
-            liquidity: position.asset.liquidity,
             cashAccount: position.asset.cashAccount,
-            assetType: assetTypeOf(position.asset),
+            assetType,
+            productType: displayProduct,
+            market: listingMarket(displayProduct === "Cryptocurrency" ? "crypto" : assetType, position.asset.baseCurrency, bond?.issuerCountry ?? readSavings(position.asset.fixedIncomeContract)?.country),
             assetTypeInferred: position.asset.assetType === null,
+            bondIssuer: bond?.issuer,
+            bondAtCost: bond?.valuationMode === "Cost",
+            bondValuationDate: bond?.quotes.filter((q) => q.date <= asOf).sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null,
+            fixedIncomeEstimate: Boolean(position.asset.autoIncome && position.allocations.some((allocation) => allocation.subclass === "IPCA")),
             autoIncome: position.asset.autoIncome,
+            fixedIncomeBasis: fixedIncome?.basis,
             appliedOn: position.asset.appliedOn ? toDateKey(position.asset.appliedOn) : null,
             calculationStartDate: position.calculationStartDate ? toDateKey(position.calculationStartDate) : null,
             calculatedIncomeBrl: position.calculatedIncomeBrl.toNumber(),
@@ -218,7 +250,14 @@ export async function getMonthPositions(
             incomeCalculationError: position.incomeCalculationError,
             quantity: position.quantity.toNumber(),
             quantityText: position.quantity.toString(),
+            securityQuantity,
+            valueCurrency: valuationCurrency(assetType, position.asset.baseCurrency),
+            nativeValue: nativePositionValue({ assetType, baseCurrency: position.asset.baseCurrency,
+              totalBrl: positionTotal, quantity: position.quantity.toNumber(), usdRate, eurRate: quoteBySymbol.get("EUR")?.toNumber() ?? null,
+              ...(bond?.valuationMode === "Cost" ? { bondCost: bondCostState(bond, asOf).cost.toNumber() } : {}),
+            }),
             liquidated: !position.quantity.greaterThan(0),
+            unitPriceNative: nativeUnitPrice(position.unitPriceBrl?.toNumber() ?? null, valuationCurrency(assetType, position.asset.baseCurrency), usdRate, quoteBySymbol.get("EUR")?.toNumber() ?? null),
             unitPriceBrl: position.unitPriceBrl ? position.unitPriceBrl.toNumber() : null,
             totalBrl: positionTotal,
             totalUsd: usdRate === null || usdRate === 0 ? null : positionTotal / usdRate,

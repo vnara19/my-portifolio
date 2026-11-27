@@ -1,83 +1,71 @@
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
-import { ASSET_TYPE_LABELS } from "@/modules/portfolio/domain/classification";
+import { englishLabel } from "@/lib/english-labels";
+import { PRODUCT_TYPES, productType, listingMarket } from "./asset-classification";
 
-export const NO_CLASS = "Sem classificação";
-export const NO_STRATEGY = "Sem estratégia";
-export const NO_MATURITY = "Sem vencimento";
-export const NO_LIQUIDITY = "Sem liquidez informada";
+export const NO_CLASS = "Unclassified";
+export const NO_MATURITY = "No Maturity Date";
 
 export type PositionFilters = {
   classes: string[];
   subclasses: string[];
-  /** Tipo do ativo, pelo rótulo, como "Tesouro Direto" (spec 068). */
+
   types: string[];
-  institutions: string[];
-  strategies: string[];
+  markets?: string[];
   currencies: string[];
-  /** Ano do vencimento, como "2027", ou "Sem vencimento" (spec 031). */
+
   maturities: string[];
-  /** Prazo de liquidez do ativo, ou "Sem liquidez informada" (spec 039). */
-  liquidities: string[];
+
   search: string;
 };
 
 export type FilterDimension =
   | "classes"
-  | "subclasses"
+  | "markets"
   | "types"
-  | "institutions"
-  | "strategies"
   | "currencies"
   | "maturities"
-  | "liquidities";
 
 export const FILTER_DIMENSIONS: FilterDimension[] = [
   "classes",
-  "subclasses",
   "types",
-  "institutions",
-  "strategies",
+  "markets",
   "currencies",
   "maturities",
-  "liquidities",
 ];
 
-export type GroupBy = "instituicao" | "classe" | "tipo";
-
-export type GroupedPosition<T extends MonthPosition = MonthPosition> = {
-  position: T;
-  valueBrl: number;
-};
-
-export type PositionGroup<T extends MonthPosition = MonthPosition> = {
-  key: string;
-  label: string;
-  items: GroupedPosition<T>[];
-  totalBrl: number;
-};
-
-/** Rótulo do tipo do ativo, para a coluna, o filtro e o agrupamento. */
-export function typeOf(position: MonthPosition) {
-  return ASSET_TYPE_LABELS[position.assetType];
+export function normalizeTypeFilter(label: string) {
+  if (["Bitcoin", "Altcoin", "Stablecoin", "Crypto"].includes(label)) return "Cryptocurrency";
+  if (["REIT", "FII", "REIT / FII"].includes(label)) return "REIT/FII";
+  if (["Government Bond", "Corporate Bond", "Agency Bond", "Municipal Bond", "Supranational Bond", "Negotiable CD", "Covered Bond", "Securitized Bond", "Bond"].includes(label)) return "Bonds";
+  return (PRODUCT_TYPES as readonly string[]).includes(label) ? label : "";
 }
 
-export function strategyOf(position: MonthPosition) {
-  return position.strategy ?? NO_STRATEGY;
+export function typeOf(position: Pick<MonthPosition, "assetType" | "productType">) {
+  return normalizeTypeFilter(position.productType ?? productType(position.assetType));
+}
+
+export function marketOf(position: Pick<MonthPosition, "assetType" | "market" | "baseCurrency">) {
+  return position.market ?? listingMarket(position.assetType, position.baseCurrency);
+}
+
+/** Legacy multi-class holdings use their largest saved exposure as the visual marker. */
+export function primaryClassOf(position: Pick<MonthPosition, "allocations">) {
+  const primary = [...position.allocations].sort((left, right) => right.weight - left.weight || left.assetClass.localeCompare(right.assetClass))[0];
+  return primary?.subclass === "Stablecoin" ? "Cripto" : primary?.assetClass ?? NO_CLASS;
 }
 
 export function classesOf(position: MonthPosition) {
   return position.allocations.length === 0
     ? [NO_CLASS]
-    : [...new Set(position.allocations.map((allocation) => allocation.assetClass))];
+    : [...new Set(position.allocations.map((allocation) => allocation.subclass === "Stablecoin" ? "Cripto" : allocation.assetClass))];
 }
 
-/**
- * Rótulo de uma classificação na tabela (spec 044): classe, subclasse e o
- * resgate quando há, como "Renda Fixa · IPCA · Curto".
- */
+
 export function allocationLabel(allocation: { assetClass: string; subclass: string; duration: string }) {
-  return [allocation.assetClass, allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
+  if (allocation.assetClass === "Cripto" || allocation.subclass === "Stablecoin") return "Cryptocurrency";
+  return [allocation.assetClass, allocation.assetClass === "Cripto" ? null : allocation.subclass, allocation.duration !== "-" ? allocation.duration : null]
     .filter(Boolean)
+    .map((part) => englishLabel(part))
     .join(" · ");
 }
 
@@ -85,12 +73,8 @@ export function subclassesOf(position: MonthPosition) {
   return [...new Set(position.allocations.map((allocation) => allocation.subclass))];
 }
 
-/** Prazo de liquidez, para o filtro; "Sem liquidez informada" quando vazio. */
-export function liquidityOf(position: MonthPosition) {
-  return position.liquidity ?? NO_LIQUIDITY;
-}
 
-/** Ano do vencimento, para o filtro; "Sem vencimento" quando não informado. */
+
 export function maturityOf(position: MonthPosition) {
   return position.maturityDate ? position.maturityDate.slice(0, 4) : NO_MATURITY;
 }
@@ -103,19 +87,13 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
   const search = normalize(filters.search);
 
   return positions.filter((position) => {
-    if (filters.institutions.length > 0 && !filters.institutions.includes(position.institutionName)) {
-      return false;
-    }
-
     if (filters.types.length > 0 && !filters.types.includes(typeOf(position))) {
       return false;
     }
 
-    if (filters.strategies.length > 0 && !filters.strategies.includes(strategyOf(position))) {
-      return false;
-    }
+    if (filters.markets?.length && !filters.markets.includes(marketOf(position))) return false;
 
-    if (filters.currencies.length > 0 && !filters.currencies.includes(position.baseCurrency)) {
+    if (filters.currencies.length > 0 && !filters.currencies.includes(position.valueCurrency)) {
       return false;
     }
 
@@ -123,9 +101,6 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
       return false;
     }
 
-    if (filters.liquidities.length > 0 && !filters.liquidities.includes(liquidityOf(position))) {
-      return false;
-    }
 
     if (
       filters.classes.length > 0 &&
@@ -143,7 +118,7 @@ export function filterPositions<T extends MonthPosition>(positions: T[], filters
 
     if (search) {
       const haystack = normalize(
-        [position.assetName, position.ticker ?? "", position.institutionName].join(" "),
+        [position.assetName, position.ticker ?? ""].join(" "),
       );
 
       if (!haystack.includes(search)) {
@@ -177,79 +152,26 @@ export function matchedValueBrl(position: MonthPosition, filters: PositionFilter
   return (position.totalBrl * weight) / 100;
 }
 
-export function groupPositions<T extends MonthPosition>(
-  positions: T[],
-  groupBy: GroupBy,
-  filters: PositionFilters,
-): PositionGroup<T>[] {
-  const groups = new Map<string, PositionGroup<T>>();
-
-  const add = (label: string, item: GroupedPosition<T>) => {
-    const group = groups.get(label) ?? { key: label, label, items: [], totalBrl: 0 };
-    group.items.push(item);
-    group.totalBrl += item.valueBrl;
-    groups.set(label, group);
-  };
-
-  for (const position of positions) {
-    if (groupBy === "instituicao" || groupBy === "tipo") {
-      add(groupBy === "tipo" ? typeOf(position) : position.institutionName, { position, valueBrl: position.totalBrl });
-      continue;
-    }
-
-    if (position.allocations.length === 0) {
-      add(NO_CLASS, { position, valueBrl: position.totalBrl });
-      continue;
-    }
-
-    for (const assetClass of classesOf(position)) {
-      if (filters.classes.length > 0 && !filters.classes.includes(assetClass)) {
-        continue;
-      }
-
-      const weight = position.allocations
-        .filter(
-          (allocation) =>
-            allocation.assetClass === assetClass &&
-            (filters.subclasses.length === 0 || filters.subclasses.includes(allocation.subclass)),
-        )
-        .reduce((total, allocation) => total + allocation.weight, 0);
-
-      if (weight > 0) {
-        add(assetClass, { position, valueBrl: (position.totalBrl * weight) / 100 });
-      }
-    }
-  }
-
-  return [...groups.values()].sort((left, right) => right.totalBrl - left.totalBrl);
-}
-
-/**
- * Opções de cada filtro em cascata, da esquerda para a direita (spec 044, que
- * substituiu a ordem de aplicação da spec 031): as opções de um filtro só levam
- * em conta os filtros à esquerda dele, na ordem de `FILTER_DIMENSIONS`, a
- * mesma da tela. Assim, escolher a classe Caixa limita a subclasse às que
- * existem em Caixa, e escolher uma subclasse não limita a classe. Os valores
- * já escolhidos continuam na lista, para poderem ser desmarcados. A busca
- * vale para todos.
- */
 export function filterOptions(
   positions: MonthPosition[],
   filters: PositionFilters = EMPTY_FILTERS,
 ): Record<FilterDimension, string[]> {
   const options = {} as Record<FilterDimension, string[]>;
+  // Retired registration flows remain filterable only while their legacy holdings exist.
+  const products = PRODUCT_TYPES.filter(product => !["Cash Account", "Pension Plan"].includes(product) || positions.some(position => typeOf(position) === product));
 
   for (const [index, dimension] of FILTER_DIMENSIONS.entries()) {
-    const before = FILTER_DIMENSIONS.slice(0, index).filter((other) => filters[other].length > 0);
+    const before = FILTER_DIMENSIONS.slice(0, index).filter((other) => (filters[other]?.length ?? 0) > 0);
     const scoped: PositionFilters = { ...EMPTY_FILTERS, search: filters.search };
 
     for (const other of before) {
-      scoped[other] = filters[other];
+      scoped[other] = filters[other] ?? [];
     }
 
     const values = filterPositions(positions, scoped).flatMap((position) => facetValues(position, dimension, scoped));
-    options[dimension] = [...new Set([...values, ...filters[dimension]])].sort((left, right) =>
-      left.localeCompare(right, "pt-BR"),
+    const supported = dimension === "types" ? [...products] : dimension === "currencies" ? ["BRL", "USD", "EUR"] : dimension === "markets" ? ["Brazil", "United States", "Europe", "Global"] : [];
+    options[dimension] = [...new Set(dimension === "types" ? [...products] : [...supported, ...values.filter(Boolean), ...(filters[dimension] ?? [])])].sort((left, right) =>
+      left.localeCompare(right, "en-GB"),
     );
   }
 
@@ -260,19 +182,13 @@ const EMPTY_FILTERS: PositionFilters = {
   classes: [],
   subclasses: [],
   types: [],
-  institutions: [],
-  strategies: [],
+  markets: [],
   currencies: [],
   maturities: [],
-  liquidities: [],
   search: "",
 };
 
-/**
- * Valores de uma posição para um filtro. Classe e subclasse olham o rateio:
- * com a classe já filtrada, só as subclasses daquela classe contam, e o
- * contrário também.
- */
+
 function facetValues(position: MonthPosition, dimension: FilterDimension, scoped: PositionFilters) {
   switch (dimension) {
     case "classes":
@@ -281,22 +197,14 @@ function facetValues(position: MonthPosition, dimension: FilterDimension, scoped
         : position.allocations
             .filter((allocation) => scoped.subclasses.length === 0 || scoped.subclasses.includes(allocation.subclass))
             .map((allocation) => allocation.assetClass);
-    case "subclasses":
-      return position.allocations
-        .filter((allocation) => scoped.classes.length === 0 || scoped.classes.includes(allocation.assetClass))
-        .map((allocation) => allocation.subclass);
+    case "markets":
+      return [marketOf(position)];
     case "types":
       return [typeOf(position)];
-    case "institutions":
-      return [position.institutionName];
-    case "strategies":
-      return [strategyOf(position)];
     case "currencies":
-      return [position.baseCurrency];
+      return [position.valueCurrency];
     case "maturities":
       return [maturityOf(position)];
-    case "liquidities":
-      return [liquidityOf(position)];
   }
 }
 
@@ -304,6 +212,6 @@ function normalize(value: string) {
   return value
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
-    .toLocaleLowerCase("pt-BR")
+    .toLocaleLowerCase("en-GB")
     .trim();
 }

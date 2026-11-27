@@ -18,7 +18,7 @@ const entry: Omit<VerifiedTicker, "expiresAt"> = {
   quoteDate: new Date("2026-10-04T00:00:00Z"), fetchedAt: now,
 };
 
-test("comprovante preserva preço/datas/moeda e vale numa outra instância do servidor", () => {
+test("ticker proofs preserve price, dates and currency across server instances", () => {
   const token = createVerifiedTickerToken(entry, context, secret);
   const script = `
     import { readFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ test("comprovante preserva preço/datas/moeda e vale numa outra instância do se
   });
 });
 
-test("recusa preço adulterado, assinatura errada, usuário/mês alheio e expiração verdadeira", () => {
+test("tampering, invalid signatures, wrong user/month and real expiry are rejected", () => {
   const token = createVerifiedTickerToken(entry, context, secret);
   const [payload, signature] = token.split(".");
   const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
@@ -48,7 +48,7 @@ test("recusa preço adulterado, assinatura errada, usuário/mês alheio e expira
   assert.equal(readVerifiedTickerToken(token, { ...context, now: new Date(now.getTime() + 2 * 60 * 60 * 1000) }, secret), null);
 });
 
-test("payload com assinatura válida ainda exige versão, preço positivo/finito e datas reais", () => {
+test("signed payloads still require version, positive finite prices and real dates", () => {
   const [payload] = createVerifiedTickerToken(entry, context, secret).split(".");
   const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
   for (const patch of [
@@ -63,7 +63,7 @@ test("payload com assinatura válida ainda exige versão, preço positivo/finito
   assert.throws(() => createVerifiedTickerToken({ ...entry, priceBrl: Number.POSITIVE_INFINITY }, context, secret));
 });
 
-test("indisponibilidade mantém a opção manual, sem preço automático inventado", () => {
+test("provider outages preserve the manual option without inventing a price", () => {
   const token = createVerifiedTickerToken({ ...entry, status: "unavailable", priceBrl: null, coinId: null }, context, secret);
   const result = readVerifiedTickerToken(token, context, secret);
   assert.equal(result?.status, "unavailable");

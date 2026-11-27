@@ -1,9 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
 
-// Cotação de um mês para um usuário (spec 051): a compartilhada, vinda dos
-// provedores ou da virada de mês, ou, por cima dela, a digitada por ele. O
-// cliente precisa ser o com escopo do usuário (src/lib/user-db.ts): as
-// cotações à mão só aparecem para quem as digitou.
 
 type QuoteReader = Pick<Prisma.TransactionClient, "marketQuote" | "manualQuote">;
 
@@ -12,17 +8,17 @@ export type MonthQuoteValue = {
   instrumentType: string;
   baseCurrency: string;
   valueBrl: Prisma.Decimal;
-  /** Dia do preço, quando a compartilhada veio do histórico diário. */
+
   quoteDate: Date | null;
-  /** Competência repetida, quando a compartilhada não tem valor próprio no mês. */
+
   carriedFrom: Date | null;
-  /** Digitada pelo usuário; vale por cima da compartilhada. */
+
   manual: boolean;
 };
 
 export type QuoteSeriesPoint = MonthQuoteValue & { referenceDate: Date };
 
-/** Cotações efetivas de uma competência, por símbolo. */
+
 export async function readMonthQuoteValues(
   db: QuoteReader,
   referenceDate: Date,
@@ -54,13 +50,15 @@ export async function readMonthQuoteValues(
   }
 
   for (const quote of manual) {
-    values.set(quote.symbol, { ...quote, quoteDate: null, carriedFrom: null, manual: true });
+    const official = values.get(quote.symbol);
+    if (quote.instrumentType === "CARRIED" && official && !official.carriedFrom) continue;
+    values.set(quote.symbol, { ...quote, quoteDate: null, carriedFrom: quote.instrumentType === "CARRIED" ? referenceDate : null, manual: true });
   }
 
   return values;
 }
 
-/** Cotações efetivas de todos os meses dos símbolos, em ordem de competência. */
+
 export async function readQuoteSeries(db: QuoteReader, symbols: string[]): Promise<QuoteSeriesPoint[]> {
   const [shared, manual] = await Promise.all([
     db.marketQuote.findMany({
@@ -88,7 +86,9 @@ export async function readQuoteSeries(db: QuoteReader, symbols: string[]): Promi
   }
 
   for (const quote of manual) {
-    points.set(key(quote.referenceDate, quote.symbol), { ...quote, quoteDate: null, carriedFrom: null, manual: true });
+    const official = points.get(key(quote.referenceDate, quote.symbol));
+    if (quote.instrumentType === "CARRIED" && official && !official.carriedFrom) continue;
+    points.set(key(quote.referenceDate, quote.symbol), { ...quote, quoteDate: null, carriedFrom: quote.instrumentType === "CARRIED" ? quote.referenceDate : null, manual: true });
   }
 
   return [...points.values()].sort(

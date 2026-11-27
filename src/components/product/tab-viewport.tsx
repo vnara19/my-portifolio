@@ -4,11 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-/**
- * Conteúdo da aba, com uma entrada suave a cada troca de página. As abas só
- * trocam pelo toque nelas: o arraste lateral da spec 062 saiu a pedido do
- * usuário (spec 077), porque mudava de tela sem querer no celular.
- */
+
 export function TabViewport({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();

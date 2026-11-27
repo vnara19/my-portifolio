@@ -1,18 +1,17 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
+
+import { englishLabel } from "@/lib/english-labels";
 
 import NumberFlow from "@number-flow/react";
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
 import { KpiCard } from "@/components/product/kpi-card";
-import { formatBrl } from "@/modules/portfolio/presentation/portfolio-format";
 
-// Indicador de variação da Visão Geral e da página da posição (specs 011, 024 e
-// 016): o card é o `KpiCard` de `components/product`, comum a todas as áreas.
-// O valor formatado fica também em `data-value`, porque o NumberFlow desenha os
-// dígitos num shadow DOM sem texto legível.
 
-const percentFormat = new Intl.NumberFormat("pt-BR", {
+
+const percentFormat = new Intl.NumberFormat("en-GB", {
   style: "percent",
   maximumFractionDigits: 2,
   signDisplay: "exceptZero",
@@ -35,9 +34,11 @@ export function ChangeKpiCard({
   testId?: string;
   footer?: ReactNode;
 }) {
+ const { formatBrl } = usePositionMoney();
+
   return (
     <KpiCard
-      label={label}
+      label={englishLabel(label)}
       testId={testId}
       footer={footer}
       icon={
@@ -56,7 +57,7 @@ export function ChangeKpiCard({
           <NumberFlow
             value={changePercent / 100}
             format={{ style: "percent", maximumFractionDigits: 2, signDisplay: "exceptZero" }}
-            locales="pt-BR"
+            locales="en-GB"
           />
         )
       }

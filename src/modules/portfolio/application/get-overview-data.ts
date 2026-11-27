@@ -1,33 +1,36 @@
+import { sectorExposure } from "../domain/sector-exposure";
+import { cache } from "react";
+import { bondChartLabels } from "../presentation/bond-chart-labels";
+import { buildPortfolioDistribution, type PortfolioDistribution, type DistributionHolding } from "../domain/portfolio-distribution";
+import { englishLabel } from "@/lib/english-labels";
+import { maturityChartLabel } from "../presentation/position-display";
+import { historicalClosingValues } from "./historical-closing-values";
+import { getMonthPositions } from "./get-month-positions";
+import { expressUsdGainsInEur } from "../domain/overview-reporting";
+import { exposureCurrency } from "../presentation/position-display";
+import { getPortfolioGains } from "@/modules/portfolio/application/get-portfolio-gains";
+import type { PortfolioGains } from "@/modules/portfolio/domain/portfolio-gains";
 import { Prisma, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
-import { getAllocationOverview } from "@/modules/portfolio/application/get-allocation-overview";
-import { ASSET_TYPE_LABELS, assetTypeOf } from "@/modules/portfolio/domain/classification";
-import {
-  buildFixedIncomeDuration,
-  type FixedIncomeDuration,
-} from "@/modules/portfolio/domain/fixed-income-duration";
-import {
-  DEFAULT_REBALANCE_TOLERANCE,
-  type AllocationGroup,
-} from "@/modules/portfolio/domain/rebalance";
+import { assetTypeOf } from "@/modules/portfolio/domain/classification";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
-import { readMonthQuoteValues } from "@/modules/quotes/application/month-quote-values";
-import { addMonths } from "@/modules/quotes/domain/calendar";
+import { readMonthQuoteValues, readQuoteSeries } from "@/modules/quotes/application/month-quote-values";
+import { addMonths, currentReferenceMonth } from "@/modules/quotes/domain/calendar";
 
-/**
- * Início de "Variação em todo o período" (decisão do usuário em 2026-10-02,
- * spec 030): a primeira competência minimamente completa. Junho e julho de
- * 2023 têm 5 e 6 posições, a linha inconsistente de Bitcoin pendente e dois
- * meses sem competência logo depois; outubro de 2023 é o primeiro mês com as
- * 10 posições da carteira de então e abre uma sequência quase contínua. Pode
- * voltar para a primeira competência depois do passo pré-produção.
- */
+
+import { reportingAmounts, reportingChange, type ReportingAmounts, type ReportingChange } from "@/modules/portfolio/domain/reporting-currency";
+
 export const PERIOD_START = new Date(Date.UTC(2023, 9, 1));
 
 export type OverviewHistoryPoint = {
   month: string;
+  day?: string;
   date: Date;
   totalBrl: number;
+  totalUsd?: number | null;
+  totalEur?: number | null;
+  byClassUsd?: Record<string, number>;
+  byCurrencyUsd?: Record<string, number>;
   byClass: Record<string, number>;
   byCurrency: Record<string, number>;
 };
@@ -39,9 +42,16 @@ export type OverviewData = {
   totalUsd: number | null;
   usdRate: number | null;
   btcRate: number | null;
+  eurRate: number | null;
+  gains: PortfolioGains;
+  gainsEur?: PortfolioGains;
+  realizedHistory: {day:string;value:number}[];
+  holdingResults: {assetId:string;name:string;ticker:string|null;assetType:string|null;quoteSymbol:string|null;maturityDate?:string|null;sold:boolean;principal:number;totalUsd:number|null}[];
+  accountingCurrency: "USD";
+  reporting: { total: ReportingAmounts; monthly: ReportingChange; annual: ReportingChange; allTime: ReportingChange };
   changeBrl: number | null;
   changePercent: number | null;
-  /** Mês do calendário comparado na variação no mês; nulo antes do histórico. */
+
   previousMonth: Date | null;
   previousMissing: boolean;
   change12mBrl: number | null;
@@ -49,23 +59,21 @@ export type OverviewData = {
   yearAgoMonth: Date;
   yearAgoMissing: boolean;
   periodStart: Date;
-  /** A competência selecionada é anterior ao início do período. */
+
   beforePeriodStart: boolean;
   changeSinceStartBrl: number | null;
   changeSinceStartPercent: number | null;
   positionCount: number;
   institutionCount: number;
-  offTargetTolerance: number;
   history: OverviewHistoryPoint[];
-  /** Patrimônio por tipo do ativo na competência (spec 068), do maior para o menor. */
-  byType: { label: string; valueBrl: number; share: number }[];
-  rebalanceGroups: AllocationGroup[];
-  fixedIncomeDuration: FixedIncomeDuration;
+
+  distribution: PortfolioDistribution;
+  byType: { label: string; valueBrl: number; valueUsd?: number | null; share: number }[];
   classLabels: string[];
   currencyLabels: string[];
 };
 
-export async function getOverviewData(referenceDate?: Date): Promise<OverviewData | null> {
+export const getOverviewData = cache(async function getOverviewData(referenceDate?: Date): Promise<OverviewData | null> {
   const prisma = await getUserDb();
 
   if (!prisma) {
@@ -78,14 +86,15 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       select: {
         referenceDate: true,
         status: true,
-        // Posições liquidadas (spec 076) ficam no histórico, fora do patrimônio.
+
         positions: {
           where: { quantity: { gt: 0 } },
           select: {
+            quantity: true,
             totalBrl: true,
             asset: { select: { baseCurrency: true, assetType: true, quoteSymbol: true, name: true, cashAccount: true } },
             account: { select: { institutionId: true } },
-            allocations: { select: { assetClass: true, weight: true } },
+            allocations: { select: { assetClass: true, subclass: true, weight: true } },
           },
         },
       },
@@ -97,10 +106,14 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
     const selectedIndex = requestedIndex === -1 ? months.length - 1 : requestedIndex;
     const selected = months[selectedIndex];
 
-    if (!selected || selected.positions.length === 0) {
-      return null;
-    }
+    if (!selected) return null;
+    if (!months.some((month) => month.positions.length > 0) && !(await prisma.positionTransaction.findFirst({ select: { id: true } }))) return null;
 
+    const closingValues = await historicalClosingValues(selected.referenceDate, selected.positions.flatMap(p=>p.asset.quoteSymbol?[p.asset.quoteSymbol]:[]));
+    for (const position of selected.positions) {
+      const close = position.asset.quoteSymbol ? closingValues.get(position.asset.quoteSymbol) : undefined;
+      if (close !== undefined) position.totalBrl = position.quantity.mul(close);
+    }
     const history: OverviewHistoryPoint[] = months.map((month) => {
       const byClass: Record<string, number> = {};
       const byCurrency: Record<string, number> = {};
@@ -108,18 +121,19 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
 
       for (const position of month.positions) {
         total = total.plus(position.totalBrl);
-        const currency = position.asset.baseCurrency;
+        const currency = exposureCurrency(assetTypeOf(position.asset), position.asset.baseCurrency);
         byCurrency[currency] = (byCurrency[currency] ?? 0) + position.totalBrl.toNumber();
 
         if (position.allocations.length === 0) {
-          byClass["Sem classificação"] =
-            (byClass["Sem classificação"] ?? 0) + position.totalBrl.toNumber();
+          byClass["Unclassified"] =
+            (byClass["Unclassified"] ?? 0) + position.totalBrl.toNumber();
           continue;
         }
 
         for (const allocation of position.allocations) {
           const value = position.totalBrl.mul(allocation.weight).toNumber();
-          byClass[allocation.assetClass] = (byClass[allocation.assetClass] ?? 0) + value;
+          const label = allocation.subclass === "Stablecoin" ? "Cripto" : allocation.assetClass;
+          byClass[label] = (byClass[label] ?? 0) + value;
         }
       }
 
@@ -132,9 +146,7 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       };
     });
 
-    // Comparações por meses do calendário (spec 030): sem a competência do mês
-    // de comparação, o card mostra "Histórico insuficiente" em vez de comparar
-    // com outra mais antiga.
+
     const selectedHistory = history[selectedIndex];
     const byTime = new Map(history.map((point) => [point.date.getTime(), point]));
     const previousMonth = addMonths(selected.referenceDate, -1);
@@ -150,25 +162,91 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
         ? selectedHistory.totalBrl - firstHistory.totalBrl
         : null;
 
-    const typeTotals = new Map<string, number>();
-    for (const position of selected.positions) {
-      const label = ASSET_TYPE_LABELS[assetTypeOf(position.asset)];
-      typeTotals.set(label, (typeTotals.get(label) ?? 0) + position.totalBrl.toNumber());
-    }
-    const byType = [...typeTotals.entries()]
-      .filter(([, valueBrl]) => valueBrl > 0)
-      .map(([label, valueBrl]) => ({
-        label,
-        valueBrl,
-        share: selectedHistory.totalBrl === 0 ? 0 : (valueBrl / selectedHistory.totalBrl) * 100,
-      }))
-      .sort((left, right) => right.valueBrl - left.valueBrl);
-
-    const quotes = await readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "BTC"]);
-    const usdRate = quotes.get("USD")?.valueBrl.toNumber() ?? null;
+    // Independent quote reads share one network wait instead of three round trips.
+    const [quotes, fxSeries, dailyFx] = await Promise.all([
+      readMonthQuoteValues(prisma, selected.referenceDate, ["USD", "EUR", "BTC"]),
+      readQuoteSeries(prisma, ["USD", "EUR"]),
+      prisma.dailyQuote.findMany({
+        where: { symbol: { in: ["USD", "EUR"] }, quoteDate: { lt: currentReferenceMonth() } },
+        orderBy: { quoteDate: "asc" }, select: { symbol: true, quoteDate: true, valueBrl: true },
+      }),
+    ]);
+    let usdRate = quotes.get("USD")?.valueBrl.toNumber() ?? null;
     const btcRate = quotes.get("BTC")?.valueBrl.toNumber() ?? null;
 
-    const allocation = await getAllocationOverview(selected.referenceDate);
+    let eurRate = quotes.get("EUR")?.valueBrl.toNumber() ?? null;
+    const fxByMonth = new Map<string, Map<string, number>>();
+    // Existing backfills may have daily closes without a materialized monthly quote.
+    for (const quote of dailyFx) {
+      const key = quote.quoteDate.toISOString().slice(0, 7);
+      const rates = fxByMonth.get(key) ?? new Map<string, number>();
+      rates.set(quote.symbol, quote.valueBrl.toNumber());
+      fxByMonth.set(key, rates);
+    }
+    for (const quote of fxSeries) {
+      if (quote.carriedFrom !== null) continue;
+      const key = toMonthParam(quote.referenceDate);
+      const rates = fxByMonth.get(key) ?? new Map<string, number>();
+      rates.set(quote.symbol, quote.valueBrl.toNumber());
+      fxByMonth.set(key, rates);
+    }
+    const amountsFor = (point: OverviewHistoryPoint | null) => {
+      if (!point) return null;
+      const rates = fxByMonth.get(point.month);
+      return reportingAmounts(point.totalBrl, rates?.get("USD") ?? null, rates?.get("EUR") ?? null);
+    };
+    const selectedFx = fxByMonth.get(selectedHistory.month);
+    usdRate ??= selectedFx?.get("USD") ?? null;
+    eurRate ??= selectedFx?.get("EUR") ?? null;
+    const reportingTotal = reportingAmounts(selectedHistory.totalBrl, usdRate, eurRate);
+    const reporting = {
+      total: reportingTotal,
+      monthly: reportingChange(reportingTotal, amountsFor(previousHistory)),
+      annual: reportingChange(reportingTotal, amountsFor(yearAgoHistory)),
+      allTime: reportingChange(reportingTotal, selected.referenceDate > firstHistory.date ? amountsFor(firstHistory) : null),
+    };
+
+    for (const point of history) {
+      const monthEnd = new Date(Date.UTC(point.date.getUTCFullYear(),point.date.getUTCMonth()+1,0)).toISOString().slice(0,10);
+      const today = new Date().toISOString().slice(0,10);
+      // A carried reference FX observation does not move today's valuation back a day.
+      point.day = monthEnd < today ? monthEnd : today;
+      const rate = point.month === selectedHistory.month ? usdRate : fxByMonth.get(point.month)?.get("USD");
+      point.totalUsd = rate && rate > 0 ? point.totalBrl / rate : null;
+      const euroRate = point.month === selectedHistory.month ? eurRate : fxByMonth.get(point.month)?.get("EUR");
+      point.totalEur = euroRate && euroRate > 0 ? point.totalBrl / euroRate : null;
+      point.byClassUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byClass).map(([key,value])=>[key,value/rate])) : {};
+      point.byCurrencyUsd = rate && rate > 0 ? Object.fromEntries(Object.entries(point.byCurrency).map(([key,value])=>[key,value/rate])) : {};
+    }
+    // Use precisely the same product resolver as the Positions table.
+    const positionsView = await getMonthPositions(selected.referenceDate);
+    const typeTotals = new Map<string, number>();
+    for (const position of positionsView?.positions ?? []) {
+      if (position.liquidated || position.totalBrl <= 0) continue;
+      const label = position.productType || "Unclassified";
+      typeTotals.set(label, (typeTotals.get(label) ?? 0) + position.totalBrl);
+    }
+    const byType = [...typeTotals].map(([label,valueBrl])=>({label,valueBrl,
+      valueUsd: usdRate && usdRate > 0 ? valueBrl/usdRate : null,
+      share: selectedHistory.totalBrl > 0 ? valueBrl/selectedHistory.totalBrl*100 : 0,
+    })).sort((a,b)=>b.valueBrl-a.valueBrl);
+
+    const dollarGains = await getPortfolioGains(selected.referenceDate, usdRate, "USD");
+    const {byAsset:assetGains,realizedHistory,unrealizedUsd,unrealizedPercent,realizedUsd,realizedPercent,totalUsd,issue}=dollarGains;
+    const referenceGains = {unrealizedUsd,unrealizedPercent,realizedUsd,realizedPercent,totalUsd,issue};
+    const gainByAsset = new Map(assetGains.map(row=>[row.assetId,row.unrealizedUsd]));
+    const bondLabels=bondChartLabels(positionsView?.positions??[]);
+    const uniqueHoldings = new Map<string,DistributionHolding>();
+    for (const position of positionsView?.positions ?? []) {
+      if(position.liquidated || position.totalBrl<=0 || !usdRate)continue;
+      const dominant=[...position.allocations].sort((a,b)=>b.weight-a.weight)[0];
+      const gainUsd=gainByAsset.get(position.assetId);
+      const previous=uniqueHoldings.get(position.assetId);
+      uniqueHoldings.set(position.assetId,{assetId:position.assetId,label:bondLabels.get(position.assetId)||maturityChartLabel(position.assetName,position.ticker,position.maturityDate),maturityDate:position.maturityDate,assetClass:englishLabel(dominant?.assetClass??"Unclassified"),productType:position.productType||"Unclassified",sectorSymbol:["ETF"].includes(position.productType??"")&&!(["CSH2.PA","CSH2"].includes((position.quoteSymbol??position.ticker??"").toUpperCase()))?(position.quoteSymbol??position.ticker??undefined):undefined,sectorExposure:sectorExposure(position,selectedHistory.day??selected.referenceDate.toISOString().slice(0,10)),currency:position.valueCurrency,valueUsd:(previous?.valueUsd??0)+position.totalBrl/usdRate,unrealizedGainUsd:gainUsd??null});
+    }
+    const distribution=buildPortfolioDistribution([...uniqueHoldings.values()]);
+    const gains = referenceGains;
+    const gainsEur = expressUsdGainsInEur(referenceGains, eurRate, usdRate);
 
     return {
       referenceDate: selected.referenceDate,
@@ -177,6 +255,13 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       totalUsd: usdRate && usdRate !== 0 ? selectedHistory.totalBrl / usdRate : null,
       usdRate,
       btcRate,
+      eurRate,
+      reporting,
+      gains,
+      gainsEur,
+      accountingCurrency: "USD",
+      realizedHistory,
+      holdingResults: assetGains.map(row=>({...row,maturityDate:positionsView?.positions.find(p=>p.assetId===row.assetId)?.maturityDate??null})),
       changeBrl,
       changePercent:
         changeBrl === null || !previousHistory || previousHistory.totalBrl === 0
@@ -202,21 +287,16 @@ export async function getOverviewData(referenceDate?: Date): Promise<OverviewDat
       institutionCount: new Set(
         selected.positions.map((position) => position.account.institutionId),
       ).size,
-      offTargetTolerance: allocation?.tolerance ?? DEFAULT_REBALANCE_TOLERANCE,
       history,
       byType,
-      rebalanceGroups: allocation?.groups ?? [],
-      fixedIncomeDuration: buildFixedIncomeDuration(
-        allocation?.aggregates.fixedIncome ?? [],
-        allocation?.targets ?? [],
-      ),
+      distribution,
       classLabels: collectLabels(history, "byClass"),
       currencyLabels: collectLabels(history, "byCurrency"),
     };
   } catch {
     return null;
   }
-}
+});
 
 function collectLabels(history: OverviewHistoryPoint[], key: "byClass" | "byCurrency") {
   const totals = new Map<string, number>();

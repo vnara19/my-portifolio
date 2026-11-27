@@ -1,3 +1,4 @@
+import { visibleMonthQuoteSymbols } from "../domain/active-quote-usage";
 import { Prisma, QuoteUpdateStatus, type PortfolioMonthStatus } from "@/generated/prisma/client";
 import { getUserDb } from "@/lib/user-db";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
@@ -6,15 +7,10 @@ import { readQuoteViewer } from "@/modules/quotes/application/run-views";
 import { addMonths, currentReferenceMonth, toDateKey } from "@/modules/quotes/domain/calendar";
 import { isQuoteEditable } from "@/modules/quotes/domain/quote-refresh";
 
-// Dados da página de cotações de uma competência: cada cotação com os ativos
-// que a usam, a origem do valor, o último resultado da atualização no mês e se
-// pode ser editada à mão (spec 028). As cotações automáticas são de todos os
-// usuários, e a página mostra só os símbolos do usuário; a digitada à mão vale
-// só para ele (spec 051). O histórico de execuções fica em `get-run-history`.
 
 export type QuoteLastResult = {
   status: "SUCCESS" | "FAILED";
-  /** "inclusion": cotação buscada ao incluir a posição, antes de uma atualização. */
+
   source: "update" | "inclusion";
   fetchedAt: string;
   provider: string;
@@ -27,21 +23,21 @@ export type MonthQuoteRow = {
   instrumentType: string | null;
   baseCurrency: string | null;
   valueBrl: number | null;
-  // Valor exato guardado, com ponto decimal, para o campo de edição.
+
   valueText: string;
-  // Dia do preço (AAAA-MM-DD), quando a cotação veio do histórico diário.
+
   quoteDate: string | null;
-  // Competência (AAAA-MM) cuja cotação foi repetida, quando o mês não tem
-  // valor próprio (spec 021).
+
+
   carriedFrom: string | null;
-  /** Digitada à mão pelo usuário, por cima da automática (spec 051). */
+
   manual: boolean;
   assets: string[];
-  // Quantidade de cada posição que usa a cotação, para a prévia dos totais.
+
   quantities: number[];
   totalBrl: number;
   lastResult: QuoteLastResult | null;
-  /** Sem valor no mês, repetida de outro mês, com falha na última busca ou já digitada à mão. */
+
   editable: boolean;
 };
 
@@ -51,9 +47,9 @@ export type MonthQuotesView = {
   referenceDate: Date;
   status: PortfolioMonthStatus;
   isLatest: boolean;
-  /** Mês fechado: editar exige abri-lo na linha do tempo (spec 034). */
+
   isLocked: boolean;
-  // A atualização de cotações só reprecifica a competência do mês corrente.
+
   isCurrent: boolean;
   currentMonth: string;
   totalBrl: number;
@@ -93,8 +89,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
       return null;
     }
 
-    // Execuções do mês: as que consultaram cotações num dia desta competência.
-    // Só elas podem ter reprecificado o mês, que era o corrente naquele dia.
+
     const runsInMonth = {
       quoteDate: { gte: month.referenceDate, lt: addMonths(month.referenceDate, 1) },
     } satisfies Prisma.QuoteRefreshRunWhereInput;
@@ -115,8 +110,8 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
           fetchedAt: true,
         },
       }),
-      // Cotação buscada pela inclusão de uma posição nova (spec 026): fica no
-      // histórico diário sem execução até a próxima atualização.
+
+
       prisma.dailyQuote.findMany({
         where: { runId: null, quoteDate: runsInMonth.quoteDate },
         orderBy: { fetchedAt: "desc" },
@@ -130,7 +125,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
     for (const position of month.positions) {
       const symbol = position.asset.quoteSymbol;
 
-      if (!symbol) {
+      if (!symbol || !position.quantity.greaterThan(0)) {
         continue;
       }
 
@@ -142,16 +137,14 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
     }
 
     const lastBySymbol = new Map(lastResults.map((result) => [result.symbol, result]));
-    // Das cotações do mês, que são de todos, só as dos ativos do usuário, as
-    // digitadas por ele e o dólar, que converte os ativos no exterior.
+
+
     const own = [...stored.values()]
-      .filter((quote) => quote.manual || quote.symbol === "USD" || viewer.symbols.has(quote.symbol))
+      .filter((quote) => quote.manual || quote.symbol === "USD" || quote.symbol === "EUR" || viewer.symbols.has(quote.symbol))
       .map((quote) => quote.symbol);
-    const symbols = [...new Set([...own, ...usage.keys()])].sort((left, right) =>
-      left === "USD" ? -1 : right === "USD" ? 1 : left.localeCompare(right),
-    );
+    const symbols = visibleMonthQuoteSymbols({activeSymbols:usage.keys(),storedSymbols:own,isCurrent:month.referenceDate.getTime()===current.getTime()});
     const assetsOf = (symbol: string) =>
-      [...(usage.get(symbol)?.assets ?? [])].sort((left, right) => left.localeCompare(right, "pt-BR"));
+      [...(usage.get(symbol)?.assets ?? [])].sort((left, right) => left.localeCompare(right, "en-GB"));
     const inclusionBySymbol = new Map(inclusions.map((quote) => [quote.symbol, quote]));
 
     return {
@@ -160,7 +153,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
       referenceDate: month.referenceDate,
       status: month.status,
       isLatest: latest?.id === month.id,
-      isLocked: month.status !== "DRAFT",
+      isLocked: false,
       isCurrent: month.referenceDate.getTime() === current.getTime(),
       currentMonth: toMonthParam(current),
       totalBrl: month.positions
@@ -193,8 +186,8 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
 
         return {
           symbol,
-          instrumentType: quote?.instrumentType ?? null,
-          baseCurrency: quote?.baseCurrency ?? null,
+          instrumentType: quote?.instrumentType ?? (symbol === "USD" || symbol === "EUR" ? "FIAT" : null),
+          baseCurrency: quote?.baseCurrency ?? (symbol === "USD" || symbol === "EUR" ? symbol : null),
           valueBrl: quote?.valueBrl.toNumber() ?? null,
           valueText: quote?.valueBrl.toString() ?? "",
           quoteDate: quote?.quoteDate ? toDateKey(quote.quoteDate) : null,
@@ -204,8 +197,8 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
           quantities: used?.quantities ?? [],
           totalBrl: used?.total.toNumber() ?? 0,
           lastResult,
-          // A digitada à mão continua editável até a próxima busca bem-sucedida,
-          // que a substitui (spec 028).
+
+
           editable:
             quote?.manual === true ||
             isQuoteEditable({
@@ -217,7 +210,7 @@ export async function getMonthQuotes(referenceDate?: Date): Promise<MonthQuotesV
       }),
     };
   } catch (error) {
-    console.error("Não foi possível ler as cotações da competência.", error);
+    console.error("Could not load quotes for the reporting month.", error);
     return null;
   }
 }

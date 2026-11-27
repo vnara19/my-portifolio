@@ -1,3 +1,5 @@
+
+/** FX prioritizes consistent ECB reference observations; crypto preserves USD quotes before BRL storage conversion. */
 import type {
   QuoteProviderConfiguration,
   QuoteRequest,
@@ -16,22 +18,21 @@ import { fetchFinnhubQuotes } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { fetchTreasuryQuotes } from "@/modules/quotes/infrastructure/treasury";
+import { fetchReferenceFxLatest } from "@/modules/quotes/infrastructure/frankfurter";
+import { fetchMarketPriceBrl } from "./market-listing";
 
-// Cotações de hoje por cadeia de provedores (spec 037). Cada grupo tenta o
-// primeiro provedor e passa ao seguinte só os símbolos que falharam; a falha
-// final lista o motivo de cada provedor tentado.
+
 //
-// - câmbio: AwesomeAPI → PTAX do Banco Central → Yahoo Finance;
-// - cripto: CoinGecko → Coinbase → Yahoo Finance → Binance. A Binance fica por
-//   último: ela recusa (HTTP 451) a região dos EUA onde roda o job do Neon;
-// - ativos em dólar (EUA): Finnhub → Yahoo Finance → Alpha Vantage;
-// - demais (B3): Yahoo Finance → brapi, com BRAPI_TOKEN → Alpha Vantage.
+
+// Crypto fallback: CoinGecko → Coinbase → Yahoo Finance → Binance.
+
+
 //
-// O Alpha Vantage gratuito tem 25 consultas por dia e fica por último.
+
 
 type Step = {
   provider: string;
-  /** Falso quando falta a chave; o passo é pulado sem contar como falha. */
+
   enabled: boolean;
   fetch: (requests: QuoteRequest[]) => Promise<QuoteResult[]>;
 };
@@ -45,16 +46,27 @@ export async function fetchCurrentQuotes(
   const fiat = unique.filter((request) => request.instrumentType === "FIAT");
   const crypto = unique.filter((request) => request.instrumentType === "CRIPTO");
   const treasury = unique.filter((request) => request.instrumentType === "TESOURO");
+  const european = unique.filter((request) => request.instrumentType.startsWith("EU_"));
   const usdAssets = unique.filter(
-    (request) => request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency === "USD",
+    (request) => !request.instrumentType.startsWith("EU_") && request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency === "USD",
   );
   const b3 = unique.filter(
-    (request) => request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency !== "USD",
+    (request) => !request.instrumentType.startsWith("EU_") && request.instrumentType !== "FIAT" && request.instrumentType !== "CRIPTO" && request.instrumentType !== "TESOURO" && request.baseCurrency !== "USD",
   );
   const results: QuoteResult[] = [];
   results.push(...await fetchTreasuryQuotes(treasury, { today }));
+  results.push(...await Promise.all(european.map(async (request): Promise<QuoteResult> => {
+    try {
+      const quote = await fetchMarketPriceBrl(request.symbol, today);
+      if (quote.currency !== request.baseCurrency) throw new Error("The listing currency changed; verify the instrument before updating its value.");
+      return { symbol: request.symbol, provider: "yahoo", status: "SUCCESS", valueBrl: quote.priceBrl, quoteDate: quote.quoteDate };
+    } catch (error) {
+      const described = describeProviderError(error);
+      return quoteFailure(request.symbol, "yahoo", described.code, described.message);
+    }
+  })));
 
-  // O dólar serve ao câmbio, aos ativos em dólar e aos pares em USDT.
+
   const needsUsd = fiat.some((request) => request.symbol === "USD") || usdAssets.length > 0 || crypto.length > 0;
   const usd = needsUsd ? await fetchUsdChain(configuration, today) : null;
 
@@ -63,9 +75,18 @@ export async function fetchCurrentQuotes(
       results.push({ symbol: "BRL", provider: "fixed", status: "SUCCESS", valueBrl: 1 });
     } else if (request.symbol === "USD" && usd) {
       results.push({ ...usd, symbol: "USD" });
+    } else if (request.symbol === "EUR") {
+      const [eur] = await runChain([request], [
+        { provider: "frankfurter-ecb", enabled: true, fetch: async () => {
+          const point = await fetchReferenceFxLatest("EUR", today);
+          return [{ symbol: "EUR", provider: "frankfurter-ecb", status: "SUCCESS", valueBrl: point.value, quoteDate: point.day }];
+        } },
+        { provider: "yahoo", enabled: true, fetch: (pending) => perSymbol(pending, "yahoo", async () => (await fetchYahooPrice("EURBRL=X")).price) },
+      ]);
+      results.push(eur);
     } else {
       results.push(
-        quoteFailure(request.symbol, "awesome-api", "UNSUPPORTED_CURRENCY", `A moeda ${request.symbol} ainda não possui integração.`),
+        quoteFailure(request.symbol, "awesome-api", "UNSUPPORTED_CURRENCY", `The currency ${request.symbol} is not integrated yet.`),
       );
     }
   }
@@ -77,7 +98,7 @@ export async function fetchCurrentQuotes(
         request.symbol,
         provider,
         "MISSING_USD_QUOTE",
-        usd?.status === "FAILED" ? `Sem o dólar do dia: ${usd.errorMessage}` : "Sem o dólar do dia.",
+        usd?.status === "FAILED" ? `Today's USD rate is unavailable: ${usd.errorMessage}` : "Today's USD rate is unavailable.",
       ),
     );
 
@@ -87,12 +108,13 @@ export async function fetchCurrentQuotes(
         provider: "coingecko",
         enabled: true,
         fetch: (pending) =>
-          fetchCryptoQuotes(
+          usdBrl === null ? Promise.resolve(usdMissing(pending, "coingecko")) : fetchCryptoQuotes(
             pending.map((request) => ({ symbol: request.symbol, coinId: request.providerId })),
             configuration.coinGeckoApiKey,
+            usdBrl,
           ),
       },
-      { provider: "coinbase", enabled: true, fetch: (pending) => perSymbol(pending, "coinbase", fetchCoinbasePriceBrl) },
+      { provider: "coinbase", enabled: true, fetch: async (pending) => usdBrl === null ? usdMissing(pending, "coinbase") : perSymbol(pending, "coinbase", symbol => fetchCoinbasePriceBrl(symbol, usdBrl)) },
       {
         provider: "yahoo",
         enabled: true,
@@ -155,11 +177,15 @@ export async function fetchCurrentQuotes(
   return results.sort((left, right) => left.symbol.localeCompare(right.symbol));
 }
 
-/** Dólar do dia: AwesomeAPI, PTAX do Banco Central e Yahoo Finance, nessa ordem. */
+
 async function fetchUsdChain(configuration: QuoteProviderConfiguration, today: string): Promise<QuoteResult> {
   const [result] = await runChain(
     [{ symbol: "USD", instrumentType: "FIAT", baseCurrency: "USD" }],
     [
+      { provider: "frankfurter-ecb", enabled: true, fetch: async () => {
+        const point = await fetchReferenceFxLatest("USD", today);
+        return [{ symbol: "USD", provider: "frankfurter-ecb", status: "SUCCESS", valueBrl: point.value, quoteDate: point.day }];
+      } },
       { provider: "awesome-api", enabled: true, fetch: (pending) => perSymbol(pending, "awesome-api", () => fetchUsdBrl(configuration.awesomeApiKey)) },
       { provider: "bcb", enabled: true, fetch: (pending) => perSymbol(pending, "bcb", () => fetchPtaxUsdLatest(today)) },
       { provider: "yahoo", enabled: true, fetch: (pending) => perSymbol(pending, "yahoo", async () => (await fetchYahooPrice("USD")).price) },
@@ -216,14 +242,14 @@ async function runChain(requests: QuoteRequest[], steps: Step[]): Promise<QuoteR
     done.push(
       failure
         ? quoteFailure(request.symbol, failure.provider, failure.code, failure.messages.join(" "))
-        : quoteFailure(request.symbol, "configuration", "MISSING_API_KEY", "Nenhum provedor configurado para este ativo."),
+        : quoteFailure(request.symbol, "configuration", "MISSING_API_KEY", "No provider is configured for this asset."),
     );
   }
 
   return done;
 }
 
-/** Um provedor de um símbolo por vez, com a falha de cada um isolada. */
+
 async function perSymbol(
   requests: QuoteRequest[],
   provider: string,

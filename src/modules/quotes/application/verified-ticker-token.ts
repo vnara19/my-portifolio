@@ -1,11 +1,15 @@
+
+/** HMAC-signed ticker proofs are valid across processes. Verify expiry, request fields and signature before trusting provider results. */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 
 import { ASSET_KINDS, type AssetKind, type QuoteProvider } from "@/modules/portfolio/domain/asset-kinds";
 import { toDateKey } from "@/modules/quotes/domain/calendar";
+import { marketIdentitySchema, type MarketIdentity } from "@/modules/portfolio/domain/market-assets";
 
 export type VerifiedTicker = {
+  identity?: MarketIdentity;
   symbol: string;
   kind: AssetKind;
   status: "found" | "unavailable";
@@ -24,6 +28,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   return !Number.isNaN(parsed.getTime()) && toDateKey(parsed) === value;
 });
 const claimsSchema = z.object({
+  identity: marketIdentitySchema.optional(),
   version: z.literal(1),
   userId: z.string().uuid(),
   monthId: z.string().uuid(),
@@ -44,17 +49,13 @@ function sign(payload: string, secret: string) {
   return createHmac("sha256", secret).update(`${TOKEN_PURPOSE}\n${payload}`).digest();
 }
 
-/**
- * A conferência cruza Route Handler e Server Action, possivelmente em funções
- * distintas. O comprovante assinado guarda o preço do servidor sem depender
- * da memória de uma instância e só vale para o usuário e mês que o pediram.
- */
+
 export function createVerifiedTickerToken(
   entry: Omit<VerifiedTicker, "expiresAt">,
   context: Context,
   secret = process.env.BETTER_AUTH_SECRET,
 ): string {
-  if (!secret) throw new Error("BETTER_AUTH_SECRET não está configurado.");
+  if (!secret) throw new Error("BETTER_AUTH_SECRET is not configured.");
   const claims = claimsSchema.parse({
     ...entry,
     version: 1,
@@ -87,6 +88,7 @@ export function readVerifiedTickerToken(
       claims.expiresAt <= (context.now ?? new Date()).getTime()
     ) return null;
     return {
+      ...(claims.identity ? { identity: claims.identity } : {}),
       symbol: claims.symbol,
       kind: claims.kind,
       status: claims.status,

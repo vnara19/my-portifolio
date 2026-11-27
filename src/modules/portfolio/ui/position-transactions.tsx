@@ -1,4 +1,11 @@
 "use client";
+import { Dialog } from "@base-ui/react/dialog";
+import { backdropClass, centeredPopupClass, secondaryButtonClass } from "./edit-dialogs";
+import { usePositionMoney } from "./position-money-context";
+
+import { isAutomaticAccrualNote } from "@/lib/transaction-notes";
+
+import { englishLabel } from "@/lib/english-labels";
 
 import { ArrowsDownUpIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react/dist/ssr";
 import { useState } from "react";
@@ -7,46 +14,36 @@ import { cn } from "@/lib/utils";
 import type { PositionTransactionView } from "@/modules/portfolio/application/get-position-history";
 import { recordedByMonth, TRANSACTION_LABELS } from "@/modules/portfolio/domain/position-transactions";
 import { formatDay } from "@/modules/portfolio/presentation/maturity";
-import { formatBrl, formatPriceBrl } from "@/modules/portfolio/presentation/portfolio-format";
+
 import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { CollapsibleSection } from "@/modules/portfolio/ui/collapsible-section";
 
-const QUANTITY = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 8 });
+const QUANTITY = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 8 });
 
-type KindFilter = "all" | PositionTransactionView["kind"] | "AUTO_INCOME";
+type KindFilter = "all" | PositionTransactionView["kind"];
 
-/** Filtros por tipo (spec 079), na ordem de uso. */
+
 const FILTERS: { key: KindFilter; label: string }[] = [
-  { key: "all", label: "Todos" },
-  { key: "CONTRIBUTION", label: "Aportes" },
-  { key: "INCOME", label: "Rendimentos" },
-  { key: "AUTO_INCOME", label: "Rendimento automático" },
-  { key: "WITHDRAWAL", label: "Retiradas" },
-  { key: "OPENING", label: "Saldo inicial" },
+  { key: "all", label: "All" },
+  { key: "CONTRIBUTION", label: "Contributions" },
+  { key: "WITHDRAWAL", label: "Withdrawals" },
+  { key: "OPENING", label: "Opening Balance" },
 ];
 
-/**
- * Rendimento calculado pela taxa (spec 079): o do mês, só de leitura, e o que
- * o cálculo guardou ao ser desligado ou na liquidação.
- */
+
 function isAutomaticIncome(entry: PositionTransactionView) {
-  return Boolean(entry.automatic) || (entry.kind === "INCOME" && Boolean(entry.note?.startsWith("Rendimento automático")));
+  return Boolean(entry.automatic) || (entry.kind === "INCOME" && isAutomaticAccrualNote(entry.note));
 }
 
 function filterKey(entry: PositionTransactionView): KindFilter {
-  return isAutomaticIncome(entry) ? "AUTO_INCOME" : entry.kind;
+  return entry.kind;
 }
 
 function dayLabel(day: string) {
   return formatDay(new Date(`${day}T00:00:00.000Z`));
 }
 
-/**
- * Movimentações da posição nesta conta (specs 056 a 059): saldo inicial,
- * aportes, retiradas e rendimentos, com o dia, a quantidade, o preço executado
- * e o valor. Só as do mês aberto podem ser corrigidas ou apagadas; as pernas de
- * uma transferência interna antiga saem juntas. Começa recolhido (spec 075).
- */
+
 export function PositionTransactions({
   transactions,
   quoted,
@@ -54,38 +51,45 @@ export function PositionTransactions({
   editableMonthId,
   editableAccountId,
   showAccountLabels = false,
+  showAssets = false,
   removing,
   onEdit,
   onRemove,
 }: {
   transactions: PositionTransactionView[];
-  editableAccountId: string;
+  editableAccountId: string | null;
   showAccountLabels?: boolean;
+  showAssets?: boolean;
   quoted: boolean;
   dollars: boolean;
-  /** Competência aberta e selecionada, a única cujas movimentações podem ser apagadas. */
+
   editableMonthId: string | null;
   removing: boolean;
   onEdit: (entry: PositionTransactionView) => void;
   onRemove: (entry: PositionTransactionView) => void;
 }) {
+ const { formatBrl, formatPriceBrl } = usePositionMoney();
+
+  const [toRemove, setToRemove] = useState<PositionTransactionView | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
-  const kinds = new Set(transactions.map(filterKey));
-  const shown = filter === "all" ? transactions : transactions.filter((entry) => filterKey(entry) === filter);
+  const inPeriod = transactions.filter(entry => !isAutomaticIncome(entry));
+  const showTradeDetails = quoted || inPeriod.some(entry => entry.fixedIncomePurchase);
+  const kinds = new Set(inPeriod.map(filterKey));
+  const shown = filter === "all" ? inPeriod : inPeriod.filter((entry) => filterKey(entry) === filter);
 
   return (
     <CollapsibleSection
       id="position-transactions"
-      title="Movimentações"
-      summary={`${transactions.length} ${transactions.length === 1 ? "registro" : "registros"}`}
+      title="Transactions"
+      summary={`${inPeriod.length} ${inPeriod.length === 1 ? "transaction" : "transactions"}`}
       icon={<ArrowsDownUpIcon aria-hidden="true" className="text-primary" size={16} weight="bold" />}
       testId="position-transactions-section"
     >
       <div className="px-5 pt-1 pb-5 sm:px-6">
-      {transactions.length > 0 ? <RecordedTotals transactions={transactions} /> : null}
+      {inPeriod.length > 0 ? <RecordedTotals transactions={inPeriod} /> : null}
 
-      {transactions.length > 0 ? (
-        <div role="group" aria-label="Tipo de movimentação" className="mt-4 flex flex-wrap items-center gap-1.5">
+      {inPeriod.length > 0 ? (
+        <div role="group" aria-label="Transaction type" className="mt-4 flex flex-wrap items-center gap-1.5">
           {FILTERS.filter((option) => option.key === "all" || kinds.has(option.key)).map((option) => (
             <button
               key={option.key}
@@ -99,10 +103,10 @@ export function PositionTransactions({
                   : "border-border bg-card/60 text-muted-foreground hover:text-foreground",
               )}
             >
-              {option.label}
+              {englishLabel(option.label)}
               {option.key === "all" ? null : (
                 <span className="ml-1.5 font-mono text-[10px] opacity-70">
-                  {transactions.filter((entry) => filterKey(entry) === option.key).length}
+                  {inPeriod.filter((entry) => filterKey(entry) === option.key).length}
                 </span>
               )}
             </button>
@@ -110,30 +114,29 @@ export function PositionTransactions({
         </div>
       ) : null}
 
-      {transactions.length === 0 ? (
-        <p className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-[11px] text-muted-foreground">
-          Nenhuma movimentação registrada.
+      {shown.length === 0 ? (
+        <p className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-[11px] text-muted-foreground">No transactions recorded.
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-left text-xs" data-testid="position-transactions">
+          <table className="mobile-record-table w-full min-w-[560px] border-collapse text-left text-xs" data-testid="position-transactions">
             <thead>
               <tr className="text-[9px] font-semibold tracking-[0.13em] text-muted-foreground uppercase">
-                <th className="py-2 pr-3">Dia</th>
-                <th className="py-2 pr-3">Tipo</th>
-                {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantidade"}</th> : null}
-                {quoted ? <th className="py-2 pr-3 text-right">{dollars ? "Câmbio" : "Preço"}</th> : null}
-                <th className="py-2 pr-3 text-right">Valor</th>
-                <th className="py-2 pr-3">Observação</th>
-                <th className="py-2" aria-label="Ações" />
+                <th className="py-2 pr-3">Day</th>
+                {showAssets ? <th className="py-2 pr-3">Asset</th> : null}
+                <th className="py-2 pr-3">Type</th>
+                {showTradeDetails ? <th className="py-2 pr-3 text-right">{dollars ? "US$" : "Quantity"}</th> : null}
+                {showTradeDetails ? <th className="py-2 pr-3 text-right">{showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"}</th> : null}
+                <th className="py-2 pr-3 text-right">{showAssets ? "Value (USD)" : "Value"}</th>
+                <th className="py-2" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {shown.map((entry) => {
                 const negative = entry.kind === "WITHDRAWAL" || entry.amountBrl < 0;
-                // O rendimento automático vem da taxa (spec 079): não se corrige nem se apaga.
+
                 const editable =
-                  !entry.automatic && editableMonthId !== null && entry.monthId === editableMonthId && entry.accountId === editableAccountId;
+                  !isAutomaticIncome(entry) && (!entry.locked || Boolean(entry.bondPurchase)) && Boolean(entry.positionId) && editableMonthId !== null && (editableAccountId === null || entry.accountId === editableAccountId);
 
                 return (
                   <tr key={entry.id} className="border-t border-border/60" data-transaction-kind={entry.kind} data-transaction-filter={filterKey(entry)}>
@@ -141,7 +144,8 @@ export function PositionTransactions({
                       {dayLabel(entry.occurredOn)}
                       <span className="ml-1.5 text-[10px] text-muted-foreground/70">{monthLabel(entry.month)}</span>
                     </td>
-                    <td className="py-2.5 pr-3">
+                    {showAssets ? <td data-record-heading className="py-2.5 pr-3 text-foreground">{entry.assetName}</td> : null}
+                    <td data-label="Type" className="py-2.5 pr-3">
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
@@ -152,37 +156,36 @@ export function PositionTransactions({
                               : "bg-white/[0.06] text-muted-foreground",
                         )}
                       >
-                        {isAutomaticIncome(entry) ? "Rendimento automático" : TRANSACTION_LABELS[entry.kind]}
+                        {TRANSACTION_LABELS[entry.kind]}
                       </span>
                       {entry.transferId ? (
-                        <span className="ml-1.5 text-[10px] text-muted-foreground">transferência interna</span>
+                        <span className="ml-1.5 text-[10px] text-muted-foreground">internal transfer</span>
                       ) : null}
                       {showAccountLabels ? (
                         <p className="mt-1 text-[10px] text-muted-foreground">{entry.accountLabel}</p>
                       ) : null}
                     </td>
-                    {quoted ? (
-                      <td className="py-2.5 pr-3 text-right font-mono">
-                        {entry.quantity === 0 ? "—" : QUANTITY.format(entry.quantity)}
+                    {showTradeDetails ? (
+                      <td data-label={dollars ? "US$" : "Quantity"} className="py-2.5 pr-3 text-right font-mono">
+                        {entry.fixedIncomePurchase ? entry.fixedIncomePurchase.quantity ? QUANTITY.format(Number(entry.fixedIncomePurchase.quantity)) : "—" : entry.quantity === 0 || (showAssets && !entry.quoteSymbol && entry.assetType !== "international-bond") ? "—" : QUANTITY.format(entry.bondPurchase?.faceValuePerBond ? entry.quantity / Number(entry.bondPurchase.faceValuePerBond) : entry.quantity)}
                       </td>
                     ) : null}
-                    {quoted ? (
-                      <td className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
-                        {entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
+                    {showTradeDetails ? (
+                      <td data-label={showAssets ? "Price (USD)" : dollars ? "Exchange rate" : "Price"} title={entry.bondPurchase ? "Cost per bond, including purchase interest and fees" : undefined} className="py-2.5 pr-3 text-right font-mono text-muted-foreground">
+                        {entry.moneyUnavailable ? "—" : entry.bondPurchase?.faceValuePerBond && entry.quantity > 0 ? formatPriceBrl(entry.amountBrl / (entry.quantity / Number(entry.bondPurchase.faceValuePerBond))) : entry.fixedIncomePurchase?.quantity ? formatPriceBrl(entry.amountBrl / Number(entry.fixedIncomePurchase.quantity)) : entry.unitPriceBrl ? formatPriceBrl(entry.unitPriceBrl) : "—"}
                       </td>
                     ) : null}
-                    <td className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
+                    <td data-label={showAssets ? "Value (USD)" : "Value"} className={cn("py-2.5 pr-3 text-right font-mono", negative ? "text-chart-down" : "text-foreground")}>
                       {negative ? "−" : ""}
-                      {formatBrl(Math.abs(entry.amountBrl))}
+                      {entry.moneyUnavailable ? "—" : formatBrl(Math.abs(entry.amountBrl))}
                     </td>
-                    <td className="max-w-[200px] truncate py-2.5 pr-3 text-muted-foreground">{entry.note ?? ""}</td>
                     <td className="py-2.5 text-right">
                       {editable ? (
                         <span className="flex justify-end gap-0.5">
                           {entry.transferId ? null : (
                             <button
                               type="button"
-                              aria-label={`Corrigir ${TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("pt-BR")} de ${dayLabel(entry.occurredOn)}`}
+                              aria-label={`Correct ${TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("en-GB")} on ${dayLabel(entry.occurredOn)}`}
                               disabled={removing}
                               onClick={() => onEdit(entry)}
                               className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-40"
@@ -190,15 +193,15 @@ export function PositionTransactions({
                               <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />
                             </button>
                           )}
-                          <button
+                          {!entry.locked || entry.bondPurchase ? <button
                             type="button"
-                            aria-label={`Apagar ${entry.transferId ? "liquidação" : TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("pt-BR")} de ${dayLabel(entry.occurredOn)}`}
+                            aria-label={`Delete ${entry.transferId ? "liquidation" : TRANSACTION_LABELS[entry.kind].toLocaleLowerCase("en-GB")} on ${dayLabel(entry.occurredOn)}`}
                             disabled={removing}
-                            onClick={() => onRemove(entry)}
+                            onClick={() => setToRemove(entry)}
                             className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-40"
                           >
                             <TrashIcon aria-hidden="true" size={14} />
-                          </button>
+                          </button> : null}
                         </span>
                       ) : null}
                     </td>
@@ -209,16 +212,20 @@ export function PositionTransactions({
           </table>
         </div>
       )}
+      <Dialog.Root open={toRemove !== null} onOpenChange={open=>{if(!open)setToRemove(null);}}><Dialog.Portal><Dialog.Backdrop className={backdropClass}/><Dialog.Popup className={centeredPopupClass}>
+        <Dialog.Title className="text-base font-semibold">Delete Transaction?</Dialog.Title>
+        <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{toRemove ? `${dayLabel(toRemove.occurredOn)} · ${toRemove.moneyUnavailable ? "Value unavailable" : formatBrl(toRemove.amountBrl)}. ${toRemove.bondPurchase ? "This removes this bond purchase and its holdings from every reporting month." : "This removes the recorded transaction and recalculates later holdings."} Use Edit to correct its values instead.` : ""}</Dialog.Description>
+        <div className="mt-5 flex justify-end gap-2"><Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close><button type="button" disabled={removing} className={`${secondaryButtonClass} border-destructive/40 text-destructive`} onClick={()=>{if(toRemove){onRemove(toRemove);setToRemove(null);}}}>Delete Transaction</button></div>
+      </Dialog.Popup></Dialog.Portal></Dialog.Root>
       </div>
     </CollapsibleSection>
   );
 }
 
-/**
- * Totais registrados (spec 058): aportes, retiradas e rendimentos separados, e o
- * saldo inicial, que não é aporte.
- */
+
 function RecordedTotals({ transactions }: { transactions: PositionTransactionView[] }) {
+ const { formatBrl } = usePositionMoney();
+
   const totals = [...recordedByMonth(transactions).values()].reduce(
     (sum, month) => ({
       contributions: sum.contributions + month.contributionsBrl,
@@ -229,18 +236,17 @@ function RecordedTotals({ transactions }: { transactions: PositionTransactionVie
     { contributions: 0, withdrawals: 0, income: 0, opening: 0 },
   );
   const items = [
-    { label: "Aportes", value: totals.contributions },
-    { label: "Retiradas", value: totals.withdrawals },
-    { label: "Rendimentos", value: totals.income },
-    ...(totals.opening > 0 ? [{ label: "Saldo inicial", value: totals.opening }] : []),
+    { label: "Contributions", value: totals.contributions },
+    { label: "Withdrawals", value: totals.withdrawals },
+    ...(totals.opening > 0 ? [{ label: "Opening Balance", value: totals.opening }] : []),
   ];
 
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="recorded-totals">
+    <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="recorded-totals">
       {items.map((item) => (
         <div key={item.label} className="rounded-xl border border-border/70 px-3 py-2">
-          <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{item.label}</dt>
-          <dd className="mt-0.5 font-mono text-xs text-foreground">{formatBrl(item.value)}</dd>
+          <dt className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{englishLabel(item.label)}</dt>
+          <dd className="mt-0.5 font-mono text-xs text-foreground">{transactions.some(entry => entry.moneyUnavailable) ? "—" : formatBrl(item.value)}</dd>
         </div>
       ))}
     </dl>

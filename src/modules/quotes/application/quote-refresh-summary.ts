@@ -1,3 +1,5 @@
+
+/** Updated time means the most recent run that saved a quote for this user, not the most recent idle job invocation. */
 import { cache } from "react";
 
 import { Prisma, QuoteRefreshStatus, QuoteUpdateStatus, type PrismaClient } from "@/generated/prisma/client";
@@ -6,9 +8,6 @@ import { getUserDb } from "@/lib/user-db";
 import { readQuoteViewer, runViewFor, type QuoteViewer } from "@/modules/quotes/application/run-views";
 import type { QuoteRefreshRunView, QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 
-// Leitura das execuções do job de cotações (spec 053) pelo usuário da sessão:
-// a última execução com algum símbolo dele e a última que gravou alguma
-// cotação dele. A escrita fica no job (`syncQuotes`).
 
 export async function getQuoteRefreshSummary(now = new Date()): Promise<QuoteRefreshSummary | null> {
   const prisma = getPrismaClient();
@@ -26,8 +25,8 @@ export async function getQuoteRefreshSummary(now = new Date()): Promise<QuoteRef
         orderBy: { startedAt: "desc" },
         select: { id: true },
       }),
-      // Só conta como atualização a execução que gravou alguma cotação do
-      // usuário; uma carteira sem ativos com ticker não tem atualização.
+
+
       prisma.quoteRefreshRun.findFirst({
         where: {
           status: { in: [QuoteRefreshStatus.COMPLETED, QuoteRefreshStatus.COMPLETED_WITH_ISSUES] },
@@ -48,17 +47,10 @@ export async function getQuoteRefreshSummary(now = new Date()): Promise<QuoteRef
   }
 }
 
-// O topo e a página de cotações mostram o mesmo resumo no mesmo pedido; o
-// cache do React o lê uma vez por pedido. Fora da renderização, como nas rotas
-// de API, ele não guarda nada e cada chamada lê de novo.
+
 export const getRequestQuoteRefreshSummary = cache(() => getQuoteRefreshSummary());
 
-/**
- * Execuções que o usuário vê: as que consultaram algum símbolo dele e as que
- * falharam inteiras, sem resultado de nenhum símbolo. O job só busca os
- * símbolos devidos, então uma execução pode tratar só de símbolos de outros
- * usuários, como o de um ativo recém-incluído.
- */
+
 export function visibleRunsFor(viewer: QuoteViewer): Prisma.QuoteRefreshRunWhereInput {
   return {
     OR: [

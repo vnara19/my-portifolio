@@ -4,25 +4,25 @@ import { stubQuoteChecks, stubRun as run, stubSummary as summary } from "./suppo
 
 const MINUTE = 60 * 1000;
 
-test("o topo mostra a última atualização das cotações", async ({ page }, testInfo) => {
+test("the header shows the last successful quote update", async ({ page }, testInfo) => {
   const lastRun = run();
   await stubQuoteChecks(page, { openCheck: { summary: summary(lastRun, lastRun.finishedAt) } });
   await page.goto("/");
 
   const indicator = page.getByTestId("quote-refresh");
-  await expect(indicator).toHaveAccessibleName("Atualizado há 5 min");
+  await expect(indicator).toHaveAccessibleName("Updated 5 min ago");
 
   if (testInfo.project.name.startsWith("mobile")) {
     await expect(indicator).toContainText("5 min");
   } else {
-    await expect(indicator.getByText("Atualizado há 5 min")).toBeVisible();
+    await expect(indicator.getByText("Updated 5 min ago")).toBeVisible();
   }
 
   await expect(page.getByTestId("quote-refresh-issue")).toHaveCount(0);
   await expect(page.getByTestId("app-toast")).toHaveCount(0);
 });
 
-test("cada cotação com falha vira um aviso que indica o ativo", async ({ page }) => {
+test("each failed quote announces its asset", async ({ page }) => {
   const failed = run({
     status: "COMPLETED_WITH_ISSUES",
     succeeded: 8,
@@ -32,14 +32,14 @@ test("cada cotação com falha vira um aviso que indica o ativo", async ({ page 
         assets: ["Bitcoin 01", "Bitcoin 02"],
         provider: "coingecko",
         errorCode: "RATE_LIMITED",
-        errorMessage: "O provedor recusou por excesso de consultas (HTTP 429).",
+        errorMessage: "The provider rejected the request due to rate limiting (HTTP 429).",
       },
       {
         symbol: "VOO",
         assets: ["ETF - VOO"],
         provider: "finnhub",
         errorCode: "TIMEOUT",
-        errorMessage: "O provedor excedeu o tempo limite.",
+        errorMessage: "The provider timed out.",
       },
     ],
   });
@@ -50,56 +50,53 @@ test("cada cotação com falha vira um aviso que indica o ativo", async ({ page 
 
   const toast = page.getByTestId("app-toast");
   await expect(toast).toHaveCount(1);
-  await expect(toast).toContainText("2 cotações não atualizadas");
+  await expect(toast).toContainText("2 quotes not updated");
   await expect(toast).toContainText("As outras 8 foram atualizadas.");
   await expect(toast).toContainText("BTC");
   await expect(toast).toContainText("Bitcoin 01, Bitcoin 02");
-  await expect(toast).toContainText("CoinGecko: O provedor recusou por excesso de consultas (HTTP 429).");
+  await expect(toast).toContainText("CoinGecko: The provider rejected too many requests (HTTP 429).");
   await expect(toast).toContainText("VOO");
-  await expect(toast).toContainText("Finnhub: O provedor excedeu o tempo limite.");
+  await expect(toast).toContainText("Finnhub: The provider timed out.");
   await expect(page.getByTestId("quote-refresh-issue")).toBeVisible();
-  await expect(page.getByTestId("quote-refresh")).toHaveAccessibleName(/Falha na última tentativa: BTC, VOO/);
+  await expect(page.getByTestId("quote-refresh")).toHaveAccessibleName(/Last attempt failed: BTC, VOO/);
 
-  // O Base UI só expõe o botão de fechar à acessibilidade com a pilha expandida.
+
   await toast.locator('button[aria-label="Fechar aviso"]').click();
   await expect(toast).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 });
 
-// Só o job agendado atualiza as cotações (specs 051 e 053): nenhuma tela
-// oferece atualizar na hora, e a rota da atualização manual não existe mais.
-test("não há atualização manual em nenhum mês", async ({ page }, testInfo) => {
+
+test("no production month offers manual refresh", async ({ page }, testInfo) => {
   const lastRun = run();
   await stubQuoteChecks(page, { openCheck: { summary: summary(lastRun, lastRun.finishedAt) } });
 
   for (const path of ["/", "/?mes=2026-09", "/posicoes/cotacoes"]) {
     await page.goto(path);
     const indicator = page.getByTestId("quote-refresh");
-    await expect(indicator).toContainText(testInfo.project.name.startsWith("mobile") ? "5 min" : "Atualizado há 5 min");
-    // O botão "(dev)" só existe no `pnpm dev` (specs 064 e 072) e roda o job;
-    // nenhuma tela oferece a atualização manual de antes.
-    await expect(page.getByRole("button", { name: /Atualizar cotações(?! \(dev\))/ })).toHaveCount(0);
-    // O resumo simulado é mais novo que o do servidor, e a tela recarrega os
-    // dados; o WebKit conta isso como navegação, que interromperia a próxima.
+    await expect(indicator).toContainText(testInfo.project.name.startsWith("mobile") ? "5 min" : "Updated 5 min ago");
+
+
+    await expect(page.getByRole("button", { name: /Refresh quotes(?! \(dev\))/ })).toHaveCount(0);
+
+
     await page.waitForLoadState("networkidle");
   }
 
-  // O card da última atualização só aparece no mês corrente (spec 038).
-  await expect(page.getByRole("region", { name: "Última atualização" })).toContainText(
-    "As cotações são atualizadas automaticamente de hora em hora",
+
+  await expect(page.getByRole("region", { name: "Last update" })).toContainText(
+    "Quotes are updated automatically every hour",
   );
   await page.goto("/posicoes/cotacoes?mes=2026-09");
-  await expect(page.getByRole("heading", { level: 1, name: "Cotações do mês" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Última atualização" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly quotes" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Last update" })).toHaveCount(0);
 
   const response = await page.request.post("/api/quotes/refresh", { data: {} });
   expect(response.status()).toBe(404);
 });
 
-// A abertura não atualiza cotações (spec 053): mesmo uma checagem demorada não
-// diz que está atualizando. Quando a checagem traz uma execução nova do job, o
-// topo passa a mostrar o horário dela.
-test("o topo acompanha a execução mais nova do job, sem dizer que está atualizando", async ({ page }, testInfo) => {
+
+test("the header follows the latest job without showing a false updating state", async ({ page }, testInfo) => {
   const fresh = run({ startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() });
   await stubQuoteChecks(page, { openCheck: { summary: summary(fresh, fresh.finishedAt) }, delayMs: 1500 });
   await page.goto("/");
@@ -107,17 +104,16 @@ test("o topo acompanha a execução mais nova do job, sem dizer que está atuali
   const indicator = page.getByTestId("quote-refresh");
   await expect(indicator).not.toHaveAttribute("aria-busy");
   if (!testInfo.project.name.startsWith("mobile")) {
-    await expect(indicator.getByText("Atualizando cotações…")).toHaveCount(0);
+    await expect(indicator.getByText("Updating quotes…")).toHaveCount(0);
   }
 
-  await expect(indicator).toHaveAccessibleName("Atualizado agora");
-  // Uma execução sem falhas não gera aviso.
+  await expect(indicator).toHaveAccessibleName("Updated just now");
+
   await expect(page.getByTestId("app-toast")).toHaveCount(0);
 });
 
-// O job roda sem o aplicativo aberto: as falhas de uma execução são avisadas
-// uma vez, e não a cada carregamento.
-test("as falhas de uma execução são avisadas uma única vez", async ({ page }) => {
+
+test("execution failures are announced only once", async ({ page }) => {
   const failed = run({
     id: "00000000-0000-4000-8000-000000000009",
     status: "COMPLETED_WITH_ISSUES",
@@ -128,34 +124,34 @@ test("as falhas de uma execução são avisadas uma única vez", async ({ page }
         assets: ["ETF - VOO"],
         provider: "finnhub",
         errorCode: "TIMEOUT",
-        errorMessage: "O provedor excedeu o tempo limite.",
+        errorMessage: "The provider timed out.",
       },
     ],
   });
   await stubQuoteChecks(page, { openCheck: { summary: summary(failed, failed.finishedAt) } });
   await page.goto("/");
 
-  await expect(page.getByTestId("app-toast")).toContainText("Cotação de VOO não atualizada");
+  await expect(page.getByTestId("app-toast")).toContainText("VOO quote not updated");
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1, name: "Patrimônio consolidado" })).toBeVisible();
-  // A checagem já respondeu quando o topo mostra o horário simulado.
-  await expect(page.getByTestId("quote-refresh")).toHaveAccessibleName(/Falha na última tentativa: VOO/);
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio overview" })).toBeVisible();
+
+  await expect(page.getByTestId("quote-refresh")).toHaveAccessibleName(/Last attempt failed: VOO/);
   await expect(page.getByTestId("app-toast")).toHaveCount(0);
-  // O ponto vermelho continua enquanto a última execução tiver a falha.
+
   await expect(page.getByTestId("quote-refresh-issue")).toBeVisible();
 });
 
-test("uma falha ao gravar a atualização indica cada ativo", async ({ page }) => {
+test("write failures identify each asset", async ({ page }) => {
   const failed = run({
     status: "FAILED",
     succeeded: 0,
-    errorMessage: "As cotações foram consultadas, mas não puderam ser gravadas.",
+    errorMessage: "Quotes were fetched but could not be saved.",
     failures: ["BTC", "VOO"].map((symbol) => ({
       symbol,
       assets: [symbol === "BTC" ? "Bitcoin 01" : "ETF - VOO"],
       provider: symbol === "BTC" ? "coingecko" : "finnhub",
       errorCode: "NOT_SAVED",
-      errorMessage: "A cotação foi obtida, mas não pôde ser gravada.",
+      errorMessage: "The quote was fetched but could not be saved.",
     })),
   });
   await stubQuoteChecks(page, {
@@ -164,26 +160,25 @@ test("uma falha ao gravar a atualização indica cada ativo", async ({ page }) =
   await page.goto("/");
 
   const toast = page.getByTestId("app-toast");
-  await expect(toast).toContainText("2 cotações não atualizadas");
-  await expect(toast).toContainText("Os ativos mantêm o valor anterior.");
+  await expect(toast).toContainText("2 quotes not updated");
+  await expect(toast).toContainText("Assets retain their previous values.");
   await expect(toast).toContainText("Bitcoin 01");
-  await expect(toast).toContainText("Finnhub: A cotação foi obtida, mas não pôde ser gravada.");
-  await expect(page.getByRole("heading", { level: 1, name: "Patrimônio consolidado" })).toBeVisible();
+  await expect(toast).toContainText("Finnhub: The quote was fetched but could not be saved.");
+  await expect(page.getByRole("heading", { level: 1, name: "Portfolio overview" })).toBeVisible();
 });
 
-test("a checagem automática avisa quando o aplicativo não responde", async ({ page }) => {
+test("automatic checks announce an unresponsive application", async ({ page }) => {
   await stubQuoteChecks(page);
   await page.route("**/api/quotes/open-check", (route) => route.fulfill({ status: 500, body: "erro" }));
   await page.goto("/posicoes");
 
-  await expect(page.getByTestId("app-toast")).toContainText("Não foi possível verificar as cotações");
-  await expect(page.getByRole("heading", { level: 1, name: "Carteira do mês" })).toBeVisible();
+  await expect(page.getByTestId("app-toast")).toContainText("Could not check the quotes");
+  await expect(page.getByRole("heading", { level: 1, name: "Monthly portfolio" })).toBeVisible();
 });
 
-// As abas principais não podem ser cortadas pelo indicador do topo. O rótulo
-// de data é o mais longo no computador, e "59 min" o mais largo no celular.
-test("o indicador do topo não corta as abas em telas estreitas", async ({ page }) => {
-  // Vinte e quatro navegações: o tempo padrão não basta com a suíte em paralelo.
+
+test("the update indicator does not clip tabs on narrow screens", async ({ page }) => {
+
   test.setTimeout(120_000);
   const labels = [
     { lastUpdatedAt: "2026-09-30T07:39:00.000Z", widths: [320, 360, 375, 640, 768, 1024] },
@@ -197,18 +192,17 @@ test("o indicador do topo não corta as abas em telas estreitas", async ({ page 
       openCheck: { summary: summary(lastRun, lastUpdatedAt) },
     });
 
-    // O mês corrente e um mês passado, com o mesmo indicador.
+
     for (const [width, path] of widths.flatMap((width) => ["/posicoes", "/posicoes?mes=2026-09"].map((path) => [width, path] as const))) {
       await page.setViewportSize({ width, height: 760 });
       await page.goto(path);
-      const nav = page.getByRole("navigation", { name: "Navegação principal" });
+      const nav = page.getByRole("navigation", { name: "Main navigation" });
       await expect(page.getByTestId("quote-refresh")).toContainText(/\d/);
-      await expect(page.getByRole("link", { name: "Posições" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Positions" })).toBeVisible();
       await page.waitForLoadState("networkidle");
 
-      // Mede depois de assentar: a pílula da aba ativa e o rótulo do horário
-      // entram com animação, e no meio dela a faixa passa da largura por alguns
-      // pixels.
+
+      // Check pixel dimensions.
       await expect
         .poll(
           () =>
@@ -216,7 +210,7 @@ test("o indicador do topo não corta as abas em telas estreitas", async ({ page 
               const parent = element.parentElement as HTMLElement;
               return parent.scrollWidth - parent.clientWidth;
             }),
-          { message: `abas cortadas em ${width} px (${path})` },
+          { message: `tabs clipped at ${width} px (${path})` },
         )
         .toBeLessThanOrEqual(0);
     }

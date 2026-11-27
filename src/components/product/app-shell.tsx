@@ -1,12 +1,22 @@
-import { ChartDonutIcon, GearSixIcon } from "@phosphor-icons/react/dist/ssr";
-import Link from "next/link";
-import type { ReactNode } from "react";
 
+/** Investment navigation, reporting-month selection and the most recent successful quote update. */
+import { ChartDonutIcon } from "@phosphor-icons/react/dist/ssr";
+import Link from "next/link";
+import { Suspense, type ReactNode } from "react";
+
+import { getSessionUser } from "@/modules/auth/session";
+import { ProfileMenu } from "@/modules/auth/ui/profile-menu";
 import { AppFrame } from "@/components/product/app-frame";
 import { MainTabs, NavTrail, type NavContext, type TabKey } from "@/components/product/main-tabs";
 import { MonthTimeline } from "@/components/product/month-timeline";
 import { QuoteRefreshIndicator } from "@/components/product/quote-refresh-indicator";
 import { cn } from "@/lib/utils";
+import { getPortfolioMonths } from "@/modules/portfolio/application/get-portfolio-months";
+import { getPortfolioLedger } from "@/modules/portfolio/application/get-portfolio-ledger";
+import { getOverviewData } from "@/modules/portfolio/application/get-overview-data";
+import { getOverviewPerformance } from "@/modules/portfolio/application/get-overview-performance";
+import { monthlyProfitability } from "@/modules/portfolio/domain/overview-analytics";
+import type { TwrObservation } from "@/modules/portfolio/domain/time-weighted-return";
 import type { PortfolioMonthSummary } from "@/modules/portfolio/application/get-portfolio-months";
 import { getRequestQuoteRefreshSummary } from "@/modules/quotes/application/quote-refresh-summary";
 
@@ -14,33 +24,27 @@ type AppShellProps = {
   active: TabKey | "none";
   months: PortfolioMonthSummary[];
   selectedMonth: string | null;
-  /** Onde o usuário está dentro de Posições, para a trilha abaixo das abas (spec 073). */
+
   context?: NavContext;
+  performance?: TwrObservation[];
   children: ReactNode;
 };
 
-export async function AppShell({ active, months, selectedMonth, context, children }: AppShellProps) {
-  const quoteRefresh = await getRequestQuoteRefreshSummary();
-
+export async function AppShell({ active, months, selectedMonth, context, performance, children }: AppShellProps) {
+  const user = await getSessionUser();
   return (
     <AppFrame
       area="investments"
       header={(menu) => (
         <header className="sticky top-0 z-30 border-b border-border/70 bg-background/88 backdrop-blur-xl">
-          {/* Abaixo de 360 px a marca sai para as abas, a hora das cotações e a
-              configuração caberem sem cortar "Posições"; a aba Visão Geral
-              leva ao mesmo endereço. Com a aba Configuração aberta (spec 073),
-              ela sai já abaixo de 420 px, para as três abas caberem. Com mais
-              de uma área (spec 081), o botão do menu toma o lugar da marca no
-              celular, e no computador a marca fica na barra lateral. */}
-          {/* Colunas laterais iguais mantêm as abas no centro da área útil,
-              inclusive quando o hambúrguer some e a barra lateral aparece. */}
+
+
           <div className="flex h-16 items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
             {menu ?? (
               <Link
                 href="/"
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-[359px]:hidden lg:justify-self-start",
+                  "inline-flex shrink-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-sm:hidden lg:justify-self-start",
                   active === "settings" ? "max-[419px]:hidden" : null,
                 )}
               >
@@ -48,8 +52,7 @@ export async function AppShell({ active, months, selectedMonth, context, childre
                   <ChartDonutIcon aria-hidden="true" size={18} weight="bold" />
                 </span>
                 <span className="hidden leading-none sm:block">
-                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">
-                    Meu portfólio
+                  <span className="block text-[13px] font-semibold tracking-[-0.015em] text-foreground">My Portfolio
                   </span>
                   <span className="mt-1 block text-[9px] font-semibold tracking-[0.18em] text-primary/80 uppercase">
                     Private workspace
@@ -63,29 +66,23 @@ export async function AppShell({ active, months, selectedMonth, context, childre
             </div>
 
             <div className="flex shrink-0 items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
-              {/* As cotações do mês saíram daqui e ficam em Posições (spec 048).
-                  Com o botão do menu (spec 081), a hora das cotações sai abaixo
-                  de 360 px, para as abas caberem; ela segue em Cotações. */}
-              <span className={cn("contents", menu ? "max-[359px]:hidden" : null)}>
-                <QuoteRefreshIndicator summary={quoteRefresh} />
+
+              <span className="contents max-[359px]:hidden">
+                <Suspense fallback={<span role="status" className="flex h-9 items-center rounded-xl border border-border px-3 text-xs text-muted-foreground">Checking quotes…</span>}>
+                  <QuoteStatus />
+                </Suspense>
               </span>
-              {/* Na Configuração, a engrenagem vira a aba selecionada (spec 073). */}
-              {active === "settings" ? null : (
-                <Link
-                  href="/configuracao"
-                  aria-label="Configuração da carteira"
-                  className="grid size-9 shrink-0 place-items-center rounded-xl border border-border text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  <GearSixIcon aria-hidden="true" size={17} weight="duotone" />
-                </Link>
-              )}
+
+              {user ? <ProfileMenu name={user.name} email={user.email} /> : null}
             </div>
           </div>
 
           {context ? <NavTrail context={context} /> : null}
 
           {selectedMonth ? (
-            <MonthTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} />
+            <Suspense fallback={<MonthTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} />}>
+              <ReturnTimeline months={months} selectedMonth={selectedMonth} scoped={context?.kind === "position"} performance={performance} />
+            </Suspense>
           ) : null}
         </header>
       )}
@@ -93,4 +90,28 @@ export async function AppShell({ active, months, selectedMonth, context, childre
       {children}
     </AppFrame>
   );
+}
+
+async function QuoteStatus() {
+  return <QuoteRefreshIndicator summary={await getRequestQuoteRefreshSummary()} />;
+}
+
+async function ReturnTimeline({ months, selectedMonth, scoped, performance }: {
+  months: PortfolioMonthSummary[];
+  selectedMonth: string;
+  scoped: boolean;
+  performance?: TwrObservation[];
+}) {
+  if (performance === undefined) {
+    const allMonths = await getPortfolioMonths();
+    const [overview, ledger] = await Promise.all([
+      getOverviewData(allMonths.at(-1)?.referenceDate),
+      getPortfolioLedger(allMonths),
+    ]);
+    performance = await getOverviewPerformance(overview, ledger);
+  }
+  const last = performance.at(-1);
+  const returns = last ? monthlyProfitability(performance, [], last.day) : [];
+  const monthlyReturns = Object.fromEntries(returns.map(row => [row.month, row.portfolio]));
+  return <MonthTimeline months={months} selectedMonth={selectedMonth} scoped={scoped} monthlyReturns={monthlyReturns} />;
 }

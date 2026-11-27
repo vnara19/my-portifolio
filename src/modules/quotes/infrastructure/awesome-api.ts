@@ -14,24 +14,20 @@ export async function fetchUsdBrl(apiKey?: string) {
   const quote = payload.USDBRL;
 
   if (!quote) {
-    throw new Error("A AwesomeAPI não retornou USD-BRL.");
+    throw new Error("AwesomeAPI did not return USD-BRL.");
   }
 
   return quote.bid;
 }
 
-// Só o primeiro registro traz `create_date`; todos trazem o `timestamp` em
-// segundos, convertido para o dia no fuso de São Paulo.
+
 const awesomeDailySchema = z.array(z.object({ bid: z.coerce.number().positive(), timestamp: z.coerce.number() }));
 const saoPauloDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
 
-/** Registros que a AwesomeAPI devolve no máximo por consulta do histórico diário. */
+
 export const AWESOME_DAILY_LIMIT = 360;
 
-/**
- * Fechamento diário do dólar entre dois dias (AAAA-MM-DD), do mais recente
- * para o mais antigo, com no máximo 360 registros por consulta (spec 029).
- */
+
 export async function fetchUsdBrlDaily(startDay: string, endDay: string, apiKey?: string) {
   const url = new URL(`https://economia.awesomeapi.com.br/json/daily/USD-BRL/${AWESOME_DAILY_LIMIT}`);
   url.searchParams.set("start_date", startDay.replaceAll("-", ""));

@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { CaretDownIcon } from "@phosphor-icons/react/dist/ssr";
 import { useState } from "react";
 
@@ -27,9 +29,9 @@ export function MultiSelectFilter({
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
-  /** Rótulo de uma opção guardada por código, como o mês AAAA-MM ou o id da pessoa. */
+
   formatOption?: (value: string) => string;
-  /** Gastos familiares usa seleção única para pessoa e, por padrão, mês. */
+
   multiple?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -38,13 +40,13 @@ export function MultiSelectFilter({
     <Combobox<string, boolean>
       multiple={multiple}
       items={options}
-      itemToStringLabel={formatOption}
+      itemToStringLabel={(option) => formatOption?.(option) ?? englishLabel(option)}
       value={multiple ? selected : (selected[0] ?? null)}
       open={open}
       onOpenChange={setOpen}
       onValueChange={(next) => onChange(Array.isArray(next) ? [...next] : next ? [next] : [])}
       onInputValueChange={(_, details) => {
-        // Mantém o texto da busca ao marcar várias opções seguidas.
+
         if (multiple && details.isItemPress) {
           details.cancel();
         }
@@ -53,7 +55,7 @@ export function MultiSelectFilter({
       <ComboboxTrigger
         aria-label={
           selected.length > 0
-            ? `${label} ${selected.length} ${selected.length === 1 ? "selecionado" : "selecionados"}`
+            ? `${englishLabel(label)} ${selected.length} ${selected.length === 1 ? "selected" : "selected"}`
             : label
         }
         className={cn(
@@ -63,7 +65,7 @@ export function MultiSelectFilter({
             : "border-border bg-card/60 text-muted-foreground hover:text-foreground data-popup-open:text-foreground",
         )}
       >
-        {label}
+        {englishLabel(label)}
         {selected.length > 0 ? (
           <span className="rounded-full bg-primary px-1.5 font-mono text-[10px] text-primary-foreground">
             {selected.length}
@@ -76,14 +78,14 @@ export function MultiSelectFilter({
           weight="bold"
         />
       </ComboboxTrigger>
-      <ComboboxContent aria-label={`Filtrar por ${label}`} className="w-[max(var(--anchor-width),14rem)]">
-        {/* A busca também conduz o teclado; no toque o Base UI não a foca, sem abrir o teclado virtual. */}
-        <ComboboxSearch aria-label={`Buscar em ${label}`} placeholder="Buscar" />
-        <ComboboxEmpty>Nenhuma opção encontrada</ComboboxEmpty>
+      <ComboboxContent aria-label={`Filter by ${englishLabel(label)}`} className="w-[max(var(--anchor-width),14rem)]">
+
+        <ComboboxSearch aria-label={`Search in ${englishLabel(label)}`} placeholder="Search" />
+        <ComboboxEmpty>No options found</ComboboxEmpty>
         <ComboboxList>
           {(option: string) => (
             <ComboboxItem key={option} value={option} indicator={multiple ? "checkbox" : "check"}>
-              <span className="min-w-0 flex-1 truncate">{formatOption?.(option) ?? option}</span>
+              <span className="min-w-0 flex-1 truncate">{formatOption?.(option) ?? englishLabel(option)}</span>
             </ComboboxItem>
           )}
         </ComboboxList>
@@ -92,14 +94,13 @@ export function MultiSelectFilter({
             <button
               type="button"
               onClick={() => {
-                // Fecha a lista, como o menu anterior: o botão some ao limpar e o
-                // foco volta para o filtro em vez de se perder na página.
+
+
                 setOpen(false);
                 onChange([]);
               }}
               className="flex w-full items-center rounded-lg px-2.5 py-2 text-[11px] text-muted-foreground outline-none transition-colors select-none hover:bg-white/[0.06] hover:text-foreground focus-visible:bg-white/[0.06] focus-visible:text-foreground"
-            >
-              Limpar seleção
+            >Clear selection
             </button>
           </ComboboxFooter>
         ) : null}

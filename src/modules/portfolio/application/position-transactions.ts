@@ -1,27 +1,31 @@
+import { executionFxNote } from "../domain/trade-reporting-fx";
+import { purchaseCost, purchaseNote, recordedTradeAmounts } from "../domain/purchase-cost";
+import { MATURITY_EXIT_NOTE } from "./maturity-exits";
+import { fixedIncomeAllocation, fixedIncomeName, readFixedIncomeContract, type BrazilianFixedIncome } from "../domain/brazilian-fixed-income";
+
+/** Apply or undo transactions atomically to the open month. Reject negative balances and mismatched ownership. */
 import { PositionTransactionKind, Prisma } from "@/generated/prisma/client";
-import { SCOPED_USER } from "@/lib/user-db";
-import { valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
-import { foldCalculatedIncome, MonthEditError, parseDecimal, withUndo } from "@/modules/portfolio/application/month-editing";
+import { getUserDb, SCOPED_USER } from "@/lib/user-db";
+import { primeFixedIncomeRates, valueCdiPositions } from "@/modules/portfolio/application/cdi-positions";
+import { fixedIncomePurchaseFx, foldCalculatedIncome, MonthEditError, parseDecimal, withUndo } from "@/modules/portfolio/application/month-editing";
 import { WITHDRAWAL_ABOVE_BALANCE } from "@/modules/portfolio/domain/cdi-valuation";
 import type { TransactionKind } from "@/modules/portfolio/domain/position-transactions";
 import { calendarDay, lastDayOf, toDateKey } from "@/modules/quotes/domain/calendar";
 
-// Movimentações das posições (specs 056 e 057): aporte, retirada e rendimento,
-// registrados, corrigidos ou apagados na posição da competência aberta. A
-// quantidade da posição é a base do mês (herdada uma vez do fechamento do mês
-// anterior) mais as movimentações dele; cada mudança recalcula só a posição do
-// mês, sem mexer em outros meses. Tudo passa pelo desfazer da competência.
+
+import { buildAssetKey } from "../domain/asset-kinds";
+import { ensureDatedMonth } from "./month-rollover";
 
 type Transaction = Prisma.TransactionClient;
 
 export type TransactionInput = {
   positionId: string;
   kind: TransactionKind;
-  /** AAAA-MM-DD, dentro da competência e nunca depois de hoje. */
+
   occurredOn: string;
-  /** Unidades nos ativos cotados (dólares no caixa em dólar); nulo nos saldos em reais. */
+
   quantity: string | null;
-  /** Preço executado em reais; nulo nos saldos em reais e no rendimento em dinheiro. */
+
   unitPriceBrl: string | null;
   amountBrl: string;
   note?: string | null;
@@ -34,59 +38,199 @@ export async function addTransaction(input: { monthId: string; transaction: Tran
   return withUndo(input.monthId, async (transaction, month) => {
     const position = await findPosition(transaction, month.id, input.transaction.positionId);
 
-    // O rendimento de uma aplicação com cálculo automático vem da taxa (spec
-    // 079): um rendimento manual somaria duas vezes.
+
+
     if (input.transaction.kind === PositionTransactionKind.INCOME && automatic(position)) {
-      throw new MonthEditError(`O rendimento de ${position.asset.name} é calculado automaticamente.`);
+      throw new MonthEditError(`The return for ${position.asset.name} is calculated automatically.`);
     }
 
+    if (position.asset.appliedOn && input.transaction.occurredOn < toDateKey(position.asset.appliedOn)) throw new MonthEditError("The transaction cannot precede this deposit.");
+    if (position.asset.maturityDate && input.transaction.occurredOn >= toDateKey(position.asset.maturityDate)) throw new MonthEditError("This investment ends at maturity. Register a new investment instead.");
+    const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
     const values = parseValues(position, month.referenceDate, input.transaction.kind, input.transaction);
+    if (contract && input.transaction.kind === "WITHDRAWAL") {
+      const day = new Date(input.transaction.occurredOn);
+      await valueCdiPositions(transaction, { where: { id: position.id }, asOf: input.transaction.occurredOn });
+      const valued = await transaction.position.findUniqueOrThrow({ where: { id: position.id } });
+      if (valued.incomeCalculationError) throw new MonthEditError("Rates are incomplete for this withdrawal date. Update the rate history before recording the withdrawal.");
+      const available = valued.quantity;
+      if (values.amountBrl.gt(available) || available.lte(0)) throw new MonthEditError("The withdrawal exceeds the balance on this date.");
+      const ledger = await transaction.positionTransaction.findMany({ where: { occurredOn: { lte: day }, position: { assetId: position.assetId, accountId: position.accountId } }, select: { kind: true, quantity: true } });
+      const first = await transaction.position.findFirst({ where: { assetId: position.assetId, accountId: position.accountId }, orderBy: { portfolioMonth: { referenceDate: "asc" } }, select: { openingQuantity: true } });
+      const units = ledger.reduce((sum, item) => sum.plus(item.kind === "WITHDRAWAL" ? item.quantity.neg() : item.kind === "CONTRIBUTION" || item.kind === "OPENING" ? item.quantity : 0), first?.openingQuantity ?? new Prisma.Decimal(0));
+      const fraction = values.amountBrl.div(available);
+      values.quantity = units.mul(fraction).toDecimalPlaces(12);
+
+    }
     await transaction.positionTransaction.create({
       data: { userId: SCOPED_USER, positionId: position.id, ...values },
     });
-    await recomputePosition(transaction, position.id, `A retirada é maior que a posição de ${position.asset.name}.`);
-  });
+    await recomputePosition(transaction, position.id, `The withdrawal exceeds the position for ${position.asset.name}.`);
+  }, { carryForward: true });
 }
 
-/**
- * Corrige uma movimentação do mês aberto (spec 057): o registro muda no lugar,
- * sem criar outro por cima, e a posição do mês é recalculada.
- */
-export async function updateTransaction(input: {
+
+type TransactionUpdate = {
   monthId: string;
   transactionId: string;
   transaction: TransactionInput;
-}) {
+  fixedIncome?: { contract: BrazilianFixedIncome; maturityDate: string };
+  nativeTrade?: { currency: "BRL" | "USD" | "EUR"; price: string; commission: string; fxBrl: string };
+};
+
+export async function updateTransaction(input: TransactionUpdate) {
+  if (input.fixedIncome) return updateFixedIncomePurchase(input, input.fixedIncome);
   return withUndo(input.monthId, async (transaction, month) => {
     const entry = await findMonthTransaction(transaction, month.id, input.transactionId);
 
     if (entry.transferId) {
-      throw new MonthEditError("Uma liquidação não é corrigida por partes: apague-a e liquide de novo.");
+      throw new MonthEditError("A liquidation cannot be partially corrected: delete it and liquidate again.");
     }
 
     if (entry.positionId !== input.transaction.positionId) {
-      throw new MonthEditError("A movimentação não pertence a esta posição.");
+      throw new MonthEditError("The transaction does not belong to this position.");
     }
 
     const position = await findPosition(transaction, month.id, entry.positionId);
-    // O saldo inicial continua saldo inicial; os demais trocam de tipo à vontade.
+
     const kind = entry.kind === PositionTransactionKind.OPENING ? PositionTransactionKind.OPENING : input.transaction.kind;
 
     if (kind === PositionTransactionKind.INCOME && entry.kind !== PositionTransactionKind.INCOME && automatic(position)) {
-      throw new MonthEditError(`O rendimento de ${position.asset.name} é calculado automaticamente.`);
+      throw new MonthEditError(`The return for ${position.asset.name} is calculated automatically.`);
     }
 
-    const values = parseValues(position, month.referenceDate, kind, input.transaction);
+    const contract = readFixedIncomeContract(position.asset.fixedIncomeContract);
+    if ((contract && (entry.kind === "WITHDRAWAL" || kind === "WITHDRAWAL"))) throw new MonthEditError("Remove this transaction and record it again to recalculate the dated withdrawal and remaining cost.");
+    if (contract && entry.kind === "CONTRIBUTION" && entry.occurredOn.getTime() === position.asset.appliedOn?.getTime()) {
+      throw new MonthEditError("Use the purchase editor to correct this investment.");
+    }
+    let values;
+    if (input.nativeTrade) {
+      if (!position.asset.quoteSymbol || (kind !== "CONTRIBUTION" && kind !== "WITHDRAWAL")) throw new MonthEditError("This transaction is not a trade.");
+      const trade = input.nativeTrade;
+      if (trade.currency === "BRL" && trade.fxBrl !== "1") throw new MonthEditError("BRL transactions use an exchange rate of 1.");
+      const side = kind === "WITHDRAWAL" ? "SELL" : "BUY";
+      const cost = purchaseCost(input.transaction.quantity ?? "", trade.price, trade.commission, trade.fxBrl, side);
+      const savedNote = entry.note ?? "";
+      const metadataStart = savedNote.search(/ USD (?:valuation|execution) FX:/);
+      const tradeNote = metadataStart < 0 ? savedNote : savedNote.slice(0, metadataStart);
+      const metadata = metadataStart < 0 ? "" : savedNote.slice(metadataStart);
+      const suffix = / Treasury .+$/.exec(tradeNote)?.[0] ?? "";
+      const originalNote = tradeNote.replace(/^(?:Purchase|Sale):.*?BRL\/(?:USD|EUR|BRL)\.(?: Invested [A-Z]{3} [\d.]+\.)?(?: Treasury [^;]+?% p\.a\.)?/, "").trim();
+      values = { kind, occurredOn: parseOccurredOn(input.transaction.occurredOn, month.referenceDate), quantity: cost.quantity, unitPriceBrl: cost.unitPriceBrl, amountBrl: cost.amountBrl, note: `${purchaseNote({ ...trade, occurredOn: input.transaction.occurredOn, side }, cost.quantity.toString(), trade.fxBrl)}${suffix}${originalNote ? ` ${originalNote}` : ""}` };
+      if (values.note.length > MAX_NOTE_LENGTH) throw new MonthEditError("The corrected trade note is too long. Shorten the note before saving.");
+      values.note += metadata;
+    } else values = parseValues(position, month.referenceDate, kind, input.transaction);
     await transaction.positionTransaction.update({ where: { id: entry.id }, data: values });
-    await recomputePosition(transaction, position.id, "A correção deixaria a posição negativa.");
-  });
+    await recomputePosition(transaction, position.id, "The correction would make the position negative.");
+  }, { carryForward: true });
 }
 
-/**
- * Apaga uma movimentação do mês aberto e recalcula a posição. As pernas de uma
- * liquidação saem juntas, para o título e o caixa continuarem coerentes.
- */
+
+async function updateFixedIncomePurchase(input: TransactionUpdate, { contract, maturityDate }: NonNullable<TransactionUpdate["fixedIncome"]>) {
+  const day = input.transaction.occurredOn;
+  if (day < "2000-01-01") throw new MonthEditError("Enter a purchase date from 2000 onward.");
+  const reference = new Date(`${day.slice(0, 7)}-01T00:00:00Z`);
+  const appliedOn = parseOccurredOn(day, reference);
+  const maturity = new Date(`${maturityDate}T00:00:00Z`);
+  if (!Number.isFinite(+maturity) || toDateKey(maturity) !== maturityDate || maturity <= appliedOn) {
+    throw new MonthEditError("Enter a valid maturity date after the purchase date.");
+  }
+  if (contract.indexer !== "CDI" && Number(contract.rate) > 100) throw new MonthEditError("The annual rate must be at most 100%.");
+  const db = await getUserDb();
+  if (!db) throw new MonthEditError("Sign in to edit the purchase.");
+  const source = await findMonthTransaction(db, input.monthId, input.transactionId);
+  const holding = await findPosition(db, input.monthId, source.positionId);
+  if (!readFixedIncomeContract(holding.asset.fixedIncomeContract) ||
+      source.positionId !== input.transaction.positionId || source.kind !== "CONTRIBUTION" ||
+      input.transaction.kind !== "CONTRIBUTION" || +source.occurredOn !== holding.asset.appliedOn?.getTime()) {
+    throw new MonthEditError("This transaction is not a Brazilian fixed-income purchase.");
+  }
+  parseAmount(input.transaction.amountBrl);
+  const fx = +source.occurredOn !== +appliedOn ? await fixedIncomePurchaseFx(day) : null;
+  await primeFixedIncomeRates(db, contract.indexer, day);
+  const targetMonth = day.slice(0, 7);
+  const sourceMonth = toDateKey(source.occurredOn).slice(0, 7);
+  const destination = targetMonth === sourceMonth ? { id: input.monthId } : await ensureDatedMonth(day);
+  const anchorId = targetMonth < sourceMonth ? destination.id : input.monthId;
+  return withUndo(anchorId, async tx => {
+    const entry = await findMonthTransaction(tx, input.monthId, input.transactionId);
+    const position = await findPosition(tx, input.monthId, entry.positionId);
+    const asset = position.asset;
+    const previousContract = readFixedIncomeContract(asset.fixedIncomeContract);
+    if (!previousContract || entry.positionId !== input.transaction.positionId || +entry.occurredOn !== +source.occurredOn ||
+        entry.kind !== "CONTRIBUTION" || +entry.occurredOn !== asset.appliedOn?.getTime()) {
+      throw new MonthEditError("The purchase changed. Reopen it and try again.");
+    }
+    const updatedContract = { ...contract, basis: previousContract.basis };
+    const values = parseValues(position, reference, "CONTRIBUTION", input.transaction);
+    const related = await tx.position.findMany({
+      where: { assetId: asset.id },
+      include: { portfolioMonth: { select: { referenceDate: true } }, transactions: { select: { id: true, occurredOn: true, transferId: true, kind: true } } },
+    });
+    if (related.some(row => row.accountId !== position.accountId ||
+        row.transactions.some(item => item.id !== entry.id && (item.transferId || item.kind === "WITHDRAWAL" || item.occurredOn <= appliedOn || item.occurredOn >= maturity)))) {
+      throw new MonthEditError("This purchase has linked movements that must be reconciled before its terms can be corrected.");
+    }
+    const name = fixedIncomeName(contract, maturityDate, day);
+    const account = await tx.account.findUniqueOrThrow({ where: { id: position.accountId }, select: { institution: { select: { name: true } } } });
+    const normalizedKey = buildAssetKey({ name, ticker: null, institutionName: account.institution.name, maturityDate });
+    if (await tx.asset.findFirst({where: {normalizedKey, id: {not: asset.id}}, select: {id: true}})) {
+      throw new MonthEditError("Another investment already uses these contract details.");
+    }
+    await tx.asset.update({where: {id: asset.id}, data: {name, normalizedKey, appliedOn, maturityDate: maturity, fixedIncomeContract: updatedContract}});
+    if (fx) await tx.dailyQuote.createMany({ data: [{ symbol: "USD", quoteDate: new Date(fx.day), instrumentType: "FIAT", baseCurrency: "USD", valueBrl: fx.value, provider: "frankfurter-ecb", fetchedAt: new Date() }], skipDuplicates: true });
+    const oldMonth = related.find(row => row.id === position.id)!.portfolioMonth.referenceDate;
+    const months = await tx.portfolioMonth.findMany({where: {referenceDate: {gte: reference < oldMonth ? reference : oldMonth}}, orderBy: {referenceDate: "asc"}, select: {id: true, referenceDate: true}});
+    const byMonth = new Map(related.map(row => [row.portfolioMonthId, row]));
+    const destinationPositionId = byMonth.get(destination.id)?.id ?? (await tx.position.create({data: {
+      userId: SCOPED_USER, assetId: asset.id, accountId: position.accountId, portfolioMonthId: destination.id, quantity: 0, totalBrl: 0,
+    }, select: {id: true}})).id;
+    await tx.positionTransaction.update({where: {id: entry.id}, data: {...values, positionId: destinationPositionId, note: entry.note}});
+    const allocation = fixedIncomeAllocation(contract, day, maturityDate);
+    let openingQuantity = new Prisma.Decimal(0);
+    for (const month of months) {
+      const existing = byMonth.get(month.id);
+      if (month.referenceDate < reference || month.referenceDate >= maturity) {
+        if (existing) await tx.position.delete({where: {id: existing.id}});
+        continue;
+      }
+      const data = {openingQuantity, quantity: openingQuantity, totalBrl: openingQuantity, calculatedIncomeBrl: 0,
+        calculationStartDate: month.id === destination.id ? appliedOn : month.referenceDate};
+      const id = month.id === destination.id ? destinationPositionId : existing?.id;
+      const current = id ? await tx.position.update({where: {id}, data, select: {id: true}}) : await tx.position.create({
+        data: {...data, userId: SCOPED_USER, assetId: asset.id, accountId: position.accountId, portfolioMonthId: month.id}, select: {id: true},
+      });
+      await tx.positionAllocation.deleteMany({where: {positionId: current.id}});
+      await tx.positionAllocation.create({data: {...allocation, userId: SCOPED_USER, positionId: current.id, weight: 1, ratePercent: contract.rate}});
+      await recomputePosition(tx, current.id, "The correction would make the position negative.");
+      openingQuantity = (await tx.position.findUniqueOrThrow({where: {id: current.id}, select: {quantity: true}})).quantity;
+    }
+    return { assets: [{ ...asset, fixedIncomeContract: previousContract, expectedFixedIncomeContract: updatedContract }] };
+  }, { linkedMonths: true });
+}
+
+/** Record an FX correction without changing the original trade or its reference. */
+export async function recordExecutedUsdFx(input: { monthId: string; transactionId: string; rate: string }) {
+  if (!/^\d{1,8}(?:\.\d{1,12})?$/.test(input.rate) || !new Prisma.Decimal(input.rate).gt(0)) {
+    throw new MonthEditError("Enter a positive rate in USD per unit of the trade currency.");
+  }
+  return withUndo(input.monthId, async (tx, month) => {
+    const entry = await tx.positionTransaction.findFirst({
+      where: { id: input.transactionId, position: { portfolioMonthId: month.id } },
+    });
+    const native = entry && recordedTradeAmounts(entry);
+    if (!entry || entry.transferId || !native || native.currency === "USD") {
+      throw new MonthEditError("An original EUR or BRL trade is required.");
+    }
+    const amendment = executionFxNote(native.currency, input.rate, toDateKey(entry.occurredOn), new Date());
+    await tx.positionTransaction.update({ where: { id: entry.id }, data: { note: (entry.note ?? "") + amendment } });
+  }, { carryForward: false });
+}
+
 export async function removeTransaction(input: { monthId: string; transactionId: string }) {
+  const owned = await (await getUserDb())?.positionTransaction.findFirst({ where: { id: input.transactionId, position: { portfolioMonthId: input.monthId } }, select: { position: { select: { asset: { select: { assetType: true } } } } } });
+  if (owned?.position.asset.assetType === "international-bond") return (await import("./international-bonds")).removeBondPurchase(input);
   return withUndo(input.monthId, async (transaction, month) => {
     const entry = await findMonthTransaction(transaction, month.id, input.transactionId);
     const legs = entry.transferId
@@ -99,40 +243,32 @@ export async function removeTransaction(input: { monthId: string; transactionId:
     await transaction.positionTransaction.deleteMany({ where: { id: { in: legs.map((leg) => leg.id) } } });
 
     for (const positionId of new Set(legs.map((leg) => leg.positionId))) {
-      await recomputePosition(transaction, positionId, "Apagar esta movimentação deixaria a posição negativa.");
+      await recomputePosition(transaction, positionId, "Deleting this transaction would make the position negative.");
     }
-  });
+  }, { carryForward: true });
 }
 
 export type LiquidationInput = {
   positionId: string;
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   occurredOn: string;
-  /** Valor recebido em reais. */
+
   amountBrl: string;
 };
 
-/**
- * Liquida uma posição (spec 076): uma retirada total, com desfazer. A posição
- * fica zerada no mês, com todo o histórico, e não passa ao mês seguinte. Num
- * saldo em reais, um valor recebido diferente do saldo registra a diferença
- * como rendimento antes da retirada (negativo quando chega menos, como imposto
- * retido); num ativo cotado, a diferença fica no preço executado da venda.
- * Diferente de remover, que apaga o registro do mês.
- */
+
 export async function liquidatePosition(input: { monthId: string; liquidation: LiquidationInput }) {
   return withUndo(input.monthId, async (transaction, month) => {
     const { liquidation } = input;
     const position = await findPosition(transaction, month.id, liquidation.positionId);
     const occurredOn = parseOccurredOn(liquidation.occurredOn, month.referenceDate);
 
-    // Uma segunda submissão encontra a posição já zerada e não retira de novo.
+
     if (!position.quantity.greaterThan(0)) {
-      throw new MonthEditError(`${position.asset.name} já está liquidada.`);
+      throw new MonthEditError(`${position.asset.name} is already liquidated.`);
     }
 
-    // Sem cascata: liquidar antes de um mês que ainda tem a posição deixaria
-    // os meses seguintes com um saldo que não existe mais.
+
     const later = await transaction.position.findFirst({
       where: {
         accountId: position.accountId,
@@ -143,18 +279,15 @@ export async function liquidatePosition(input: { monthId: string; liquidation: L
     });
 
     if (later) {
-      throw new MonthEditError(`${position.asset.name} continua nos meses seguintes. Liquide no último mês em que ela aparece.`);
+      throw new MonthEditError(`${position.asset.name} continues in later months. Liquidate it in the last month in which it appears.`);
     }
 
     const received = parseAmount(liquidation.amountBrl);
-    const note = "Liquidação";
+    const note = "Liquidation";
     const quoted = Boolean(position.asset.quoteSymbol);
     let balance = position.totalBrl;
 
-    // Rendimento automático (spec 079): como no resgate do banco, o cálculo
-    // fecha no dia da liquidação, com o rendimento até a véspera guardado como
-    // "Rendimento automático até…"; o que o banco pagou a mais ou a menos
-    // (o imposto retido, por exemplo) entra como acerto, abaixo.
+
     if (automatic(position)) {
       await valueCdiPositions(transaction, { where: { id: position.id }, asOf: toDateKey(occurredOn) });
       await foldCalculatedIncome(transaction, month, position.id, occurredOn);
@@ -174,14 +307,13 @@ export async function liquidatePosition(input: { monthId: string; liquidation: L
             quantity: difference.abs(),
             unitPriceBrl: null,
             amountBrl: difference,
-            note: difference.isNegative() ? `${note}: recebido abaixo do saldo` : note,
+            note: difference.isNegative() ? `${note}: received less than the balance` : note,
           },
         });
       }
     }
 
-    // A retirada leva a posição exatamente a zero: a quantidade dela é o que
-    // sobra depois da base e das outras movimentações do mês.
+
     const rest = await quantityOf(transaction, position.id);
     await transaction.positionTransaction.create({
       data: {
@@ -195,14 +327,11 @@ export async function liquidatePosition(input: { monthId: string; liquidation: L
         note,
       },
     });
-    await recomputePosition(transaction, position.id, `${position.asset.name} não pôde ser zerada.`);
+    await recomputePosition(transaction, position.id, `${position.asset.name} could not be reduced to zero.`);
   });
 }
 
-/**
- * Rendimento automático ligado na posição (spec 079): a flag do ativo e o
- * início do cálculo no mês, que só existe com a taxa de cada classificação.
- */
+
 function automatic(position: { calculationStartDate: Date | null; asset: { autoIncome: boolean; quoteSymbol: string | null } }) {
   return Boolean(position.calculationStartDate && position.asset.autoIncome && !position.asset.quoteSymbol);
 }
@@ -218,42 +347,43 @@ async function findPosition(transaction: Transaction, monthId: string, positionI
       unitPriceBrl: true,
       totalBrl: true,
       calculationStartDate: true,
-      asset: { select: { quoteSymbol: true, name: true, autoIncome: true } },
+      asset: true,
     },
   });
 
   if (!position) {
-    throw new MonthEditError("A posição não pertence a esta competência.");
+    throw new MonthEditError("The position does not belong to this reporting month.");
   }
 
+  if (position.asset.assetType === "savings") throw new MonthEditError("Use the Savings panel to change money or rates.");
+  if (position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and coupon form to change this holding.");
   return position;
 }
 
 async function findMonthTransaction(transaction: Transaction, monthId: string, transactionId: string) {
   const entry = await transaction.positionTransaction.findFirst({
     where: { id: transactionId, position: { portfolioMonthId: monthId } },
-    select: { id: true, kind: true, positionId: true, transferId: true },
+    select: { id: true, kind: true, occurredOn: true, positionId: true, transferId: true, note: true, position: { select: { asset: { select: { assetType: true } } } } },
   });
 
   if (!entry) {
-    throw new MonthEditError("A movimentação não pertence à competência aberta ou já foi apagada.");
+    throw new MonthEditError("The transaction does not belong to the selected reporting month or has already been deleted.");
   }
 
+  if (entry.note === MATURITY_EXIT_NOTE) throw new MonthEditError("This is an automatic maturity exit, not a manual withdrawal.");
+  if (entry.position.asset.assetType === "savings") throw new MonthEditError("Use the Savings panel to manage its source instructions.");
+  if (entry.position.asset.assetType === "international-bond") throw new MonthEditError("Use the bond valuation and cash receipt form for this holding.");
   return entry;
 }
 
-/**
- * Efeito da movimentação na quantidade: a retirada e o acerto negativo de uma
- * liquidação tiram; os demais põem. O rendimento em dinheiro tem quantidade
- * zero e não muda a posição.
- */
+
 function quantityEffect(entry: { kind: PositionTransactionKind; quantity: Prisma.Decimal; amountBrl: Prisma.Decimal }) {
   return entry.kind === PositionTransactionKind.WITHDRAWAL || entry.amountBrl.isNegative()
     ? entry.quantity.neg()
     : entry.quantity;
 }
 
-/** Base, movimentos e rendimento automático já salvo, preservado na pausa. */
+
 async function quantityOf(transaction: Transaction, positionId: string) {
   const position = await transaction.position.findUniqueOrThrow({
     where: { id: positionId },
@@ -266,16 +396,12 @@ async function quantityOf(transaction: Transaction, positionId: string) {
   });
 
   const plain = position.transactions.reduce((total, entry) => total.plus(quantityEffect(entry)), position.openingQuantity);
-  // Não converter nem apagar os juros anteriores: seu valor permanece fixo.
-  // A soma arredondada reproduz o último saldo em reais, inclusive numa
-  // retirada total ou liquidação, sem deixar centavos/juros para trás.
+
+
   return position.asset.quoteSymbol ? plain : plain.plus(position.calculatedIncomeBrl).toDecimalPlaces(2);
 }
 
-/**
- * Recalcula a posição do mês a partir da base e de todas as movimentações dele:
- * quantidade, e o total pelo preço do mês (ou o próprio saldo em reais).
- */
+
 export async function recomputePosition(transaction: Transaction, positionId: string, negativeMessage: string) {
   const [plain, position] = await Promise.all([
     quantityOf(transaction, positionId),
@@ -293,8 +419,7 @@ export async function recomputePosition(transaction: Transaction, positionId: st
     throw new MonthEditError(negativeMessage);
   }
 
-  // Com o rendimento automático (spec 079), a movimentação nova rende desde o
-  // próprio dia: a posição é recalculada pela taxa até hoje.
+
   const cdi = automatic(position);
   const quantity = plain;
 
@@ -302,7 +427,7 @@ export async function recomputePosition(transaction: Transaction, positionId: st
 
   if (position.asset.quoteSymbol) {
     if (!position.unitPriceBrl) {
-      throw new MonthEditError("Uma posição cotada está sem preço e não pode ser recalculada.");
+      throw new MonthEditError("A quoted position has no price and cannot be recalculated.");
     }
     totalBrl = quantity.mul(position.unitPriceBrl).toDecimalPlaces(2);
   } else {
@@ -314,7 +439,7 @@ export async function recomputePosition(transaction: Transaction, positionId: st
   if (cdi) {
     const [result] = await valueCdiPositions(transaction, { where: { id: positionId } });
 
-    // Pelo cálculo, cada retirada sai do saldo do próprio dia.
+
     if (result?.state === "unavailable" && result.message === WITHDRAWAL_ABOVE_BALANCE) {
       throw new MonthEditError(negativeMessage);
     }
@@ -325,12 +450,7 @@ export async function recomputePosition(transaction: Transaction, positionId: st
 
 type PositionForValues = Awaited<ReturnType<typeof findPosition>>;
 
-/**
- * Confere e normaliza os campos da movimentação. Nos ativos cotados,
- * quantidade, preço executado e valor precisam fechar; no rendimento sem
- * quantidade (dividendos), só o valor. Nos saldos em reais, a quantidade é o
- * próprio valor.
- */
+
 function parseValues(
   position: PositionForValues,
   referenceDate: Date,
@@ -345,19 +465,19 @@ function parseValues(
   if (!position.asset.quoteSymbol) {
     quantity = amount;
   } else {
-    quantity = input.quantity ? parseNonNegativeDecimal(input.quantity, 12, "a quantidade") : new Prisma.Decimal(0);
+    quantity = input.quantity ? parseNonNegativeDecimal(input.quantity, 12, "the quantity") : new Prisma.Decimal(0);
 
     if (quantity.isZero() && kind !== PositionTransactionKind.INCOME) {
-      throw new MonthEditError("Informe a quantidade movimentada.");
+      throw new MonthEditError("Enter the transaction quantity.");
     }
 
     if (!quantity.isZero() && kind !== PositionTransactionKind.OPENING) {
       unitPriceBrl = input.unitPriceBrl
-        ? parseNonNegativeDecimal(input.unitPriceBrl, 8, "o preço executado")
+        ? parseNonNegativeDecimal(input.unitPriceBrl, 8, "the execution price")
         : amount.div(quantity).toDecimalPlaces(8);
 
       if (quantity.mul(unitPriceBrl).minus(amount).abs().greaterThan(AMOUNT_TOLERANCE.plus(amount.mul("0.000001")))) {
-        throw new MonthEditError("Quantidade, preço executado e valor não fecham. Revise os campos.");
+        throw new MonthEditError("Quantity, execution price and amount do not match. Review the fields.");
       }
     }
   }
@@ -374,22 +494,22 @@ function parseValues(
 
 function parseOccurredOn(raw: string, referenceDate: Date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    throw new MonthEditError("Informe o dia da movimentação.");
+    throw new MonthEditError("Enter the transaction date.");
   }
 
   const day = new Date(`${raw}T00:00:00.000Z`);
   const today = calendarDay(new Date());
 
   if (Number.isNaN(day.getTime()) || toDateKey(day) !== raw) {
-    throw new MonthEditError("Informe um dia válido para a movimentação.");
+    throw new MonthEditError("Enter a valid transaction date.");
   }
 
   if (day < referenceDate || day > lastDayOf(referenceDate)) {
-    throw new MonthEditError("O dia da movimentação precisa estar dentro da competência aberta.");
+    throw new MonthEditError("The transaction date must fall within the selected reporting month.");
   }
 
   if (day > today) {
-    throw new MonthEditError("A movimentação não pode ter dia no futuro.");
+    throw new MonthEditError("The transaction date cannot be in the future.");
   }
 
   return day;
@@ -399,7 +519,7 @@ function parseAmount(raw: string) {
   const value = parseDecimal(raw.trim());
 
   if (!value || !value.greaterThan(0) || value.decimalPlaces() > 2) {
-    throw new MonthEditError("Informe o valor em reais, maior que zero e com até dois centavos.");
+    throw new MonthEditError("Enter a BRL amount greater than zero with at most two decimal places.");
   }
 
   return value;
@@ -409,7 +529,7 @@ function parseNonNegativeDecimal(raw: string, maxDecimals: number, field: string
   const value = parseDecimal(raw.trim());
 
   if (!value || value.lessThan(0) || value.decimalPlaces() > maxDecimals) {
-    throw new MonthEditError(`Revise ${field}.`);
+    throw new MonthEditError(`Review ${field}.`);
   }
 
   return value;

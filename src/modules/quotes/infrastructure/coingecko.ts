@@ -11,11 +11,6 @@ const KNOWN_COINS: Record<string, CoinGeckoCoin> = {
   SOL: { id: "solana", name: "Solana" },
 };
 
-const coinGeckoSchema = z.record(
-  z.string(),
-  z.object({ brl: z.number().positive() }),
-);
-
 const coinGeckoSearchSchema = z.object({
   coins: z.array(
     z.object({
@@ -27,11 +22,7 @@ const coinGeckoSearchSchema = z.object({
   ),
 });
 
-/**
- * Moedas da CoinGecko com exatamente o símbolo digitado, da maior para a menor
- * capitalização (spec 033). Quando há mais de uma, o usuário escolhe a moeda
- * na inclusão; a escolha fica guardada no ativo (`assets.quote_provider_id`).
- */
+
 export async function searchCoinGeckoCoins(symbol: string, apiKey?: string): Promise<CoinGeckoCoin[]> {
   const url = new URL("https://api.coingecko.com/api/v3/search");
   url.searchParams.set("query", symbol);
@@ -43,14 +34,7 @@ export async function searchCoinGeckoCoins(symbol: string, apiKey?: string): Pro
     .map((coin) => ({ id: coin.id, name: coin.name }));
 }
 
-/**
- * Identificador CoinGecko de um ticker. Os já usados na carteira têm o
- * identificador fixo; os demais vêm da busca da CoinGecko: entre as moedas com
- * exatamente esse símbolo, a de maior capitalização. Na inclusão de um ativo
- * novo o usuário pode escolher outra (spec 033), e a moeda conferida fica
- * guardada no ativo; a busca só volta a decidir para um símbolo sem moeda
- * guardada.
- */
+
 export async function resolveCoinGeckoCoin(symbol: string, apiKey?: string): Promise<CoinGeckoCoin | null> {
   const known = KNOWN_COINS[symbol];
 
@@ -61,29 +45,23 @@ export async function resolveCoinGeckoCoin(symbol: string, apiKey?: string): Pro
   return (await searchCoinGeckoCoins(symbol, apiKey))[0] ?? null;
 }
 
-/**
- * Preço do dia em reais. Das funções do Neon, na região dos EUA, a CoinGecko
- * às vezes não responde: duas tentativas de 6 s têm o mesmo pior caso de uma de
- * 12 s e recuperam a maior parte dessas falhas passageiras.
- */
-export async function fetchCoinGeckoPrices(ids: string[], apiKey?: string) {
+
+export async function fetchCoinGeckoPrices(ids: string[], apiKey?: string, currency: "brl" | "usd" = "brl") {
   const url = new URL("https://api.coingecko.com/api/v3/simple/price");
   url.searchParams.set("ids", ids.join(","));
-  url.searchParams.set("vs_currencies", "brl");
-  const payload = coinGeckoSchema.parse(
+  url.searchParams.set("vs_currencies", currency);
+  const payload = z.record(z.string(), z.record(z.string(), z.number().positive())).parse(
     await fetchJson(url, { headers: headersFor(apiKey) }, { timeoutMs: 6_000, attempts: 2 }),
   );
 
-  return new Map(Object.entries(payload).map(([id, quote]) => [id, quote.brl]));
+  return new Map(Object.entries(payload).flatMap(([id, quote]) => quote[currency] ? [[id, quote[currency]] as const] : []));
 }
 
-/**
- * Cotações de cripto em reais. `coinId` é a moeda guardada no ativo do símbolo;
- * sem ela, o identificador sai de `resolveCoinGeckoCoin`.
- */
+
 export async function fetchCryptoQuotes(
   requests: { symbol: string; coinId?: string }[],
   apiKey?: string,
+  usdBrl?: number,
 ): Promise<QuoteResult[]> {
   const results: QuoteResult[] = [];
   const supported: { symbol: string; id: string }[] = [];
@@ -96,7 +74,7 @@ export async function fetchCryptoQuotes(
         supported.push({ symbol, id: coin.id });
       } else {
         results.push(
-          quoteFailure(symbol, "coingecko", "NOT_FOUND", `A CoinGecko não encontrou o ticker ${symbol}.`),
+          quoteFailure(symbol, "coingecko", "NOT_FOUND", `CoinGecko did not find the ticker ${symbol}.`),
         );
       }
     } catch (error) {
@@ -113,6 +91,7 @@ export async function fetchCryptoQuotes(
     const prices = await fetchCoinGeckoPrices(
       [...new Set(supported.map((item) => item.id))],
       apiKey,
+      usdBrl ? "usd" : "brl",
     );
 
     for (const item of supported) {
@@ -123,13 +102,13 @@ export async function fetchCryptoQuotes(
               symbol: item.symbol,
               provider: "coingecko",
               status: "SUCCESS",
-              valueBrl: price,
+              valueBrl: price * (usdBrl ?? 1),
             }
           : quoteFailure(
               item.symbol,
               "coingecko",
               "MISSING_QUOTE",
-              `A CoinGecko não retornou ${item.symbol}.`,
+              `CoinGecko did not return ${item.symbol}.`,
             ),
       );
     }
@@ -151,13 +130,10 @@ function headersFor(apiKey?: string) {
 
 const coinGeckoChartSchema = z.object({ prices: z.array(z.tuple([z.number(), z.number()])) });
 
-/** Dias de histórico que o plano gratuito da CoinGecko permite consultar. */
+
 export const COINGECKO_HISTORY_DAYS = 365;
 
-/**
- * Preço diário em reais de uma moeda no último ano, numa única consulta (spec
- * 029). O plano gratuito recusa períodos maiores que 365 dias.
- */
+
 export async function fetchCoinGeckoDailyHistory(coinId: string, apiKey?: string) {
   const url = new URL(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart`);
   url.searchParams.set("vs_currency", "brl");
@@ -168,4 +144,23 @@ export async function fetchCoinGeckoDailyHistory(coinId: string, apiKey?: string
   return payload.prices
     .filter(([, price]) => price > 0)
     .map(([time, price]) => ({ day: new Date(time).toISOString().slice(0, 10), value: price }));
+}
+
+/** A single observation supplies both the storage quote and the USD quote shown during purchase entry. */
+export async function fetchCoinGeckoPricePair(id: string, apiKey?: string) {
+  const url = new URL("https://api.coingecko.com/api/v3/simple/price");
+  url.searchParams.set("ids", id);
+  url.searchParams.set("vs_currencies", "brl,usd");
+  const payload = z.record(z.string(), z.object({ brl: z.number().positive(), usd: z.number().positive().optional() })).parse(
+    await fetchJson(url, { headers: headersFor(apiKey) }, { timeoutMs: 6_000, attempts: 2 }),
+  );
+  return payload[id] ?? null;
+}
+
+/** Live capitalization is supplied by the provider; it is not inferred from a fixed coin supply. */
+export async function fetchCoinGeckoMarketCap(id:string,currency:'USD'|'EUR'|'BRL'){
+ const url=new URL('https://api.coingecko.com/api/v3/simple/price');
+ url.searchParams.set('ids',id);url.searchParams.set('vs_currencies',currency.toLowerCase());url.searchParams.set('include_market_cap','true');
+ const data=z.record(z.string(),z.record(z.string(),z.number().nullable())).parse(await fetchJson(url,{headers:headersFor()},{timeoutMs:6000,attempts:1}));
+ const value=data[id]?.[`${currency.toLowerCase()}_market_cap`];return value!=null&&Number.isFinite(value)&&value>0?value:null;
 }

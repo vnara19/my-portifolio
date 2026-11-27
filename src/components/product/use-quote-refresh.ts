@@ -14,8 +14,7 @@ import { describeRefreshTime } from "@/modules/quotes/presentation/refresh-time"
 
 const CLOCK_STEP_MS = 15_000;
 
-// Estado da checagem de cotações compartilhado pelo indicador do topo e pela
-// página de cotações: os dois leem o mesmo cliente e mostram o mesmo horário.
+
 export function useQuoteRefresh(serverSummary: QuoteRefreshSummary | null) {
   const router = useRouter();
   const client = useSyncExternalStore(subscribeQuoteRefresh, getQuoteRefreshState, getQuoteRefreshServerState);
@@ -29,8 +28,8 @@ export function useQuoteRefresh(serverSummary: QuoteRefreshSummary | null) {
   const hasIssues = failedSymbols.length > 0 || lastRun?.status === "FAILED";
   const issueText = hasIssues
     ? failedSymbols.length > 0
-      ? `Falha na última tentativa: ${failedSymbols.join(", ")}`
-      : "A última tentativa falhou"
+      ? `Last attempt failed: ${failedSymbols.join(", ")}`
+      : "The last attempt failed"
     : null;
 
   return { client, now, summary, time, lastRun, hasIssues, issueText, onDataChanged };
@@ -61,8 +60,7 @@ function readServerClock() {
   return null;
 }
 
-// Hora atual só no navegador, em passos de 15 segundos: o servidor não conhece o
-// fuso do usuário, então os rótulos de horário aparecem depois da hidratação.
+
 function useClock() {
   return useSyncExternalStore(subscribeClock, readClock, readServerClock);
 }

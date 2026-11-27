@@ -1,31 +1,35 @@
 "use server";
 
+import { LEGACY_DEBT_PRODUCTS } from "@/modules/portfolio/presentation/asset-classification";
+
+/** Investment server actions validate inputs and scope every write to the authenticated user and dated reporting month. */
+
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
 import {
   addPosition,
-  cloneLatestMonth,
   editPosition,
   MonthEditError,
   removePosition,
-  setMonthOpen,
   undoChange,
-  updateMonthQuotes,
 } from "@/modules/portfolio/application/month-editing";
 import { ensureMonthsUpToDate } from "@/modules/portfolio/application/month-rollover";
 import {
   addTransaction,
   liquidatePosition,
+  recordExecutedUsdFx,
   removeTransaction,
   updateTransaction,
 } from "@/modules/portfolio/application/position-transactions";
-import { requireSessionUser } from "@/modules/auth/session";
+import { requireMutationUser } from "@/modules/auth/session";
+import { bondDay as day, newInternationalBondSchema } from "@/modules/portfolio/domain/international-bond";
+import { brazilianFixedIncomeSchema } from "@/modules/portfolio/domain/brazilian-fixed-income";
 import { ASSET_KINDS } from "@/modules/portfolio/domain/asset-kinds";
 import { ASSET_TYPES } from "@/modules/portfolio/domain/classification";
-import type { MonthRolloverOutcome } from "@/modules/portfolio/domain/month-rollover";
 import { TRANSACTION_KINDS } from "@/modules/portfolio/domain/position-transactions";
+import { formatMonthCompact } from "@/modules/portfolio/presentation/portfolio-format";
 import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 
 export type EditActionResult =
@@ -33,16 +37,10 @@ export type EditActionResult =
   | { ok: false; message: string };
 
 const value = z.string().trim().min(1).max(40);
-const strategy = z.string().trim().max(60).nullable();
+// Legacy wire key remains null; strategy editing has been retired.
+const strategy = z.null();
 const monthScope = { monthId: z.string().uuid() };
 const label = (max: number) => z.string().trim().min(1).max(max);
-const day = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((entry) => entry >= "2000-01-01" && entry <= "2100-12-31" && !Number.isNaN(Date.parse(`${entry}T00:00:00Z`)));
-
-// Rateio completo do formulário da posição (spec 043); o servidor confere a
-// soma e a classificação fixa da spec 068.
 const allocationsSchema = z
   .array(
     z.object({
@@ -50,15 +48,14 @@ const allocationsSchema = z
       subclass: z.string().max(80),
       duration: z.string().max(80),
       weightPercent: value,
-      // Rentabilidade da classificação (spec 079): % do CDI ou taxa ao ano.
+
       ratePercent: z.string().trim().max(12).nullable().optional(),
     }),
   )
   .min(1)
   .max(20);
 
-// Conta e ativo novos da inclusão (spec 026). O servidor ainda confere
-// duplicados, o ticker pelo token da checagem e o vencimento.
+
 const newAccountSchema = z
   .object({
     institutionId: z.string().uuid().nullable(),
@@ -68,11 +65,12 @@ const newAccountSchema = z
   .refine((account) => (account.institutionId === null) !== (account.institutionName === null));
 
 const newAssetSchema = z.object({
+  fixedIncomeContract: brazilianFixedIncomeSchema.required({ purchaseQuantity: true }).optional(),
+  bondContract: newInternationalBondSchema.optional(),
   name: label(80),
   kind: z.enum(ASSET_KINDS),
   ticker: z.string().trim().max(120).nullable(),
   maturityDate: day.nullable(),
-  liquidity: z.string().trim().max(30).nullable().optional(),
   quoteCheckToken: z.string().min(1).max(4096).nullable(),
   manualPriceBrl: value.nullable(),
   cashAccount: z.boolean().optional(),
@@ -92,48 +90,44 @@ const addSchema = z.object({
       valueKind: z.enum(["quantity", "amount"]).optional(),
       initialKind: z.enum(["OPENING", "CONTRIBUTION"]).optional(),
       executedPriceBrl: value.nullable().optional(),
+      purchase: z.object({ amountInvested: value.optional(), contractedRate: value.optional(), side: z.enum(["BUY", "SELL"]).optional(), price: value, commission: value, currency: z.enum(["USD", "EUR", "BRL"]), occurredOn: day }).optional(),
       strategy,
-      allocations: allocationsSchema,
+      allocations: z.union([z.tuple([]), allocationsSchema]),
     })
-    .refine((addition) => (addition.accountId === undefined) !== (addition.newAccount === undefined))
+    .refine((addition) => !(addition.accountId && addition.newAccount))
     .refine((addition) => (addition.assetId === undefined) !== (addition.newAsset === undefined)),
 });
 
 const editSchema = z.object({
   ...monthScope,
-  // Sem quantidade nem saldo: o lápis edita só atributos (spec 057).
+
   edit: z.object({
     positionId: z.string().uuid(),
     strategy,
     allocations: allocationsSchema,
     asset: z.object({
       name: label(120),
-      liquidity: z.string().trim().max(60).nullable(),
       maturityDate: day.nullable(),
       cashAccount: z.boolean().optional(),
       autoIncome: z.boolean().optional(),
       assetType: z.enum(ASSET_TYPES).optional(),
+      displayProduct: z.enum(LEGACY_DEBT_PRODUCTS).optional(),
     }),
   }),
-});
-
-const quotesSchema = z.object({
-  ...monthScope,
-  quotes: z.array(z.object({ symbol: z.string().trim().min(1).max(120), valueBrl: value })).min(1).max(100),
 });
 
 export async function addPositionAction(input: unknown): Promise<EditActionResult> {
   const parsed = addSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os campos da posição e tente novamente." };
+    return { ok: false, message: "Review the position fields and try again." };
   }
 
   return run(async () => {
-    // Um ticker novo fica cadastrado como pendente, e o job agendado carrega o
-    // histórico dele (spec 053).
+
+
     const result = await addPosition(parsed.data);
-    return { ok: true, message: "Posição incluída.", undoToken: result.undoToken };
+    return { ok: true, message: `Position added to ${formatMonthCompact(result.referenceDate)}.`, undoToken: result.undoToken, month: toMonthParam(result.referenceDate) };
   });
 }
 
@@ -141,12 +135,12 @@ export async function editPositionAction(input: unknown): Promise<EditActionResu
   const parsed = editSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os campos da posição e tente novamente." };
+    return { ok: false, message: "Review the position fields and try again." };
   }
 
   return run(async () => {
     const result = await editPosition(parsed.data);
-    return { ok: true, message: "Posição salva.", undoToken: result.undoToken };
+    return { ok: true, message: "Position saved.", undoToken: result.undoToken };
   });
 }
 
@@ -154,50 +148,12 @@ export async function removePositionAction(input: unknown): Promise<EditActionRe
   const parsed = z.object({ ...monthScope, positionId: z.string().uuid() }).safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Posição inválida." };
+    return { ok: false, message: "Invalid position." };
   }
 
   return run(async () => {
     const result = await removePosition(parsed.data);
-    return { ok: true, message: "Posição removida.", undoToken: result.undoToken };
-  });
-}
-
-export async function saveQuotesAction(input: unknown): Promise<EditActionResult> {
-  const parsed = quotesSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return { ok: false, message: "Revise as cotações informadas." };
-  }
-
-  return run(async () => {
-    const result = await updateMonthQuotes(parsed.data);
-    return { ok: true, message: "Cotações salvas e posições recalculadas.", undoToken: result.undoToken };
-  });
-}
-
-export async function setMonthOpenAction(input: unknown): Promise<EditActionResult> {
-  const parsed = z.object({ monthId: z.string().uuid(), open: z.boolean() }).safeParse(input);
-
-  if (!parsed.success) {
-    return { ok: false, message: "Competência inválida." };
-  }
-
-  return run(async () => {
-    await setMonthOpen(parsed.data);
-    return { ok: true, message: parsed.data.open ? "Mês aberto para edição." : "Mês fechado." };
-  });
-}
-
-export async function cloneLatestMonthAction(): Promise<EditActionResult> {
-  return run(async () => {
-    const result = await cloneLatestMonth();
-    return {
-      ok: true,
-      message: "Competência criada a partir da anterior.",
-      undoToken: result.undoToken,
-      month: toMonthParam(result.referenceDate),
-    };
+    return { ok: true, message: "Position removed.", undoToken: result.undoToken };
   });
 }
 
@@ -215,20 +171,20 @@ const transactionSchema = z.object({
 });
 
 const transactionRemovalSchema = z.object({ ...monthScope, transactionId: z.string().uuid() });
-const transactionUpdateSchema = transactionSchema.extend({ transactionId: z.string().uuid() });
+const transactionUpdateSchema = transactionSchema.extend({ transactionId: z.string().uuid(), fixedIncome: z.object({ contract: brazilianFixedIncomeSchema.required({ purchaseQuantity: true }), maturityDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).optional(), nativeTrade: z.object({ currency: z.enum(["BRL", "USD", "EUR"]), price: value, commission: value, fxBrl: value }).optional() });
 
 const TRANSACTION_DONE: Record<(typeof TRANSACTION_KINDS)[number], string> = {
-  CONTRIBUTION: "Aporte registrado.",
-  WITHDRAWAL: "Retirada registrada.",
-  INCOME: "Rendimento registrado.",
+  CONTRIBUTION: "Contribution recorded.",
+  WITHDRAWAL: "Withdrawal recorded.",
+  INCOME: "Return recorded.",
 };
 
-/** Aporte, retirada ou rendimento numa posição do mês aberto (spec 056). */
+
 export async function addTransactionAction(input: unknown): Promise<EditActionResult> {
   const parsed = transactionSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os campos da movimentação e tente novamente." };
+    return { ok: false, message: "Review the transaction fields and try again." };
   }
 
   return run(async () => {
@@ -237,31 +193,40 @@ export async function addTransactionAction(input: unknown): Promise<EditActionRe
   });
 }
 
-/** Corrige uma movimentação do mês aberto, no lugar (spec 057). */
+
 export async function updateTransactionAction(input: unknown): Promise<EditActionResult> {
   const parsed = transactionUpdateSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os campos da movimentação e tente novamente." };
+    return { ok: false, message: "Review the transaction fields and try again." };
   }
 
   return run(async () => {
     const result = await updateTransaction(parsed.data);
-    return { ok: true, message: "Movimentação corrigida.", undoToken: result.undoToken };
+    return { ok: true, message: "Transaction corrected.", undoToken: result.undoToken };
   });
 }
 
-/** Apaga uma movimentação do mês aberto, desfazendo o efeito no saldo. */
+
+export async function recordExecutedUsdFxAction(input: unknown): Promise<EditActionResult> {
+  const parsed = transactionRemovalSchema.extend({ rate: value }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Review the exchange rate." };
+  return run(async () => {
+    const result = await recordExecutedUsdFx(parsed.data);
+    return { ok: true, message: "Executed exchange rate recorded.", undoToken: result.undoToken };
+  });
+}
+
 export async function removeTransactionAction(input: unknown): Promise<EditActionResult> {
   const parsed = transactionRemovalSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Não foi possível identificar a movimentação." };
+    return { ok: false, message: "Could not identify the transaction." };
   }
 
   return run(async () => {
     const result = await removeTransaction(parsed.data);
-    return { ok: true, message: "Movimentação apagada.", undoToken: result.undoToken };
+    return { ok: true, message: "Transaction deleted.", undoToken: result.undoToken };
   });
 }
 
@@ -274,43 +239,21 @@ const liquidationSchema = z.object({
   }),
 });
 
-/** Liquida uma posição com uma retirada total (spec 076). */
+
 export async function liquidatePositionAction(input: unknown): Promise<EditActionResult> {
   const parsed = liquidationSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, message: "Revise os campos da liquidação e tente novamente." };
+    return { ok: false, message: "Review the liquidation fields and try again." };
   }
 
   return run(async () => {
     const result = await liquidatePosition(parsed.data);
-    return { ok: true, message: "Posição liquidada.", undoToken: result.undoToken };
+    return { ok: true, message: "Position liquidated.", undoToken: result.undoToken };
   });
 }
 
-/**
- * Cria as competências que faltam até o mês corrente, depois de o usuário
- * confirmar a virada de mês (spec 078). Devolve o resultado da virada para o
- * aviso de competências criadas.
- */
-export async function confirmMonthRolloverAction(): Promise<MonthRolloverOutcome> {
-  await requireSessionUser();
 
-  try {
-    const outcome = await ensureMonthsUpToDate();
-    revalidatePath("/");
-    revalidatePath("/posicoes");
-    return outcome;
-  } catch (error) {
-    unstable_rethrow(error);
-    return { state: "unavailable", message: "Não foi possível criar a competência do mês." };
-  }
-}
-
-/**
- * Primeira competência de um usuário novo (spec 055), quando ele quer incluir a
- * primeira posição antes da checagem de abertura criá-la.
- */
 export async function startPortfolioAction(): Promise<EditActionResult> {
   return run(async () => {
     const outcome = await ensureMonthsUpToDate();
@@ -319,7 +262,7 @@ export async function startPortfolioAction(): Promise<EditActionResult> {
       return { ok: false, message: outcome.message };
     }
 
-    return { ok: true, message: "Competência do mês criada." };
+    return { ok: true, message: "Reporting month created." };
   });
 }
 
@@ -327,22 +270,22 @@ export async function undoChangeAction(token: unknown): Promise<EditActionResult
   const parsed = z.string().uuid().safeParse(token);
 
   if (!parsed.success) {
-    return { ok: false, message: "Não é mais possível desfazer esta alteração." };
+    return { ok: false, message: "This change can no longer be undone." };
   }
 
   return run(async () => {
     const result = await undoChange(parsed.data);
     return {
       ok: true,
-      message: result.deleted ? "Competência removida." : "Alteração desfeita.",
+      message: result.deleted ? "Reporting month removed." : "Change undone.",
       month: result.deleted ? undefined : toMonthParam(result.referenceDate),
     };
   });
 }
 
 async function run(operation: () => Promise<EditActionResult>): Promise<EditActionResult> {
-  // Sem sessão, leva à entrada (spec 050), fora do try para não virar erro.
-  await requireSessionUser();
+
+  await requireMutationUser();
 
   try {
     const result = await operation();
@@ -355,7 +298,7 @@ async function run(operation: () => Promise<EditActionResult>): Promise<EditActi
     unstable_rethrow(error);
     return {
       ok: false,
-      message: error instanceof MonthEditError ? error.message : "Não foi possível concluir a operação.",
+      message: error instanceof MonthEditError ? error.message : "Could not complete the operation.",
     };
   }
 }

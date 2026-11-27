@@ -1,9 +1,9 @@
+
+/** Accrue with decimal arithmetic using daily CDI or annual fixed rates, Brazilian business days and transaction dates. Preserve known balances when rate coverage is incomplete. */
 import { Prisma } from "@/generated/prisma/client";
 import { isBusinessDay } from "@/modules/portfolio/domain/business-days";
 
-// SGS12 é percentual ao dia. Convenção B3: [aplicação, atualização/vencimento),
-// início inclusive e fim exclusive. Datas sem CDI publicado não recebem taxa
-// inventada. Decimais de alta precisão; arredondamento monetário só no saldo.
+
 const Decimal = Prisma.Decimal.clone({ precision: 40, rounding: Prisma.Decimal.ROUND_HALF_UP });
 
 export type CdiRate = { date: string; dailyPercent: string };
@@ -13,8 +13,8 @@ export type CdiMovement = {
   kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "INCOME";
   amount: string;
 };
-/** Retirada acima do saldo do dia: a movimentação é recusada, não só registrada. */
-export const WITHDRAWAL_ABOVE_BALANCE = "A retirada é maior que o saldo disponível naquela data.";
+
+export const WITHDRAWAL_ABOVE_BALANCE = "The withdrawal exceeds the available balance on that date.";
 export type CdiValuation =
   | { state: "calculated"; balance: string; income: string; lastRateDate: string | null; rateDays: number }
   | { state: "unavailable"; message: string };
@@ -25,16 +25,13 @@ type MonthInput = {
   asOf: string;
   maturityDate?: string | null;
   movements: CdiMovement[];
+  onDailyBalance?: (day: string, balance: number) => void;
 };
 
-/**
- * Parte do rendimento (spec 079): uma classificação do rateio, com o peso dela
- * na posição e a taxa do indexador da subclasse (% do CDI no pós-fixado, % ao
- * ano no prefixado).
- */
-export type IncomeMonthPart = { indexer: "CDI" | "PRE"; weight: string; ratePercent: string };
 
-/** Fator de um dia: o multiplicador, nada (dia sem rendimento) ou um erro. */
+export type IncomeMonthPart = { indexer: "CDI" | "PRE" | "IPCA"; weight: string; ratePercent: string };
+
+
 type DailyFactor = (day: string) => { factor: InstanceType<typeof Decimal> } | { skip: true } | { error: string };
 
 export function calculateCdiMonth(input: MonthInput & {
@@ -45,11 +42,7 @@ export function calculateCdiMonth(input: MonthInput & {
   return calculateIncomeMonth({ ...input, parts: [{ indexer: "CDI", weight: "1", ratePercent: input.cdiPercent }] });
 }
 
-/**
- * Prefixado (spec 079), como os bancos: (1 + taxa ao ano) elevado a dias
- * úteis sobre 252, um dia útil por vez, com os feriados nacionais. O rendimento
- * de um dia útil entra no saldo do dia seguinte, como no CDI.
- */
+
 export function calculatePrefixedMonth(input: MonthInput & { annualPercent: string }): CdiValuation {
   return calculateIncomeMonth({
     ...input,
@@ -59,16 +52,13 @@ export function calculatePrefixedMonth(input: MonthInput & { annualPercent: stri
   });
 }
 
-/**
- * Rendimento do mês pelas classificações (spec 079). A posição fica sempre
- * dividida pelos pesos do rateio, então o fator de cada dia é a média dos
- * fatores das partes, ponderada pelos pesos; uma parte sem rendimento no dia
- * entra com fator 1. Com uma parte só, é o cálculo do CDI ou do prefixado.
- */
+
 export function calculateIncomeMonth(input: MonthInput & {
   parts: IncomeMonthPart[];
   rates: CdiRate[];
   verifiedCoverage: RateWindow[];
+  ipcaRates?: CdiRate[];
+  annualBasis?: "BUSINESS_252" | "CALENDAR_365";
 }): CdiValuation {
   const parts = input.parts.map((part) => ({ ...part, weight: decimal(part.weight), rate: decimal(part.ratePercent) }));
 
@@ -76,8 +66,8 @@ export function calculateIncomeMonth(input: MonthInput & {
     return {
       state: "unavailable",
       message: parts.some((part) => part.indexer === "CDI")
-        ? "Confira o saldo da base e o percentual do CDI."
-        : "Confira o saldo da base e a taxa ao ano.",
+        ? "Check the opening balance and CDI percentage."
+        : "Check the opening balance and annual rate.",
     };
   }
 
@@ -86,9 +76,36 @@ export function calculateIncomeMonth(input: MonthInput & {
   const factors = parts.map((part) => {
     const weight = part.weight!.div(total);
 
+    if (part.indexer === "IPCA") {
+      const monthly = new Map((input.ipcaRates ?? []).map((rate) => [rate.date.slice(0, 7), rate.dailyPercent]));
+      const lastMonth = [...monthly.keys()].sort().at(-1);
+      const fixed = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(input.annualBasis === "CALENDAR_365" ? 365 : 252));
+      return { weight, factor: (day: string): ReturnType<DailyFactor> => {
+        if (!lastMonth) return { error: "Official monthly IPCA data is unavailable. The known balance was preserved." };
+        const month = day.slice(0, 7);
+        if (month > lastMonth) return { skip: true };
+        if (input.annualBasis !== "CALENDAR_365" && !isBusinessDay(day)) return { skip: true };
+        const observed = monthly.get(month);
+        if (observed === undefined && month <= lastMonth) return { error: `Missing official IPCA observation for ${month}. The known balance was preserved.` };
+        const value = decimal(observed!);
+        if (!value || value.lte(-100)) return { error: `Invalid IPCA observation for ${month}.` };
+        const days = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0)).getUTCDate();
+        let accrualDays = days;
+        if (input.annualBasis !== "CALENDAR_365") {
+          accrualDays = 0;
+          for (let date = `${month}-01`; date.slice(0, 7) === month; date = nextDay(date)) {
+            if (isBusinessDay(date)) accrualDays += 1;
+          }
+        }
+        const inflation = new Decimal(1).plus(value.div(100)).pow(new Decimal(1).div(accrualDays));
+        const interest = input.annualBasis === "CALENDAR_365" || isBusinessDay(day) ? fixed : new Decimal(1);
+        return { factor: inflation.mul(interest) };
+      } };
+    }
+
     if (part.indexer === "PRE") {
-      const daily = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(252));
-      return { weight, factor: (day: string) => (isBusinessDay(day) ? { factor: daily } : { skip: true as const }) };
+      const daily = new Decimal(1).plus(part.rate!.div(100)).pow(new Decimal(1).div(input.annualBasis === "CALENDAR_365" ? 365 : 252));
+      return { weight, factor: (day: string) => ((input.annualBasis === "CALENDAR_365" || isBusinessDay(day)) ? { factor: daily } : { skip: true as const }) };
     }
 
     const percentage = part.rate!.div(100);
@@ -96,17 +113,17 @@ export function calculateIncomeMonth(input: MonthInput & {
       weight,
       factor: (day: string): ReturnType<DailyFactor> => {
         const rateText = rateMap.get(day);
-        // CDI é de dias úteis; para os demais dias, só a resposta integral da
-        // fonte informa se houve observação. Nunca repetir a taxa anterior.
+
+
         if (!weekend(day) && !input.verifiedCoverage.some((window) => window.from <= day && day <= window.through)) {
-          return { error: `O histórico do CDI ainda não foi conferido para ${day}. O saldo conhecido foi preservado.` };
+          return { error: `CDI history has not been checked for ${day}. The known balance was preserved.` };
         }
         if (rateText === undefined) {
           return { skip: true };
         }
         const rate = decimal(rateText);
         if (!rate || rate.isNegative() || weekend(day)) {
-          return { error: `A taxa do CDI de ${day} não é válida.` };
+          return { error: `The CDI rate for ${day} is invalid.` };
         }
         return { factor: new Decimal(1).plus(rate.div(100).mul(percentage)) };
       },
@@ -134,16 +151,16 @@ export function calculateIncomeMonth(input: MonthInput & {
 
 function accrueMonth(input: MonthInput, dailyFactor: DailyFactor): CdiValuation {
   if (!validDate(input.startDate) || !validDate(input.asOf) || input.startDate > input.asOf) {
-    return { state: "unavailable", message: "Confira a data financeira da base do cálculo." };
+    return { state: "unavailable", message: "Check the calculation base date." };
   }
   let balance = decimal(input.openingBalance);
   if (!balance || balance.isNegative()) {
-    return { state: "unavailable", message: "Confira o saldo da base do cálculo." };
+    return { state: "unavailable", message: "Check the calculation opening balance." };
   }
   const startingBalance = balance;
   const end = input.maturityDate && input.maturityDate < input.asOf ? input.maturityDate : input.asOf;
   if (!validDate(end)) {
-    return { state: "unavailable", message: "Confira o vencimento do ativo." };
+    return { state: "unavailable", message: "Check the asset maturity date." };
   }
   const movements = [...input.movements].sort((left, right) => left.date.localeCompare(right.date));
   let netMovements = new Decimal(0);
@@ -152,29 +169,30 @@ function accrueMonth(input: MonthInput, dailyFactor: DailyFactor): CdiValuation 
   let cursor = input.startDate;
 
   const accrueUntil = (until: string): string | null => {
-    for (; cursor < until && cursor < end; cursor = nextDay(cursor)) {
-      if (balance!.isZero()) {
+    for (; cursor < until && (cursor < end || input.onDailyBalance); cursor = nextDay(cursor)) {
+      if (balance!.isZero() || cursor >= end) {
+        input.onDailyBalance?.(cursor, balance!.toNumber());
         continue;
       }
       const result = dailyFactor(cursor);
       if ("error" in result) {
         return result.error;
       }
-      if ("skip" in result) {
-        continue;
+      if (!("skip" in result)) {
+        balance = balance!.mul(result.factor);
+        lastRateDate = cursor;
+        rateDays += 1;
       }
-      balance = balance!.mul(result.factor);
-      lastRateDate = cursor;
-      rateDays += 1;
+      input.onDailyBalance?.(cursor, balance!.toNumber());
     }
     return null;
   };
 
   for (const entry of movements) {
-    // Uma movimentação depois do último dia com taxa (o CDI sai no dia
-    // seguinte) entra no saldo e rende quando a taxa chegar.
+
+
     if (!validDate(entry.date)) {
-      return { state: "unavailable", message: "Uma movimentação está fora da data de avaliação." };
+      return { state: "unavailable", message: "A transaction is outside the valuation date." };
     }
     const error = accrueUntil(entry.date);
     if (error) {
@@ -182,7 +200,7 @@ function accrueMonth(input: MonthInput, dailyFactor: DailyFactor): CdiValuation 
     }
     const amount = decimal(entry.amount);
     if (!amount || (entry.kind !== "INCOME" && amount.isNegative())) {
-      return { state: "unavailable", message: "Uma movimentação tem valor inválido." };
+      return { state: "unavailable", message: "A transaction has an invalid amount." };
     }
     const change = entry.kind === "WITHDRAWAL" ? amount.negated() : amount;
     balance = balance.plus(change);
@@ -204,12 +222,12 @@ function accrueMonth(input: MonthInput, dailyFactor: DailyFactor): CdiValuation 
   };
 }
 
-/** Projeção bruta: mesma taxa diária futura, quantidade de dias úteis explícita. */
+
 export function projectCdiBalance(input: { balance: string; dailyPercent: string; cdiPercent: string; businessDays: number }) {
   const balance = new Decimal(input.balance);
   const factor = new Decimal(1).plus(new Decimal(input.dailyPercent).div(100).mul(new Decimal(input.cdiPercent).div(100)));
   if (!Number.isInteger(input.businessDays) || input.businessDays < 0 || balance.isNegative() || factor.lessThan(1)) {
-    throw new Error("Confira os dados da projeção do CDI.");
+    throw new Error("Check the CDI projection details.");
   }
   return balance.mul(factor.pow(input.businessDays)).toDecimalPlaces(2).toFixed(2);
 }

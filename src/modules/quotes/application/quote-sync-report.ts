@@ -2,30 +2,29 @@ import type { CdiReport } from "@/modules/portfolio/application/cdi-positions";
 import type { SelicSyncReport } from "@/modules/quotes/application/selic-reference";
 import type { QuoteSyncOutcome } from "@/modules/quotes/application/sync-quotes";
 
-// Linhas de registro de uma execução do job de cotações (spec 053), iguais no
-// terminal, na função do Neon e no GitHub Actions, para os logs de cada lugar
-// contarem a mesma coisa.
+
+// Avoid counting the same result twice.
 export function describeQuoteSync(outcome: QuoteSyncOutcome): string[] {
   switch (outcome.state) {
     case "idle":
-      return ["Cotações em dia: nenhum símbolo devido.", ...describeSelic(outcome.selic), ...describeCdi(outcome.cdi)];
+      return ["Quotes are up to date: no symbols are due.", ...describeSelic(outcome.selic), ...describeCdi(outcome.cdi)];
     case "busy":
-      return [`Outra execução está em andamento (${outcome.runId}).`];
+      return [`Another execution is in progress (${outcome.runId}).`];
     case "unavailable":
-      return [`Job indisponível: ${outcome.message}`];
+      return [`Job unavailable: ${outcome.message}`];
     case "done":
       return [
-        `Execução ${outcome.runId}: ${outcome.status}.`,
+        `Execution ${outcome.runId}: ${outcome.status}.`,
         ...(outcome.succeeded.length > 0
-          ? [`Cotações atualizadas (${outcome.succeeded.length}): ${outcome.succeeded.join(", ")}.`]
+          ? [`Quotes updated (${outcome.succeeded.length}): ${outcome.succeeded.join(", ")}.`]
           : []),
-        ...outcome.failed.map((failure) => `Falha em ${failure.symbol} (${failure.errorCode}): ${failure.errorMessage}`),
+        ...outcome.failed.map((failure) => `Failed for ${failure.symbol} (${failure.errorCode}): ${failure.errorMessage}`),
         ...outcome.histories.map((report) =>
           report.status === "FAILED"
-            ? `Histórico de ${report.symbol}: falhou: ${report.message}`
+            ? `History for ${report.symbol}: falhou: ${report.message}`
             : report.status === "UP_TO_DATE"
-              ? `Histórico de ${report.symbol}: já completo.`
-              : `Histórico de ${report.symbol} (${report.provider}): ${report.months} meses guardados.`,
+              ? `History for ${report.symbol}: already complete.`
+              : `History for ${report.symbol} (${report.provider}): ${report.months} months saved.`,
         ),
         ...describeSelic(outcome.selic),
         ...describeCdi(outcome.cdi),
@@ -33,7 +32,7 @@ export function describeQuoteSync(outcome: QuoteSyncOutcome): string[] {
   }
 }
 
-/** Execução que deve aparecer como falha para quem agendou (código de saída 1). */
+
 export function isQuoteSyncFailure(outcome: QuoteSyncOutcome) {
   return outcome.state === "unavailable" ||
     (outcome.state === "done" && outcome.status === "FAILED") ||
@@ -46,10 +45,10 @@ function describeSelic(report: SelicSyncReport | undefined): string[] {
   }
 
   return [report.state === "failed"
-    ? `Selic: falha ao buscar a meta no Banco Central: ${report.message}`
+    ? `Selic: failed to fetch the target from Banco Central: ${report.message}`
     : report.state === "fetched"
-      ? `Selic: meta atualizada, referência ${report.observedOn ?? "—"}.`
-      : `Selic: conferência diária em dia, referência ${report.observedOn ?? "—"}.`];
+      ? `Selic: target updated, reference date ${report.observedOn ?? "—"}.`
+      : `Selic: daily check is up to date, reference date ${report.observedOn ?? "—"}.`];
 }
 
 function describeCdi(report: CdiReport | undefined): string[] {
@@ -59,16 +58,16 @@ function describeCdi(report: CdiReport | undefined): string[] {
 
   const rates =
     report.rates.state === "failed"
-      ? `CDI: falha ao buscar no Banco Central: ${report.rates.message}`
+      ? `CDI: failed to fetch data from Banco Central: ${report.rates.message}`
       : report.rates.state === "fetched"
-        ? `CDI: ${report.rates.inserted} taxas novas, conferido até ${report.rates.through ?? "—"}.`
+        ? `CDI: ${report.rates.inserted} new rates, checked through ${report.rates.through ?? "—"}.`
         : report.rates.state === "fresh"
-          ? `CDI: taxas em dia, conferido até ${report.rates.through ?? "—"}.`
+          ? `CDI: rates are up to date, checked through ${report.rates.through ?? "—"}.`
           : null;
 
   return [
     ...(rates ? [rates] : []),
-    `Rendimento automático: ${report.valued} posições recalculadas.`,
-    ...report.failed.map((failure) => `Rendimento automático: posição ${failure.positionId} sem cálculo: ${failure.message}`),
+    `Automatic accrual: ${report.valued} positions recalculated.`,
+    ...report.failed.map((failure) => `Automatic accrual: position ${failure.positionId} not calculated: ${failure.message}`),
   ];
 }

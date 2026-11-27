@@ -9,27 +9,19 @@ import { fetchPtaxUsdPeriod } from "@/modules/quotes/infrastructure/bcb";
 import { fetchBinanceMonthlyCloses } from "@/modules/quotes/infrastructure/binance";
 import { fetchCoinGeckoDailyHistory, resolveCoinGeckoCoin } from "@/modules/quotes/infrastructure/coingecko";
 import { fetchYahooDailyHistory } from "@/modules/quotes/infrastructure/yahoo";
-import { treasuryMonthEndPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/modules/quotes/domain/treasury";
+import { treasuryDailyHistoryPoints, treasurySeriesOf, TREASURY_PROVIDER } from "@/modules/quotes/domain/treasury";
 import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
 import { ProviderRefusalError } from "@/modules/quotes/infrastructure/http";
+import { loadReportingFxHistory } from "@/modules/quotes/application/reporting-fx-history";
+import { fetchReferenceFxHistory } from "@/modules/quotes/infrastructure/frankfurter";
 
-// Histórico de fechamento mensal de um símbolo (spec 029), carregado pelo job
-// agendado (spec 053) só nos meses que faltam: os 36 meses de um ticker novo ou
-// o intervalo de um símbolo que ficou sem uso. Cada mês recebe o fechamento (o
-// último pregão), guardado no histórico diário. Uma consulta por símbolo, com
-// reserva (spec 037):
+
+// Historical fallback providers (spec 037):
 //
-// - ações e ETFs, dos EUA ou da B3: Yahoo Finance, fechamento diário de até três
-//   anos numa consulta, sem chave; reserva no TIME_SERIES_MONTHLY do Alpha
-//   Vantage. O Finnhub gratuito não tem histórico (HTTP 403);
-// - cripto: velas mensais da Binance; reserva na CoinGecko, limitada a 365 dias
-//   no plano gratuito;
-// - os preços em dólar viram reais pelo fechamento do dólar no mesmo mês: o da
-//   competência ou do histórico diário e, nos meses sem nenhum, a PTAX do Banco
-//   Central, com a AwesomeAPI de reserva. O dólar buscado fica guardado e serve
-//   aos próximos símbolos.
+
+
 //
-// Nada é apagado nem sobrescrito: só entram os dias que faltam.
+
 
 export type HistorySymbol = {
   symbol: string;
@@ -40,7 +32,7 @@ export type HistorySymbol = {
 
 export type HistoryResult = { provider: string; inserted: number };
 
-/** Dólar de fechamento por mês, buscado uma vez por execução do job. */
+
 export type UsdRatesCache = { rates: Map<string, number> | null };
 
 export async function loadSymbolHistory(
@@ -53,7 +45,7 @@ export async function loadSymbolHistory(
     configuration,
     usdCache,
   }: {
-    /** Meses (AAAA-MM) sem fechamento, em ordem. */
+
     months: string[];
     currentMonth: Date;
     now: Date;
@@ -61,16 +53,17 @@ export async function loadSymbolHistory(
     usdCache: UsdRatesCache;
   },
 ): Promise<HistoryResult> {
-  // O Tesouro tem fonte própria oficial e nunca passa por ticker de bolsa.
-  // A série inclui preços de títulos fora da oferta; cobertura é a observada
-  // no arquivo, sem inventar preços antes do primeiro PU ou após o vencimento.
+  if (target.instrumentType === "FIAT" && (target.symbol === "USD" || target.symbol === "EUR")) {
+    return loadReportingFxHistory(prisma, target.symbol, months, now);
+  }
+
   if (target.instrumentType === "TESOURO") {
     if (months.length === 0) return { provider: TREASURY_PROVIDER, inserted: 0 };
     const series = treasurySeriesOf(await readTreasuryBook(), target);
-    if (!series) throw new ProviderRefusalError("NOT_FOUND", "O Tesouro não publicou histórico deste título e vencimento.");
-    const points = treasuryMonthEndPoints(series, months, toDateKey(currentMonth).slice(0, 7));
+    if (!series) throw new ProviderRefusalError("NOT_FOUND", "Tesouro Direto has not published history for this security and maturity.");
+    const points = treasuryDailyHistoryPoints(series, months, toDateKey(now));
     const created = await prisma.dailyQuote.createMany({
-      data: [...points].map(([, point]) => ({
+      data: points.map((point) => ({
         symbol: target.symbol,
         quoteDate: new Date(`${point.day}T00:00:00.000Z`),
         instrumentType: target.instrumentType,
@@ -95,9 +88,21 @@ export async function loadSymbolHistory(
   const toMonth = toDateKey(currentMonth).slice(0, 7);
   const span = monthsBetween(fromMonth, toMonth).length;
   const inBrl = async (closes: Map<string, DayValue>, currency: string | null) => {
-    if (currency !== "USD") {
+    if (currency === "BRL") {
       return closes;
     }
+    if (currency === "EUR") {
+      const sorted = [...closes.values()].sort((a, b) => a.day.localeCompare(b.day));
+      if (!sorted.length) return new Map<string, DayValue>();
+      const start = new Date(`${sorted[0].day}T00:00:00Z`); start.setUTCDate(start.getUTCDate() - 7);
+      const rates = await fetchReferenceFxHistory("EUR", toDateKey(start), sorted.at(-1)!.day);
+      return new Map([...closes].map(([key, close]) => {
+        const rate = rates.findLast((point) => point.day <= close.day);
+        if (!rate || Date.parse(close.day) - Date.parse(rate.day) > 7 * 86400000) throw new Error(`Missing historical EUR/BRL rate for ${close.day}.`);
+        return [key, { day: close.day, value: close.value * rate.value }];
+      }));
+    }
+    if (currency !== "USD") throw new Error(`Unsupported historical quote currency: ${currency ?? "unknown"}.`);
 
     usdCache.rates ??= await usdMonthEndRates(prisma, currentMonth, configuration.awesomeApiKey, now);
     const converted = new Map<string, DayValue>();
@@ -125,7 +130,7 @@ export async function loadSymbolHistory(
       const coinId = target.providerId ?? (await resolveCoinGeckoCoin(target.symbol, configuration.coinGeckoApiKey))?.id;
 
       if (!coinId) {
-        throw new Error(`Nem a Binance nem a CoinGecko encontraram ${target.symbol}.`);
+        throw new Error(`Neither Binance nor CoinGecko found ${target.symbol}.`);
       }
 
       points = monthEndPoints(await fetchCoinGeckoDailyHistory(coinId, configuration.coinGeckoApiKey), fromMonth, toMonth);
@@ -137,7 +142,7 @@ export async function loadSymbolHistory(
       points = await inBrl(monthEndPoints(yahoo.points, fromMonth, toMonth), yahoo.currency);
       source = "yahoo";
     } catch (yahooError) {
-      if (!configuration.alphaVantageApiKey) {
+      if (!configuration.alphaVantageApiKey || target.instrumentType.startsWith("EU_")) {
         throw yahooError;
       }
 
@@ -169,11 +174,7 @@ export async function loadSymbolHistory(
   return { provider: source, inserted: created.count };
 }
 
-/**
- * Fechamento do dólar em cada mês da janela de 36 meses: o da competência,
- * senão o mais recente do histórico diário e, nos meses sem nenhum, a PTAX ou a
- * AwesomeAPI, guardado no histórico diário para os próximos símbolos.
- */
+
 async function usdMonthEndRates(prisma: PrismaClient, currentMonth: Date, apiKey: string | undefined, now: Date) {
   const from = addMonths(currentMonth, -HISTORY_BACKFILL_MONTHS);
   const fromMonth = toDateKey(from).slice(0, 7);
@@ -209,9 +210,7 @@ async function usdMonthEndRates(prisma: PrismaClient, currentMonth: Date, apiKey
     return rates;
   }
 
-  // PTAX do Banco Central: o período inteiro numa consulta. Na falta dela, a
-  // AwesomeAPI, do mês faltante mais recente para o mais antigo, em janelas de
-  // até 360 dias, enquanto devolver dias novos.
+
   const start = `${missing[0]}-01`;
   const lastMissingDay = toDateKey(lastDayOf(new Date(`${missing.at(-1)}-01T00:00:00.000Z`)));
   let fetched: DayValue[] = [];

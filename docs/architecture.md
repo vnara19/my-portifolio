@@ -1,247 +1,856 @@
-# Decisões de arquitetura e funcionamento
+# Architecture and behavior
 
-Estado: base aprovada; implementação incremental autorizada.
-Origem: decisões explícitas do usuário na conversa de descoberta.
-Registrado em: 2026-09-21.
-Última atualização: 2026-10-07 (áreas, concessões e menu lateral).
+## Runtime
 
-Este documento é a fonte principal das decisões consolidadas abaixo.
-O diagnóstico do sistema existente permanece em
-[Análise do Excel](../.ai/context/excel-analysis.md).
+Next.js App Router, React and TypeScript provide the application. Prisma with the
+PostgreSQL driver adapter connects to Neon. Better Auth stores users, credentials,
+sessions and rate limits in PostgreSQL. Public email/password registration is available from the sign-in form and requires
+a separate sign-in after account creation. New users receive an empty, user-scoped
+portfolio. Quote synchronization covers the latest month of every user and deduplicates
+shared symbols. Registration rejects duplicate emails after trimming whitespace and ignoring letter case,
+validates email syntax and password strength on the server, and limits signup attempts.
+Email ownership is unverified, as the product intentionally has no email-delivery flow.
+The interface is English and dark-only.
 
-## Decisões confirmadas
+Vercel hosts the application. GitHub stores source and triggers deployments:
+`dev` → Preview → Neon `development`; `main` → Production → Neon `production`.
+Production releases require user approval. Provider jobs have manual GitHub Actions
+and an optional Neon entry point; an active unattended schedule must be verified separately.
+No credential or service owned by the original collaborator is required.
 
-### Interface e backend no mesmo projeto Next.js
+Functions deploy to `gru1` (São Paulo), alongside the current Neon database in
+AWS `sa-east-1`. Keep compute near the database to avoid an intercontinental
+round trip for every query. Moving the database to Europe is a separate migration,
+not necessary to improve navigation against the existing database.
 
-Manter a interface e as funções de servidor no mesmo projeto Next.js,
-com cálculos e integrações separados das telas. A organização interna
-e as bibliotecas específicas ainda serão definidas.
+Dynamic routes have lightweight, prefetchable loading shells. Quote-refresh
+status streams independently so its audit queries cannot block the page content.
+Independent overview reads run concurrently, and the Positions editing catalog
+starts alongside month selection. No cross-request cache of private portfolio
+data is introduced; session verification and user scoping remain unchanged.
 
-### Ambiente de desenvolvimento
+## Product boundaries
 
-Executar Next.js diretamente no computador e PostgreSQL em Docker
-durante o desenvolvimento. Esta decisão não define o empacotamento
-nem a hospedagem de produção.
+The product is investment-only: Overview, Positions, Quotes and Settings. Removed
+family, payroll and standalone pension screens/routes are not exposed. Their
+historical database tables and data remain untouched. A pension asset may remain
+part of the investment portfolio. Salary tracking and a TradingView-inspired
+redesign require separate specifications.
 
-Atualizado em 2026-10-03: testes que gravam usam um schema próprio no mesmo
-Postgres, indicado em `?schema=` na `DATABASE_URL`
-([spec 042](../.ai/specs/042-data-backup.md)).
+## Portfolio presentation
 
-### Evolução do histórico
+Settings exposes the tolerance band, imported backup versions, backup tools and account controls. Saving it updates only the active plan's
+tolerance, without validating or modifying hidden allocation weights. Existing
+classification, strategy and target data remain compatible with stored backups.
+Overview allocation always uses the overall portfolio and offers only Class and Currency views; it shows current holdings only.
+Target charts and buy/sell recommendations are not displayed. No target plans are
+created just by visiting Settings.
 
-Guardar preços diários e posições mensais revisadas, evoluindo o
-modelo da planilha. Uma atualização de preço não representa uma
-mudança de quantidade.
+## User data
 
-Atualizado em 2026-10-02: a atualização de cotações e a criação do mês
-são processos distintos. As cotações ficam em histórico diário por
-símbolo e são atualizadas ao abrir o aplicativo, quando a última tentativa
-tem mais de uma hora, ou pela seta do topo; a competência do mês corrente
-é reprecificada a cada atualização
-([spec 020](../.ai/specs/020-daily-quotes.md)). Também ao abrir, antes
-das cotações, o aplicativo cria a competência do mês corrente e todas as
-que faltarem, copiando a anterior, com a cotação do último dia de cada mês
-disponível no histórico
-([spec 021](../.ai/specs/021-automatic-month-rollover.md)). Desde
-2026-10-06, ele pergunta antes de criar
-([spec 078](../.ai/specs/078-overview-allocation-tabs-and-touch-charts.md)). Não haverá
-agendamento nem tentativa de atualizar com o aplicativo desligado.
+All portfolio reads and writes pass through user-scoped database access. Public
+provider quotes are shared by symbol; a manual quote is user-specific. Editing uses dated reporting months without manual month locks. Liquidating a position records a full withdrawal
+and preserves history; deleting a record has a different meaning.
 
-Atualizado em 2026-10-04: a atualização das cotações saiu da abertura do
-aplicativo e passou a um job agendado, que roda sem o aplicativo aberto e
-busca só os símbolos devidos ([spec 053](../.ai/specs/053-scheduled-quote-sync.md)).
-As posições ganharam movimentações (aporte, retirada, rendimento e saldo
-inicial) sobre a base de cada mês, sem correção em cascata entre competências
-([specs 056 a 059](../.ai/specs/056-position-transactions.md)), e a renda fixa
-a percentual do CDI é calculada pelo job a partir do CDI diário
-([spec 060](../.ai/specs/060-cdi-fixed-income.md)).
+Keep legacy classification keys and backup IDs stable. `englishLabel` translates
+built-in display labels without changing stored categories. API field names,
+route/query keys and official CSV headers are contracts, not interface copy.
 
-Atualizado em 2026-10-03: só há atualização automática; a seta do topo e o
-botão da página de cotações saíram, a pedido do usuário. As cotações
-automáticas, o histórico diário e as execuções são compartilhados entre os
-usuários, e a cotação digitada à mão, quando a busca falha, fica com quem a
-digitou ([spec 051](../.ai/specs/051-shared-automatic-quotes.md)).
+## Precision and calculations
 
-Atualizado em 2026-10-02: cada mês guarda, para cada ativo, a cotação de
-fechamento, a mais recente do mês; gráficos e valorização usam essa cotação,
-e as anteriores não são apagadas. Ao incluir um ativo novo, o fechamento
-mensal dos últimos três anos é buscado uma vez, conforme os limites de cada
-provedor ([spec 028](../.ai/specs/028-quote-rules.md) e
-[spec 029](../.ai/specs/029-asset-price-history.md)). O mês corrente pode
-ser finalizado, e editá-lo passa a pedir a confirmação dos meses passados
-([spec 032](../.ai/specs/032-finalize-current-month.md)). Preencher meses
-passados que faltam não é funcionalidade do aplicativo: é o
-[passo pré-produção](../.ai/context/pre-deploy.md).
+Use decimal arithmetic for investment valuation and integer cents where required.
+Use an average-cost basis for withdrawals and realized returns. Internal transfers
+do not count as fresh capital. Automatic accrual uses CDI or annual fixed rates,
+252 business days and the Brazilian holiday calendar. Preserve known balances when
+rates are incomplete. English formatting does not change currency or market rules.
 
-### Importação do Excel
+## Updates
 
-Usar o próprio Excel como fonte da carga inicial. Preservar os dados de
-origem e apresentar inconsistências encontradas para revisão, sem aplicar
-correções silenciosas.
+Navigation reads database prices; the authenticated opening check refreshes due
+public quotes used by the user's current holdings and the reporting FX rates. It
+skips historical backfills and global rate maintenance and signals the client to
+refresh only when quotes changed. The job uses a
+PostgreSQL execution lock, fetches due symbols and retries failures with backoff.
+Market quotes become due after five minutes; daily reference FX is checked every
+50 minutes. The authenticated visible-page check runs every five minutes and on
+return to the tab, with the shared database lock preventing duplicate provider
+requests across users/tabs. A five-minute batched crypto price request is about
+8,928 calls in a 31-day month before retries and separate search/history requests,
+within the cited CoinGecko Demo 10,000-call allowance for the price request alone.
+This is a sustainable polling target, not a guaranteed maximum or real-time feed.
+No active unattended Preview scheduler is configured: Vercel configuration has no
+cron, and the repository workflow is manual-only. Historical failures retry after one day.
+Selic is informational and does not directly reprice positions. CDI data feeds
+eligible automatic-accrual positions. UI update age refers to a successful quote
+write relevant to that user's symbols.
 
-A identidade do ativo é independente da custódia. Bitcoin, USDC e qualquer
-outro ativo mantido em instituições ou contas diferentes gera posições
-separadas. Relatórios podem consolidar essas posições pelo ativo, sem apagar a
-origem de cada saldo.
+## Backups
 
-A linha inconsistente de Bitcoin de junho de 2023 permanece pendente. A carga
-inicial deve preservá-la como evidência, mas não deve criar uma posição
-financeira corrigida por suposição.
+Restore validates input, summarizes it, then applies a user-scoped transactional
+replacement. Existing version-5 exports remain compatible. Financial backups are
+local/private data and never source-controlled. Export a new backup before risky
+production data changes.
 
-Atualizado em 2026-10-02: a tela de revisão dos achados foi removida a
-pedido do usuário ([spec 022](../.ai/specs/022-quotes-page.md)). Os dados de
-origem e os achados continuam preservados nas tabelas da importação.
+## Reporting currencies
 
-Atualizado em 2026-10-03: o histórico das posições passa a vir da preparação
-única do [passo pré-produção](../.ai/specs/041-history-preparation.md), feita
-com o usuário a partir das tabelas exportadas da planilha: meses sem lacunas,
-cotação de fechamento de cada mês buscada nos provedores e cada unificação de
-ativo confirmada por ele. O Bitcoin de junho de 2023 recebeu, por resposta
-dele, a quantidade de julho.
+Overview reports USD as the primary currency, with EUR/BRL equivalents for total
+value. Gain cards use one EUR accounting reference, display its current USD
+equivalent first and its EUR amount second, and share a return percentage. This
+is the explicitly selected reporting convention, not an independent USD inception
+return. Acquisition cost uses each transaction's historical reference-currency
+rate. Contributions increase cost rather than profit; partial sales remove
+proportional average cost. Purchase commissions are realized expenses, removed
+from open principal once; sale proceeds already include their fees. Paid generic
+income is realized; capitalized income remains in holding value.
 
-Atualizado em 2026-10-03: a importação do Excel saiu do aplicativo, com os
-roteiros, as tabelas `import_batches`, `import_source_rows` e `import_issues`
-e os campos de origem das linhas ([spec 047](../.ai/specs/047-json-only-data.md)).
-A planilha continua preservada como referência; os dados entram e saem só
-pelo backup em JSON.
+Incomplete transaction quantities, missing historical FX and transfers without
+carried acquisition cost make gain metrics unavailable rather than estimated.
+Daily gain uses current open quantities and prior prices, separating new purchase
+principal from fees. Recent completed closing sessions replace stale intraday
+observations. Portfolio TWR links daily returns with gross inflows at day start
+and gross outflows at day end, including the first funded day. Annualized return
+is calendar-day XIRR on dated funding and ending value. See
+[performance methodology](performance-methodology.md) for boundaries, validation
+and the independent CSV replay. The S&P 500 total-return comparison uses the same
+EUR reference and start boundary. Storage remains BRL. Native asset returns and
+USD monthly balance changes retain their own reporting-currency meaning; they
+must not be confused with the Overview's common EUR-reference TWR.
 
-### Backup dos dados
+The quote job always includes USD/EUR when a reporting month exists. EUR uses daily
+ECB reference data via Frankfurter (no API key), with Yahoo fallback. Missing
+month-end FX is backfilled; current rates must never stand in for historical rates.
+Existing non-carried and manual monthly observations take precedence.
 
-Decidido em 2026-10-03: o aplicativo exporta todos os dados num arquivo JSON
-versionado e restaura um arquivo desses substituindo tudo, numa transação, só
-depois de mostrar o resumo e pedir confirmação
-([spec 042](../.ai/specs/042-data-backup.md)).
+The overview information strip displays USD/BRL, EUR exchange rates, Bitcoin in USD, Selic and the position count.
 
-Atualizado em 2026-10-03: o backup é a forma oficial de carregar e levar os
-dados, inclusive para o banco de produção. Cada restauração fica registrada em
-`data_imports` e aparece nas versões da configuração. O formato e o roteiro
-para mudá-lo junto com o modelo estão em [Formato do backup](backup-format.md)
-([spec 047](../.ai/specs/047-json-only-data.md)).
+## Position creation
 
-### Acesso e usuários
+Add position uses one scrollable investment-only form and direct saving. Cash-only registration is retired; existing cash records remain compatible.
+Relevant ticker, name, quantity/balance, currency, maturity and allocation
+fields retain their validation and quote verification. There is no separate review
+step. New positions do not ask for institution or strategy: they use a user-scoped
+Portfolio/Main storage account and no strategy. Existing accounts and historical
+positions are unchanged. Cash here records a holding balance; external cash flows,
+salary tracking, fees and a new trade ledger are not introduced by this UI change.
+The overview information strip no longer displays an institution count.
 
-Decisão inicial, de 2026-09-21: a primeira versão funcionava somente no
-computador local e não possuía autenticação.
+New-position creation no longer exposes manual allocation controls. Existing
+catalog classifications are retained; cryptocurrency, cash and explicitly selected
+stocks receive their known default class. ETF wrappers do not imply equity
+exposure: without verified fund metadata, a new ETF remains unclassified. New
+positions can therefore have no allocation rows, while manual edits retain their
+existing validation. No existing positions are reclassified by this UI change.
+Quoted assets use the existing catalog identity, provider name when available, or
+the verified ticker as a fallback; manual names remain for private balances. Tesouro Direto names come from the
+official security catalog.
 
-Atualizado em 2026-10-03: com o app publicado na Vercel, o usuário pediu login
-no próprio app, e as cotações automáticas passaram a ser compartilhadas entre
-os usuários ([spec 050](../.ai/specs/050-login-and-user-data.md) e
-[spec 051](../.ai/specs/051-shared-automatic-quotes.md)). O login usa e-mail e
-senha com Better Auth e sessões no Postgres; cada usuário tem a própria
-carteira, isolada por `user_id` e por chaves estrangeiras compostas, e o
-código acessa os dados pelo cliente com escopo (`src/lib/user-db.ts`). As
-escolhas feitas pelo agente na ausência do usuário estão na spec 050, a
-confirmar.
+## Market listings and European assets
 
-Atualizado em 2026-10-07: o app passa a ter áreas, agrupadas por assunto
-(Finanças: Investimentos e Gastos familiares). Investimentos é a área-base, de
-todo usuário com login; as áreas pessoais pedem uma concessão ligada ao id do
-usuário (`module_grants`), gravada só pelo servidor (migração ou
-`pnpm auth:access`). Papéis (`role_grants`, hoje `ADMIN`) servem a ações
-administrativas e não dão leitura dos dados de outro usuário. Páginas, rotas,
-ações, consultas, backup e roteiros conferem a concessão no servidor; sem ela,
-a área responde 404 ([spec 081](../.ai/specs/081-module-access-and-area-navigation.md)).
-O plugin Admin do Better Auth não foi adotado.
+New quoted positions select US Market, Brazilian Market or European Market rather
+than choosing stock versus ETF in advance. Legacy kind keys remain valid. Yahoo
+instrument metadata identifies stocks/ETFs, trading currency, name and exchange.
+Issuer-backed public listing references supplement exposure data for supported
+funds; an ETF wrapper alone never implies equity exposure. Brazilian FII legal
+product names can identify real-estate funds; a ticker ending in 11 is insufficient.
+Unknown fund exposure remains Unclassified. Issuer references override erroneous
+wrapper metadata (for example a physical-gold ETC reported as EQUITY).
 
-### Organização do código
+European listings retain exchange-qualified symbols. The picker offers verified
+reference listings, with manual entry for other supported exchanges. It does not
+guess where a broker executed a trade. Trading currency comes from the actual
+listing, independently of the fund's base currency. EUR/USD/BRL observations are
+converted to BRL before valuation; GBP/GBX and unknown currencies are rejected.
+European quote types use an EU_ prefix to keep both EUR and USD European listings
+on their Yahoo route, separate from the US Finnhub and B3 chains. Historical EUR
+quotes use historical FX, never a current rate or an unconverted EUR amount.
 
-Organizar o sistema por módulos funcionais, mantendo rotas e componentes de
-página como pontos de composição. Regras financeiras e casos de uso ficam fora
-da interface e do acesso ao banco; integrações com Prisma e provedores de
-cotação implementam essas fronteiras.
+Identity, currency, wrapper and exposure are included in user/month-bound signed
+ticker proofs. The server uses verified names/types/currencies and reconstructs
+new-position allocations from those claims. A client cannot relabel the metadata.
+Existing monthly/manual quotes remain authoritative for that month's valuation;
+existing portfolio records are not bulk-renamed or reclassified. Public listing
+lookups have a short bounded cache; private portfolio responses are not shared.
+The legacy Reserva taxonomy key is displayed as Commodities without rewriting data.
+No new subscription or broker credentials are needed for this integration. Yahoo
+availability and reference coverage are limited; complete worldwide UCITS metadata
+is not guaranteed.
 
-As primeiras áreas previstas são importação, carteira, cotações, alocação e
-previdência. Desde 2026-10-07, há também `access` (áreas, concessões e papéis)
-e `family-expenses` (Gastos familiares), cada um com domínio, aplicação e
-interface próprios; em seguida, `income` (Recebimentos) e `pension`
-(Previdência, que só lê a carteira e os holerites), specs 088 e 089. Cada fatia deve introduzir apenas as abstrações necessárias ao
-comportamento implementado, com nomes explícitos, funções pequenas e testes
-concentrados nas regras financeiras de maior risco.
+European Market now searches the provider catalog from a single ticker field.
+Search candidates are not trusted quote identities: selecting an exchange-qualified
+symbol invokes the existing quote verification and signed save proof. The issuer
+reference catalog supports classification only and does not restrict search results.
 
-Instituição e conta são entidades distintas. Uma instituição pode conter uma
-ou mais contas, e cada posição pertence a uma conta. Essa separação deve
-existir mesmo quando a carga inicial tiver apenas uma conta conhecida na
-instituição.
+European bare-ticker resolution now verifies each candidate's actual trading currency
+and prefers matching EUR products on Xetra, then Paris/Amsterdam/Milan. Ambiguous
+major-venue products remain explicit choices with currency shown; exchange-qualified
+symbols remain an override. See spec 109 for bounded public metadata caching, venue
+preference and reviewed issuer sources. Description-based fund classification augments
+issuer references conservatively. New market positions with unknown exposure are
+rejected before writes; client allocations cannot bypass signed classification.
 
-### Direção visual
+Market purchase entry (spec 110) uses native-currency execution price, fractional
+quantity, commission and acquisition date. The write boundary validates currency,
+obtains dated FX before the transaction and records fee-inclusive acquisition cost
+in existing PositionTransaction.amountBrl, with native breakdown in note. Current
+position value excludes fees. The average-cost gain ledger, Overview allocations,
+undo and backup v5 consume/preserve the existing fields; no migration is required.
 
-A interface usa exclusivamente tema escuro. Sua direção é a de uma fintech
-moderna, premium e confiável: superfícies grafite, contraste alto, cor de
-destaque contida, tipografia precisa, números legíveis e densidade adequada a
-dados financeiros. Profundidade, transições e estados interativos devem ser
-discretos e funcionais.
+Market trade entry (spec 112) adds Buy/Sell to the same single-page form for US,
+Brazilian and European listed assets and cryptocurrency. Additional buys append to
+an existing holding; sales use WITHDRAWAL and net proceeds after commission. The
+USD average-cost ledger releases proportional acquisition basis into realized gain
+and retains remaining basis for unrealized gain. Full sales preserve history.
+Sales cannot precede ownership or exceed units held on their execution date. Month
+edits are serialized per user/month to prevent concurrent overselling. Cash balances
+are not automatically credited by this recording operation. Historical holdings in
+a single non-default account can be resolved unambiguously; multiple-account
+holdings require selecting the corresponding position. Backup v5 remains unchanged.
 
-Não haverá alternância para tema claro. O produto deve evitar aparência de
-landing page, efeitos decorativos excessivos e valores financeiros fictícios.
+Cash creation supports BRL, USD and EUR through a name and native-currency balance.
+Cash has no new maturity, accrual setup, redundant currency field or trade side.
+Foreign cash stores native units with a dated FIAT/BRL quote; missing monthly USD
+or EUR reference rates are fetched before the write transaction. New cash receives
+Cash allocation on the server. The new eur-balance type is additive; existing keys,
+SQL migrations, historical records and backup v5 remain unchanged. Switching entry
+type, market or cash currency clears lower fields and invalidates pending ticker
+verification. Re-selecting the active option preserves entered values.
 
-A interface não deve narrar o andamento da implementação, roadmap técnico ou
-estado das specs. Esses registros pertencem a `.ai/` e à conversa. Cada tela
-do aplicativo deve ajudar o usuário a consultar, revisar ou administrar dados
-financeiros reais.
 
-### Navegação e competência selecionada
+## Tesouro Direto acquisitions
 
-A navegação principal fica no topo, em abas: Visão Geral e Posições, com a
-configuração da carteira em um acesso próprio. A aba de alocação foi
-incorporada à Visão Geral na reestruturação da UX. Até 2026-10-07 não havia barra lateral.
+The authenticated catalog and current quote checks use the compact official
+`/o/c/rentabilidades/` snapshot, with a five-minute cache and concurrent request
+sharing. Historical backfills retain the official Tesouro Transparente CSV.
+The catalog includes outstanding securities outside the current offer, marked
+Existing holdings only. Security IDs still use the exact official type and final
+maturity date; RendA+ target years identify the start of income, not final maturity.
+Current portfolio valuation uses the official gross redemption price.
 
-Atualizado em 2026-10-07, a pedido do usuário: com mais de uma área liberada,
-há barra lateral no computador (recolhível) e menu hambúrguer no celular para
-trocar de área; as abas do topo continuam sendo as páginas de cada área. Quem
-tem só Investimentos segue sem barra lateral
-([spec 081](../.ai/specs/081-module-access-and-area-navigation.md)).
+The purchase form captures original date, units in increments of 0.01, unit
+acquisition price, contracted annual rate and costs paid at acquisition. An optional
+statement principal preserves rounding differences from unit prices shown with two
+decimals; mismatches outside that rounding tolerance fail. BRL and fixed-income
+classification are automatic. Separate historical purchases become dated ledger
+entries, retaining their rate/indexer and native cost breakdown in transaction notes
+through backup, restore and undo. Acquisition costs feed the existing gains model;
+current market prices never replace original purchase cost.
 
-Um seletor global de competência governa todas as telas de Investimentos e
-fica registrado na URL; Gastos familiares tem as próprias competências e
-filtros, que não mexem no mês da carteira
-([spec 082](../.ai/specs/082-family-expenses-ledger.md)). O propósito do produto é percorrer o histórico mês a mês e comparar a
-alocação atual com a meta, obtendo a ação correspondente. Após a carga
-inicial, o aplicativo é a fonte da verdade; não haverá sincronização
-contínua com a planilha.
+The early-redemption table estimates IR/IOF from recorded purchase lots and B3
+custody from marked balances and an estimated next-business-day settlement.
+Standard Prefixado, IPCA+ and IGP-M titles use 0.20% a year. Selic's BRL 10,000
+exemption is allocated proportionally across all Selic holdings recorded for the
+signed-in investor, across accounts and maturities. Renda+ uses 10/20-year bands
+and Educa+ uses 7/14-year bands. Their 60-day lockup and income conversion limits
+remain enforced. Coupon titles reset estimated unpaid custody at scheduled coupon
+payments, advanced to a business day. Zero custody still produces a net value.
+These are estimates using the current marked balance, not a reconstruction of
+private daily custody charges, paid fees or investments held outside this portfolio.
+No projected IPCA/Selic cash-flow or guaranteed future indexed return is inferred.
 
-## Questões ainda em aberto
+When the current listing is unavailable, the dated official CSV also provides
+purchase prices, purchase rates and the indexer. Catalog metadata matches the
+quote date and never uses future rows for a historical query. Form labels identify
+the quoted date rather than implying a historical observation is a live offer.
 
-- Regras finais de correção e auditoria após a importação inicial.
-- Fontes gratuitas de cotações e prioridade entre provedores: definidas em
-  2026-10-02 na [spec 037](../.ai/specs/037-quote-provider-chains.md), com
-  cadeias de reserva por grupo de ativo.
-- Biblioteca dos gráficos, a definir junto da primeira visão analítica.
-- Hospedagem e empacotamento fora do ambiente de desenvolvimento.
 
-## Base técnica aprovada
+Treasury acquisition inputs are manual: purchase date, titles purchased, price per
+title and contracted yield. New form submissions use quantity × unit price,
+zero purchase commission and no principal override. Historical acquisition fees
+and exact-principal adjustments remain supported by the ledger and backups. The form has no public-offer autofill or explanatory paragraphs below inputs.
+Official prices still power portfolio valuation and the security catalog; they never
+replace the personal acquisition data. Yield labels distinguish IPCA/IGP-M and Selic
+spreads from fixed annual yields. Official indexer display labels normalize Prefixado,
+Selic and acronyms without changing provider values or stored security identities.
 
-Esta combinação reduz decisões durante a primeira implementação e mantém
-as regras financeiras independentes da interface:
 
-- TypeScript em todo o projeto;
-- Next.js com App Router;
-- Server Components para leituras e Server Actions para mutações da
-  interface; Route Handlers somente quando houver um consumidor HTTP ou
-  integração externa, ou quando uma operação longa não puder ocupar a fila
-  de Server Actions do cliente, como a atualização de cotações
-  ([spec 020](../.ai/specs/020-daily-quotes.md));
-- PostgreSQL no Docker Compose durante o desenvolvimento;
-- ORM tipado com migrações versionadas, com Prisma como primeira opção;
-- valores financeiros e percentuais em tipos decimais exatos no banco;
-- Tailwind CSS e shadcn/ui para a interface;
-- Zod nas fronteiras de entrada e nos dados recebidos dos provedores;
-- Playwright para os poucos fluxos completos de maior risco financeiro.
+## Brazilian bank deposits
 
-Usar pnpm como gerenciador do projeto. Fixar versões estáveis das
-dependências e manter as migrações do banco no Git. A biblioteca de
-gráficos será escolhida quando a primeira visão for especificada.
+Brazilian Fixed Income covers CDB, LCI and LCA with principal and interest paid at
+maturity, in BRL. Product, issuer, invested principal, purchase/maturity dates,
+rate and redemption are explicit. New contracts use 252 Brazilian business days;
+legacy 365-calendar-day terms remain readable without rewriting saved contracts. It generates a
+lot-specific asset name, automatic fixed-income allocation and dated original cost.
+A nullable fixedIncomeContract JSON column preserves the terms through backups.
+Purchase corrections update the original transaction and contract together. Moving
+the purchase date rebuilds that holding from the earliest affected month and
+retains its transaction identity. Purchases with recorded withdrawals or linked
+transfers require reconciliation before contract terms can be changed. Purchase
+FX uses a stored same-day USD/BRL fixing when available, with a bounded
+historical fallback during provider interruptions.
+No CRI/CRA coupon, amortization, bank-account connection or net-redemption tax
+calculator is implied by this form. US/European direct bonds remain separate work.
 
-A fundação usa Node.js 24.20.0, Next.js 16, PostgreSQL 18 e Prisma 7.10.
-O Prisma 8 disponível durante a criação ainda era uma versão candidata;
-por isso, a versão estável 7 foi escolhida e fixada.
+CDI uses observed BCB SGS 12 daily rates. New fixed and IPCA contracts use 252
+Brazilian business days and stop at maturity. IPCA balances stop all accrual,
+including the real-yield component, after the latest published SGS 433 month.
+Published monthly inflation is allocated across Brazilian business days within
+that month, multiplied by the contracted real-yield factor. Weekends and holidays
+add no factor for business-day contracts. Saved legacy calendar-day contracts keep
+their recorded convention. This is a gross reference calculation, not confirmation
+of an issuer-specific anniversary/lag calculation or a bank redemption quote.
+Gaps inside observed inflation coverage fail without replacing the known balance.
+Contract holdings are recalculated from original dated cash movements across
+reporting months so late inflation releases are not permanently lost at rollover.
+The income panel shows the last accrual date and published inflation reference.
+The automatic quote job refreshes both rate series.
 
-## Sequência inicial
+The asynchronous open check also refreshes the signed-in user's structured bank
+deposits, reusing the three-hour shared rate cache, and refreshes the view only when
+balances/errors change. It does not run a full market quote sync or block page
+navigation. Scheduled rate jobs still perform portfolio-wide refreshes.
 
-1. Fundação técnica e interface-base.
-2. Importação auditável do Excel.
-3. Atualização mensal manual e cotações sob demanda.
-4. Patrimônio, classificações e metas.
-5. Rebalanceamento.
-6. Previdência.
+## International bonds
 
-As specs em `../.ai/specs/` são a fonte do escopo e do estado de cada fatia.
+International Bonds combines direct sovereign, corporate, agency, municipal,
+supranational, negotiable CD, covered and securitized holdings. Issuer country and
+USD/EUR denomination are independent. ETFs remain in their market categories.
+The manual form accepts any checksum-valid ISIN/CUSIP, not just reference examples.
+An authenticated same-origin `/api/bonds/reference` lookup accepts checksum-valid
+ISIN/CUSIP identifiers. OpenFIGI supplies instrument identification (not a presumed
+legal issuer or terms parsed from ticker text); U.S. Treasury Fiscal Data supplies
+confirmed sovereign terms by embedded/entered Treasury CUSIP. Queries run in
+parallel with bounded timeouts and an in-memory TTL cache. Additional live issuer
+adapters read NTMA's current benchmark table, German Finance Agency factsheets
+and the public ESM/EFSF transactions catalog. Every adapter matches the exact ISIN
+inside its source before accepting terms. Country prefixes only select which source
+to query; they never determine issuer country or currency. Shared catalog requests
+are deduplicated and cached for one hour; failed requests are cached for 30 seconds.
+Reads are capped at 2 MB and 6.5 seconds. No login, disclaimer acceptance, blocked
+endpoint bypass or paid subscription is used.
+
+Reviewed issuer/regulator references supplement Brazil 2037, Ireland 2037,
+Citigroup 2028, the French 0% OAT 2032, Italian BTP 2051 and Spanish government
+2028. Their existing source links distinguish these stored references from live
+issuer adapters. Irish and Brazilian coupon schedules now supplement the prior
+partial references. Reference anchors are rolled along the confirmed contractual
+schedule rather than frozen in a past year. The French and Spanish live endpoints
+returned 403/500 during integration; the reviewed records do not pretend those
+services are connected. No universal corporate security-master coverage is claimed.
+
+NTMA parsing excludes amortising/retired/floating tables. German parsing isolates
+contractual table keys from unrelated price-history tables, verifies the government
+issuer/currency and recognizes explicitly stated zero coupons. Neither minimum
+trade size nor denominations dependent on a broker's unit convention are filled.
+ESM/EFSF country and coupon frequency remain manual when absent. Conflicting
+reopening rows are rejected. No personal purchase terms are fetched or inferred. No purchase amounts, dates or receipt interest are sent to providers.
+ESMA queries returned HTTP 502 during verification and are not presented as an
+operational provider. Paid services are not enabled. No universal free security
+master or complete coupon-calendar coverage is claimed.
+
+Only empty, untouched fields are auto-filled; identifier changes abort old lookups
+and reset the prior instrument. Conflicting provider terms are left manual. Each
+lookup reports source links and partial/unavailable results without blocking manual
+entry. Neither ISIN prefixes nor auction prices/minimum bids are used to infer
+issuer country, personal purchase cost or face value per bond.
+
+All position categories show live required/complete field indicators and a compact
+footer with outstanding fields. Add is disabled while validation is incomplete;
+server validation remains authoritative. Bond entry validation shares the contract
+schema, checks monetary relationships and regular coupon schedules, and requires
+the existing regular-coupon fields for Fixed Coupon entries. Other structures keep
+manual receipts. Blank selectors do not imply USD/corporate/fixed terms for an
+unknown identifier. Date controls clear their underlying value on invalid partial
+input, preventing an earlier valid date from silently keeping Add enabled.
+
+Citigroup fixed-coupon terms are verified against
+the SEC note (4.125%, semi-annual, 30/360 US, maturity 2028-07-25).
+It does not claim to verify arbitrary issuer terms or provide an automatic price feed.
+
+Tagged international-bond metadata shares the existing nullable fixedIncomeContract
+JSON column. Brazilian contract readers reject this separate shape. No database
+migration or backup-version change is required. Acquisition lots preserve face
+amount, acquisition date (settlement date for legacy market records) and the total paid in the bond denomination, including
+fees and accrued interest. ECB reference FX converts reporting values; a broker's
+EUR payment conversion is not a change in the bond denomination.
+
+Legacy market-tracked holdings retain their dated observations and receipt workflow.
+New International Bonds entries use `valuationMode: Cost` with an empty quotation
+array. The Current Price section is absent. Purchase Date is the actual acquisition
+date (stored in the legacy `settlementDate` timeline key); no settlement date or
+settlement-based purchase-interest calculation is inferred. Receipt interest is
+entered per bond, except zero-coupon holdings which require no prepaid coupon.
+The remaining form fields and regular coupon terms are unchanged.
+
+For legacy market tracking, stored observations remain full monetary holding values including accrued interest
+and any principal/index factor. Holdings accept fractional quantity and face value per bond. Legacy market-tracked
+holdings accept dated price observations as before. Dirty prices already
+include interest; clean prices add contractual 30/360 US accrual or explicitly
+entered broker accrual. Total paid is the actual debit, including interest and fees.
+New entries require maturity; legacy perpetual records remain readable. The source
+is recorded internally without an IBKR default or a source input. Values are user-scoped;
+no daily market price or yield is invented. The current open month refreshes FX on
+the existing asynchronous open check while retaining the native quote's date.
+A new acquisition is not daily compounded using the Brazilian deposit engine.
+
+The bond panel records actual coupon receipts separately from principal repayments,
+atomically with the post-payment full holding valuation. Coupons have zero quantity
+and count as realized income after recovering any interest paid at acquisition.
+The form records that prepaid interest separately within the total paid. The former
+Interest Basis selector is replaced by purchase accrued interest per bond, in the
+regular coupon section (or the purchase section for other structures). A value
+entered from the purchase receipt is multiplied by fractional quantity before
+storing total prepaid interest; it is not added again to the total paid. The same
+field is not duplicated. New cost-tracked purchases use the actual receipt interest
+rather than assuming Purchase Date is a settlement date. The
+gains engine removes the recovered portion from acquisition cost exactly once.
+Principal repayments remove face quantity and average
+acquisition cost; a full redemption requires zero remaining valuation. Repeated
+cash receipts on the same holding/date are rejected. Cash receipts do not fabricate
+a matching cash-account deposit or automatic reinvestment. Generic balance edits,
+transactions and liquidation are blocked for bonds to preserve native face semantics.
+
+Current totals and overview fixed-income allocation use the latest saved full
+valuation for legacy market holdings, or remaining acquisition cost for cost
+holdings, converted with reporting FX. Gains use the original acquisition FX and
+recorded actual receipts. Cost detail return includes actual coupon and principal
+receipts; forecast coupons never enter recorded performance.
+Optional regular fixed-coupon terms preserve annual rate, frequency, an anchor
+coupon date and interest basis in the existing JSON contract. Contractual coupon
+schedules, remaining principal and original gross gain to maturity are calculated
+without reinvestment or taxes and assume full contractual payment. Scheduled dates
+are not broker credit dates and do not insert cash receipts. 30/360 US accrual is
+available only from verified reference terms in new entries; other bases require
+broker accrued interest. Existing stored contracts retain their original basis.
+Irregular schedules and non-fixed structures do not use this calculator. Price
+observations are never rolled forward with accrued interest to invent a current
+market price. Legacy backups without the optional terms still restore.
+Yield to maturity, projected floating/indexed cash flows, automatic broker access
+and early-sale proceeds are not implemented. A new live price feed requires verified
+ISIN coverage and access; no subscription or broker connection has been created.
+
+Cost tracking carries the actual native acquisition cost, with daily reporting FX,
+and is labeled At Cost in Positions and Carrying Value at Cost in details. It never
+inserts a market quote, forecasts a market price or books scheduled coupons. Actual
+receipts need only a date and the coupon/principal amounts, without a valuation.
+Dated cost events reduce prepaid interest upon coupon reimbursement and reduce cost
+and remaining prepaid interest proportionally upon principal repayment. This keeps
+realized coupon profit separate from recovery of paid interest and avoids a false
+unrealized gain. Historical as-of costs, subsequent months, Undo and JSON backups
+retain these events. The cost-only mode is optional in the contract so prior market
+records continue to parse and keep their original financial semantics.
+
+Nominal-value enrichment also queries AFT (French nominal fixed-rate debt) and
+CNMV (exact-ISIN conventional fixed bond rows with CFI DBFTFB). Values are accepted
+only from explicit nominal fields; minimum subscriptions, principal increments,
+issue balances and inflation-adjusted principal are not inferred as per-bond units.
+These public sites can reject server requests (AFT 403, CNMV 500 during the audit);
+reviewed exact-instrument references remain available independently. Brazil's 2037
+reference uses the 2007 reopening prospectus with USD 1,000 denominations, rather
+than the original 2006 USD 100,000 minimum. France FR0014007L00 uses EUR 1, and
+Spain ES0000012B88 EUR 1,000. Other unknown units remain manual.
+
+The bond identification line displays the confirmed issuer (otherwise a formatted
+identification name) and one issuer reference link. OpenFIGI attribution remains in
+the API result, without a generic homepage link in the form. New-position progress
+shows only the remaining required-field count for every asset category.
+
+Positions now uses the title Portfolio, a flat table and two-way header sorting
+(no grouping mode). The active facets are Class, Subclass, Type, Currency, Maturity; quick class chips read the same saved allocations generated by Add
+position (including crypto). Institution and Strategy facets, columns, search terms
+and grouping logic are removed. Old institution/strategy/group query parameters
+are ignored, and obsolete sort IDs fall back to Total BRL descending.
+
+New entries need no institution/account selection or institutional catalog payload.
+The backend resolves an internal Portfolio/Main container when neither accountId
+nor newAccount is supplied. Repeated entries reuse it; Undo tracks newly created
+container records. Existing account IDs and legacy payloads remain supported for
+historical transactions and backup compatibility; no historical account, balance
+or identifier is migrated or erased. The positions read model no longer queries
+or emits institution/account names. Editing retains stored strategy values without
+exposing a strategy control. Institution names are removed from position detail
+and edit surfaces as well.
+
+Manual integration verification: scripts/test-portfolio-container.ts requires a
+disposable english099_<hex> schema and a fictitious account. It checks default
+container creation/reuse, legacy record preservation, read models and Undo.
+
+The positions table displays Asset, Quantity, Value, Portfolio % (and Maturity on
+wide screens), without calculated-field glyphs or separate taxonomy/USD columns.
+Value is the full holding in the contract/listing currency. Crypto is valued in
+USD while Quantity uses coin units; USD/EUR cash shows its recorded native balance
+without repeating money in Quantity. Other native values use that same reporting
+month's USD/BRL or EUR/BRL observation; missing FX leaves Value blank, never guesses
+a rate. Cost-mode bonds use dated native acquisition cost directly. Totals, shares
+and cross-currency Value sorting retain their common BRL basis. No quote or carrying
+value is changed by this presentation.
+
+Quantity shows security/coin units only. International-bond nominal balances are
+divided by confirmed faceValuePerBond; without that term the count is unknown.
+Legacy balance-only Tesouro, fixed-income and pension positions keep no invented
+unit count. Classification details remain available under the row's disclosure:
+Class and Subclass show saved allocations, Asset Type maps legacy ETF/stock types
+to the same market categories used in Add position. Stored taxonomy/backup keys
+are unchanged. Cryptocurrency is the English display label for Cripto and crypto.
+Currency facets now use the monetary Value currency, rather than BTC/Altcoins units.
+
+Reporting months are now automatic calendar snapshots. Navigating the workspace
+ensures the current month exists; the first visit after a month boundary carries
+holdings forward without a confirmation dialog or close/open buttons. Legacy
+DRAFT/REVIEWED statuses stay in backups and are managed automatically (current
+month DRAFT, previous months REVIEWED), but no longer block dated edits.
+
+Add position routes market trades by occurredOn, Brazilian fixed income by appliedOn
+and international bonds by settlementDate, irrespective of the selected reporting
+month. Entries without a purchase date use today. Missing intervening months are
+created; earlier snapshots are not overwritten. Verification tokens remain scoped
+to the page where they were issued, independently of the purchase destination.
+When historical market observations are absent, the actual execution price is the
+known carried observation; a present-day quote is never used as a historical price.
+Existing later prices and transactions are preserved while quantity changes carry
+forward. Fixed-income contracts recalculate using their dated principal ledger;
+bonds retain native cost/valuation semantics and their own currency FX.
+
+Dated adds and background income/bond updates share a per-user portfolio edit lock.
+Undo includes the affected later snapshots and refuses to overwrite intervening
+changes. Automatically created calendar frames remain, while the financial changes
+and unused new entities are restored. The isolated integration script
+scripts/test-dated-months.ts verifies routing, missing months, later ledgers/prices,
+verification scopes, multi-month Undo and first-day rollover. Additional isolated
+checks cover backdated fixed-rate accrual, EUR bond propagation, negative-balance
+rollback and backup export/restore.
+
+### Position classification filters
+
+Positions separate Asset Class (saved exposure allocations), Asset Type (product),
+Market (listing region), and Currency. Subclass remains in historical allocations
+and backups but is no longer a top-level position filter. Product types use stored
+contract terms or verified listing metadata; missing product metadata prompts Review Product Type on the holding rather than inventing a product. Cash Account is one product, independent of BRL/USD/EUR. Listing regions do not describe an ETF's underlying exposure, and the user-selected reporting convention assigns accounts to their currency region,
+bonds to their issuer country, and cryptocurrencies to Global. Market therefore
+represents reporting geography for these holdings, not their trading venue.
+Market and Currency always include the supported regions and BRL/USD/EUR, even
+when the selected portfolio has no matching holding. The Asset Type filter is deliberately limited to the agreed registration categories:
+Stock, REIT/FII, ETF, CDB, LCI, LCA, Bonds, Tesouro Direto, Cash Account,
+Pension Plan, Bitcoin, Altcoin, and Stablecoin. All bond families remain stored in
+the bond contract but share the Bonds filter. REIT/FII is one filter category;
+underlying instrument metadata remains unchanged. Unsupported products do not
+appear as options, including through stale URLs or legacy metadata. Brazilian
+private-debt registration and its filter share BRAZILIAN_DEBT_PRODUCTS (CDB/LCI/LCA).
+Crypto categories follow the saved registration allocation, including Stablecoin
+for USDC/USDT; legacy balance holdings explicitly allocated as Stablecoin retain
+that product label without rewriting historical quantities or allocations.
+Legacy CDB/LCI/LCA identity can be confirmed in Edit position. displayProduct is
+retained alongside existing JSON contract fields and included in backups and
+Undo; it does not create or alter contractual rates or valuation formulas. A
+contracted product cannot be relabeled as a different product.
+The Add position form shows the same derived product and listing market alongside
+its exposure class. Existing stored taxonomy keys remain unchanged.
+
+Legacy liquidity values are retained for backup compatibility. Maturity facets remain dynamically derived from the held
+securities' maturity dates in the selected reporting month; there is no year catalog.
+
+Expanded position rows use the same nativeValue/valueCurrency as the main row,
+including weighted allocation amounts. Unit Price is the position's stored monthly
+valuation price converted with the reporting month's own FX, not a purchase price
+or a live quote. Missing FX never falls back to another currency. Balance-only
+holdings show Valuation: Balance; at-cost bonds show Purchase Cost rather than
+suggesting a market quote. Detail fields wrap within a full-width grid. Maturity
+uses No Maturity Date when absent, and compact English badges when present.
+Historical pension positions and saved allocation weights remain unchanged; the
+expanded row is a summary, not the complete purchase or contract editor.
+
+Manual allocation splitting is retired from the position editor. Expanded table
+rows and the asset page no longer display allocation percentages or composition
+panels. Existing allocation rows remain stored for historical totals, income
+calculations and backup compatibility. Metadata edits compare the submitted
+classification with the saved rows and reject manual changes to classes, weights
+or rates; unchanged classifications are never deleted/reinserted. New positions
+still receive verified automatic classification. Legacy classification weights
+are serialized without the former four-decimal display rounding.
+Expanded rows show Unit Price only when a native unit price exists and Quantity
+only when a security quantity exists. They have no Valuation placeholder. Maturity
+is the date alone, without repeating a relative-date badge, in both table and
+asset-page summaries. Portfolio percentage columns and actual return rates remain.
+
+Asset Class is selected only through the colored quick-filter buttons; the duplicate
+selector is absent from desktop filters and the mobile sheet. Class-filter state
+remains in the URL and participates in clearing/active-count behavior. Each asset
+name and its expanded Asset Class field have the same category dot. Legacy mixed
+holdings use the largest saved allocation as their visual class, with a stable
+alphabetical tie-break; saved allocations and class-filter matching are unchanged.
+The Positions header shows the full portfolio total only in USD. The footer shows
+visible-position totals in BRL/USD/EUR plus portfolio share and the Positions count.
+All conversions use the selected reporting month's FX; missing rates show a dash
+rather than substituting another currency or today's rate. EUR is carried with USD
+as a reference currency when reporting months are generated.
+
+Current investment lifecycle, optional Brazilian maturity, net-deposit tracking and external withdrawal semantics are documented in [investment lifecycle](investment-lifecycle.md). This supersedes the earlier cash-wallet proposal.
+
+### Account controls
+
+The shared AppShell exposes an accessible profile menu on Overview, Positions, Quotes, asset details and Settings. Account Settings uses Better Auth password changes and a password-confirmed `/api/auth/account-email` endpoint. Email changes keep the user ID and portfolio ownership, clear email verification, revoke all sessions and require a new sign-in; password changes revoke other sessions. Session cookie caching is disabled so revoked sessions cannot retain cached access. The email endpoint is limited to five attempts per minute and uses authoritative sensitive-session middleware plus the existing origin checks. No real credentials are used by `scripts/test-account-settings.ts`; it requires an isolated `english099_*` schema.
+
+## Portfolio Distribution
+
+The Overview replaces its separate asset-type strip and allocation bars with a
+single Assets / Asset Types / Currency distribution panel. Assets aggregate the
+same security across positions; Asset Types use the dominant saved exposure
+class (Equities, Fixed Income, Commodities, Cryptocurrency), not an ETF wrapper
+label such as Fund. Currency uses the holding denomination (USD/EUR/BRL); crypto
+is no longer a separate currency bucket. Legacy BTC/Altcoins denominations retain
+their established USD valuation. No sectors or inferred fund look-through is added.
+
+The donut and adjacent table share rows, colors, shares and USD holding values.
+Grouped unrealized gains reuse the existing acquisition-FX / average-cost engine
+in the common EUR accounting reference, then convert to USD consistently with
+the summary. Missing acquisition data remains unavailable, not zero. Hover or
+keyboard focus highlights the same row and slice and shows value and allocation
+in a neutral callout. The section is based on the selected reporting month.
+
+## Calendar rollover and period cards
+
+Reporting months continue to be generated automatically on server entry; no
+successful rollover notification or confirmation is shown. The month timeline
+follows the current calendar on a new browser-tab session and across a calendar
+boundary, clearing an obsolete month query once the server has generated the new
+month. An explicitly chosen historical month remains available within that
+calendar session. Unsaved edits defer automatic navigation without prompting.
+
+All six Overview cards share equal-height grid rows. Wide desktops (1440px and
+above) show six columns, intermediate widths (900px and above) show three, and
+smaller widths show two or one. Only the summary can expand beyond the existing
+page width, leaving chart and distribution dimensions unchanged. Monetary period results subtract
+net external funding from the change in EUR portfolio valuation and display its
+current USD equivalent; percentages link daily TWR within the same window. A
+12-month result requires a recorded baseline, and absent coverage is not zero.
+
+## Overview analysis and reference settings
+
+Risk-Free Rate is a per-user annual percentage (initially 2%) saved independently
+of authentication credentials. Settings mutations authenticate and rate-limit the
+user, validate 0–100% with two decimals, and invalidate Overview and Settings.
+Sharpe and Sortino use completed monthly TWR observations, annual reference / 12,
+population volatility and downside deviation respectively; these are monthly
+ratios, not annualized ratios. Beta uses aligned monthly covariance / benchmark
+variance. Missing observations and zero denominators remain unavailable.
+
+Portfolio Profitability compares monthly EUR-reference TWR with S&P 500 Total
+Return in the same reference currency. TTM means trailing twelve months. Profit
+subtracts net dated funding from NAV and converts monetary profit using dated FX;
+realized history reuses the existing fee/average-cost engine. Holdings Performance
+shows total result including commissions and optionally fully sold holdings.
+
+The strategy, target-allocation, tolerance and rebalancing application paths are
+retired. Legacy database fields and backup tables remain for restore compatibility;
+no default target plans are generated and new strategy input is rejected. Actual
+asset classification and portfolio distribution remain independent of targets.
+
+Overview issuer icons are resolved from registered asset identity, with locally
+served vector brand images for verified issuers and a Tesouro Direto icon. Stock logos may
+use the public FMP image endpoint; unverified or failed images fall back to initials.
+No portfolio balances or transaction data are sent to image providers.
+Profitability uses one axis category per colored bar, so the full plot height
+selects the nearest bar without replacing the underlying rectangle. Profit legend buttons can isolate
+realized P&L to inspect commissions on its natural scale; numeric history is unchanged.
+
+The Overview market strip contains USD/BRL, EUR/BRL, BTC/USD, Selic, SPX and SXXP.
+SPX is the S&P 500 price index (^GSPC); SXXP is STOXX Europe 600 price EUR (^STOXX),
+independent of the total-return benchmark used by performance charts. Public index
+snapshots are requested server-side and shared for five minutes. Currency changes
+use the latest two dated database observations, and Selic uses the last two policy
+rate settings. Missing comparisons remain unavailable rather than appearing as 0%.
+
+
+### Holdings table analytics
+
+Positions has Position, Price, Performance and Risk views. The row identity, native currency and expandable details remain shared. Position columns are optional; the other views have fixed column sets. Display Sold also retrieves historical, fully redeemed account/asset holdings without recreating positions or cash.
+
+`get-holdings-analytics` is read-only. It reuses the native transaction ledger and average-cost gain engine. Fees remain realized costs. Invested is remaining principal, average price is remaining principal per unit, Total Gain % is investment TWR and Annualized Yield is dated XIRR. Daily gain removes same-day funding and redemption flows. Missing or inconsistent transaction histories are unavailable.
+
+Public Yahoo listing history supplies price changes, listing-session volume, average volume over ten preceding sessions and market capitalization when supplied. Performance is listing-price return, independent of purchases. Beta uses completed monthly observations against the S&P 500 price index expressed in the same currency (1/3/5 years); incomplete horizons are unavailable. Risk volatility follows TradingView's published range methodology: daily true range / low; weekly and monthly mean daily (high-low) / low over 7/30 calendar days. Reference: https://www.tradingview.com/support/solutions/43000635876-how-is-volatility-calculated-in-the-screener/ . Provider failures and unsupported fields stay null. Public requests include symbols only and have bounded five-minute caches; no portfolio data is transmitted or rewritten.
+
+
+Holding market capitalization falls back to CoinGecko's public, currency-specific capitalization field for recognized cryptocurrencies, cached for five minutes. It is never calculated from an assumed supply, and historical views do not display current capitalization. Large volume/capitalization values use K/M/B/T display notation; underlying sorting values remain numeric. Asset-page gain cards use Total Gain (including realized results and fees), Monthly Change, Allocation, Value and Average Price labels. Their existing return formulas are unchanged.
+
+### Bond purchase corrections and transaction presentation
+
+Transaction panels always show all dates; notes are hidden from the UI but retained
+as internal compatibility metadata for dated FX, commissions and accrued interest.
+Bond acquisitions expose a dedicated correction form; quantity is entered in bond
+units and converted to nominal principal. Cost per bond in the transaction table
+includes purchase interest and fees. Corrections update the contract and monthly
+holdings atomically under the existing user-scoped edit lock and undo snapshots.
+Changing the acquisition to another reporting month is rejected; dated cash receipts
+remain protected from generic transaction edits. Real Preview holdings are never
+used as disposable test fixtures.
+
+Deleting a bond acquisition from Transactions removes that account's lot holdings
+across reporting months under the linked-month undo snapshot. Dependent manual
+receipts, additional trades and linked movements block removal; a derived maturity
+exit may be removed with the acquisition. The asset catalog record is retained.
+
+Bond coupon schedules are informational only. The receipt-entry UI and receipt
+mutation path have been removed; the valuation action accepts dated market values
+only and rejects unknown receipt fields. Existing historical receipt metadata is
+read for backup compatibility and is never erased by this change. Scheduled
+coupons never create transactions, cash, additional units or automatic gains.
+
+Historical bond creation reuses stored daily FIAT observations on or up to seven days before the requested date before consulting ECB. It retains the observation date and never substitutes current FX for historical cost. USD acquisition requests are shared rather than duplicated. Missing provider data produces an actionable save error. Undo snapshots for later months are read in batches; non-auto-income holdings skip CDI valuation and redundant reloads during carry-forward. `scripts/test-bond-save.ts` verifies the June 2025 US61690D6W39 purchase through the current month in a disposable schema with the FX provider disabled.
+
+Overview daily performance values international bonds from their stored contract and valuation mode instead of requiring a market ticker. Cost-only bonds retain the recorded purchase cost, converted using each day's dated FX, without adding scheduled coupons. Missing actual quotations for market-mode bonds remain unavailable. A bond acquisition's saved total is its new capital basis for daily gain calculations, so entering a historical purchase cannot create a false return.
+
+Overview summary cards are ordered Portfolio Value, Unrealized Gain, Realized Gain
+and Total Gain. The daily result is part of Unrealized Gain. Portfolio Change's
+Value range selectors show monetary investment profit in USD, excluding external
+funding; Performance selectors show EUR-reference TWR. Its 1M range spans exactly
+30 trailing days. Bond labels in the distribution and active holdings performance
+use issuer and maturity year, adding the maturity month for issuer/year collisions.
+Stored asset names, identifiers, transactions and valuation rules are unchanged.
+
+New Tesouro Direto purchases ask for Total Invested (BRL) and security quantity.
+The server derives the unit acquisition price to eight decimal places while keeping
+the exact entered total as the principal. Legacy price-based purchases remain
+compatible; current market valuation continues to use quantity and official quotes.
+
+Loading shells expose only Overview and Positions; Settings remains in the account
+menu. Tesouro's provider symbol stays internal in holding subtitles, headings and
+quantity labels. Asset details retain the security name and final maturity date.
+
+Authenticated quote checks may load due Tesouro history for owned symbols, retaining
+the normal history retry limits and shared refresh lock. Treasury backfills save all
+observed daily prices, not just month-end prices, so purchases on intermediate days
+have real valuation boundaries for portfolio TWR. Explicit manual valuations remain
+respected; provisional CARRIED quotes yield to an actual official monthly quote.
+Missing history remains unavailable until provider data arrives, never interpolated.
+
+### USD reporting and open gain composition
+
+Whole-portfolio gains and flows use historical USD conversion. The reporting
+resolver uses the recorded broker conversion when supplied, then the saved ECB
+reference for newer trades. For older trades it looks for a common observation
+date and provider across the EUR/BRL and USD/BRL legs. The lookback is at most
+seven calendar days and excludes future dates. USD-native trades require no
+economic FX conversion into USD. The transaction editor can record a broker
+USD conversion for supported EUR and BRL trades without changing their stored
+price, quantity, fee or amount. Both the original reference and subsequent
+broker entries are retained in the existing transaction metadata.
+
+The USD gain engine capitalizes acquisition fees and continues to use average
+cost by asset and account. Partial sales reduce the open cost and each lot's
+remaining quantity by the same fraction. Open gain attribution uses that
+quantity, acquisition price, historical USD conversion and the current
+valuation. Price/FX interaction belongs to FX. Costs and adjustments reconcile
+the remaining components to the same open gain. Closed positions have no open
+gain composition. The underlying trade basis and valuation must be available
+in the same native currency for attribution.
+
+Portfolio annualized yield uses dated XIRR. The solver groups same-day flows
+and checks for multiple roots, including roots close together. Ambiguous,
+insufficient and unresolved series carry a distinct unavailable status.
+
+The Positions table reports unrealized and total monetary gains in USD from
+the same account-level replay as the Overview and open gain composition.
+Execution prices, quantities and the native valuation keep their listing
+currency. The composition rounds price and FX to cents, with any display
+rounding difference included in the costs and adjustments component.
+
+Settings supports backup export. Backup restoration is available through the maintenance CLI.
+
+In Holdings, Brazilian fixed-income daily gain uses the last recorded gross
+accrual day in BRL. The accrual engine replays dated movements and verified
+rates. The table publishes the daily result only if the replay matches the
+position balance. Instruments without market prices retain unavailable market
+metrics, and the daily accrual date is shown on hover.
+
+Overview replays supported Brazilian bank fixed-income contracts with the same
+accrual engine used to value their positions. The daily series uses recorded
+movements and accrues through the last recorded fixing. Daily USD balances feed
+the existing flow-adjusted return, profit charts and reporting-month markers.
+
+
+### Navigation speed and phone layouts
+
+Server rendering deduplicates portfolio months, ledger, overview and performance
+reads within the current React request. Navigation prefetches the other main tab.
+Public listing history is shared for five minutes across server instances, and
+public Treasury inception observations for one hour. These caches contain no
+portfolio balances, transactions or account identifiers. Private reads remain
+request-scoped. Client analytics reuse derived series when only display controls change.
+
+Below 640px, holdings, distribution, transaction, month-history, Treasury redemption
+and quote tables use labeled records that fit the viewport. Holdings retain
+sorting, selected columns, filters and expansion controls. Desktop table layouts
+continue at their existing breakpoint. The position form keeps its current mobile dialog.
+
+While the application is visible, opening checks are eligible every minute.
+Market quotes remain due every five minutes. Daily reference FX, CDI/inflation
+observations and the Selic target are rechecked every fifteen minutes. Publication
+dates and provider failure backoff remain authoritative. A separate verified
+scheduler is still required for unattended updates while the application is closed.
+
+Treasury provider outages retain previously parsed official CSV observations for up to
+24 hours after a successful download, preserving each observation date and the existing
+seven-day quote freshness limit. Access refusals and rate limits skip the immediate
+live retry and use the official CSV fallback. A cold instance with no valid cached
+response still reports failure and preserves the stored quote; no price is invented.
+
+Portfolio Distribution exposes Assets, Asset Classes, Product Types and Currency.
+All four views aggregate the same active holdings and USD gains. Product Types uses
+Positions' product resolver, including ETC separately from ETF; Asset Classes keeps
+the existing dominant allocation classification. Positions' product dropdown is
+labelled Product Type, while the colored quick filters remain asset-class filters.
+
+Holdings Performance omits unavailable/rounded-zero results in the selected display
+unit, uses one labelled magnitude scale for gains and losses, and exposes the asset
+name, total return percentage, total gain in USD and current holding value in USD
+on hover, keyboard focus or touch. The current value uses the distribution's
+existing active valuation (fully sold holdings have zero remaining value).
+Portfolio Change identifies its Performance view as TWR without the explanatory
+paragraph beneath its Value view. Financial calculations are unchanged.
+
+The Analysis route (/analysis) contains Portfolio Profitability, Profit, Risks and
+Holdings Performance in their existing order. Overview ends with Distribution and
+Daily Gainers / Daily Losers. The main navigation preserves the reporting month
+across Overview, Positions and Analysis. Daily panels reuse Positions' daily metrics,
+convert native daily amounts using the current holding's USD valuation ratio, and
+aggregate positions of the same asset with a weighted daily opening denominator.
+Unavailable metrics suppress the whole affected asset rather than a partial total.
+Daily panels show USD amounts, not a separate FX-attribution return, and share the
+bar grid, absolute/percentage settings and accessible detail tooltip with Analysis.
+
+Display names use Treasury security name + year instead of a full date in titles.
+Existing Renda+/Educa+ income-start years remain unchanged. CDB/LCI/LCA chart
+labels add the maturity year, while Positions keeps its shorter product title.
+Chart details expose the separate maturity date as DD/MM/YYYY; generated purchase
+and ISO-date suffixes are not shown in tooltip titles. Navigation order is
+Overview, Analysis, Positions. These are presentation changes, with no saved name,
+date, valuation or contract changes.
+
+Daily and Analysis performance tooltips put the full maturity date beside the
+security name in their heading, replacing the repeated maturity year. The body
+contains only the three existing gain/return/value metrics. Chart row labels keep
+the short year form; saved names and dates are unchanged.
+
+## Sold-out quote lifecycle
+
+Live quote sync selects positive-quantity positions from each user's latest month.
+A zero-quantity position does not keep a symbol in the live refresh set. A shared
+symbol continues to refresh if another active holding/user still requires it; a
+repurchase restores eligibility automatically. USD/EUR reporting rates and BTC (used by the Overview strip) remain.
+The current month's Quotes list likewise includes active holdings and reporting
+FX rather than all stored symbols. Historical months keep their stored quotes.
+No positions, sales, realized gains, historical prices, registry entries or audit
+records are deleted when an asset leaves the live refresh set. Overview market
+benchmarks/rates use their existing independent sources and are unchanged.
+
+Quotes display clean listing tickers without exchange suffixes and use Positions'
+Treasury naming rules, leaving provider identifiers and stored asset names intact.
+USD/EUR both display BRL per one unit of foreign currency. Quote Date identifies
+the price's effective date; Last Update identifies retrieval time and provider.
+A recent retrieval does not imply the provider published a newer price.
+
+Positions Performance uses native-currency price changes for quoted securities.
+One observation reused at both endpoints is unavailable, not a measured zero;
+a genuine zero requires distinct dates. Contractual Brazilian fixed income uses
+a normalized gross BRL accrual series from the existing rate/day-count engine,
+without deposits or withdrawals. Periods before investment, missing CDI/IPCA
+observations or unverified coverage remain unavailable. Tooltips distinguish this
+contractual accrual from market-price performance, taxes and USD portfolio gains.
+
+## Free-tier compute budget
+
+Visible browser tabs check for due quote updates every five minutes, matching the
+existing minimum market-provider refresh cadence. Opening checks and background
+schedules remain enabled; hidden tabs do not poll. Provider TTLs and history are
+unchanged. Portfolio performance uses request-local indexed dated-price/FX lookups
+with the same seven-day freshness rule, avoiding repeated linear history scans.
+No private valuation cache is shared across users.

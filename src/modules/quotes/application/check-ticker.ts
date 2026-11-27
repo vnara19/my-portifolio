@@ -1,3 +1,5 @@
+
+/** Verify the complete ticker against its provider before issuing a signed, short-lived proof for saving a position. */
 import { getPrismaClient } from "@/lib/prisma";
 import { currentUserId, getUserDb } from "@/lib/user-db";
 import {
@@ -18,7 +20,7 @@ import type { CoinCandidate, TickerCheckResponse } from "@/modules/quotes/domain
 import { lookupAlphaVantageSymbol } from "@/modules/quotes/infrastructure/alpha-vantage";
 import { fetchUsdBrl } from "@/modules/quotes/infrastructure/awesome-api";
 import {
-  fetchCoinGeckoPrices,
+  fetchCoinGeckoPricePair,
   resolveCoinGeckoCoin,
   searchCoinGeckoCoins,
 } from "@/modules/quotes/infrastructure/coingecko";
@@ -26,26 +28,23 @@ import { lookupFinnhubSymbol } from "@/modules/quotes/infrastructure/finnhub";
 import { describeProviderError } from "@/modules/quotes/infrastructure/http";
 import { fetchYahooPrice } from "@/modules/quotes/infrastructure/yahoo";
 import { latestTreasuryPoint, treasurySeriesOf } from "@/modules/quotes/domain/treasury";
-import { readTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { readCurrentTreasuryBook } from "@/modules/quotes/infrastructure/treasury";
+import { isMarketKind } from "@/modules/portfolio/domain/market-assets";
+import { lookupMarketListing } from "./market-listing";
+import { resolveEuropeanTicker } from "./european-listing";
 
-// O comprovante assinado (spec 063) cruza a rota e a Server Action sem depender
-// da memória de uma função. O preço vem do provedor e não do navegador.
+
 export type { VerifiedTicker } from "@/modules/quotes/application/verified-ticker-token";
 export const readVerifiedTicker = readVerifiedTickerToken;
 
 const LOOKUP_TTL_MS = 60 * 1000;
 
 type Lookup =
-  | { state: "found"; priceBrl: number; coinId: string | null; name: string | null; quoteDate?: string; coins?: CoinCandidate[] }
+  | { state: "found"; priceBrl: number; coinId: string | null; name: string | null; quoteDate?: string; coins?: CoinCandidate[]; priceNative?: number | null; currency?: "USD" | "EUR" | "BRL" }
   | { state: "not-found" }
   | { state: "unavailable"; code: string; message: string };
 
-// Resposta do provedor por símbolo, reaproveitada por até um minuto no mesmo
-// dia: a inclusão usa um preço recente e digitações/checagens consecutivas
-// não gastam outra consulta. Importa
-// sobretudo no Alpha Vantage, de 25 consultas gratuitas por dia (spec 003),
-// que a atualização diária também usa. Indisponível não fica guardado, para a
-// próxima checagem tentar de novo.
+
 type CachedLookup = { lookup: Extract<Lookup, { state: "found" | "not-found" }>; fetchedAt: Date; expiresAt: number };
 
 const globalForTickers = globalThis as unknown as {
@@ -60,19 +59,19 @@ export async function checkTicker(
   const definition = ASSET_KIND_DEFINITIONS[input.kind];
 
   if (definition.ticker !== "market" || !definition.provider || !definition.instrumentType) {
-    return { status: "invalid", message: "Este tipo de ativo não tem ticker para conferir." };
+    return { status: "invalid", message: "This asset type has no ticker to verify." };
   }
 
-  const symbol = normalizeTicker(input.kind, input.ticker);
+  let symbol = normalizeTicker(input.kind, input.ticker);
 
-  if (!symbol) {
-    return { status: "invalid", message: "Digite um ticker válido para este tipo de ativo." };
+  if (!symbol && !(input.kind === "eu-market" && /^[A-Za-z0-9][A-Za-z0-9-]{0,19}$/.test(input.ticker.trim()))) {
+    return { status: "invalid", message: "Enter a valid ticker for this asset type." };
   }
 
   const prisma = await getUserDb();
 
   if (!prisma) {
-    throw new Error("O banco de dados não está disponível.");
+    throw new Error("The database is unavailable.");
   }
 
   const month = await prisma.portfolioMonth.findUnique({
@@ -81,12 +80,38 @@ export async function checkTicker(
   });
 
   if (!month) {
-    return { status: "invalid", message: "A competência não existe mais." };
+    return { status: "invalid", message: "The reporting month no longer exists." };
+  }
+
+  if (!symbol) {
+    try {
+      const { listings, preferred } = await resolveEuropeanTicker(input.ticker);
+      if (!listings.length) return { status: "invalid", message: "No European listings found. Try the exchange-qualified ticker." };
+      if (!preferred) return { status: "matches", listings };
+      symbol = preferred.symbol;
+    } catch {
+      return { status: "invalid", message: "European search is unavailable. Try again or enter an exchange-qualified ticker." };
+    }
+  }
+
+  if (isMarketKind(input.kind)) {
+    const now = options.now ?? new Date();
+    try {
+      const [listing, saved] = await Promise.all([lookupMarketListing(input.kind, symbol, toDateKey(now)), readMonthQuoteValues(prisma, month.referenceDate, [symbol])]);
+      const existing = saved.get(symbol);
+      const priceBrl = existing?.valueBrl.toNumber() ?? listing.priceBrl;
+      const quoteDate = existing?.quoteDate ? toDateKey(existing.quoteDate) : listing.quoteDate;
+      const token = createVerifiedTickerToken({ symbol, kind: input.kind, provider: "yahoo", status: "found", priceBrl, coinId: null,
+        identity: listing.identity, quoteDate: new Date(`${quoteDate}T00:00:00Z`), fetchedAt: now }, { userId: await currentUserId(), monthId: input.monthId, now });
+      return { status: "found", symbol, provider: "yahoo", priceBrl, name: listing.identity.name, quoteDate, token, identity: listing.identity, priceNative: listing.price, currency: listing.identity.currency };
+    } catch (error) {
+      return { status: "invalid", message: error instanceof Error ? error.message : "Could not verify this listing. Please try again." };
+    }
   }
 
   const provider = providerForQuote(definition.instrumentType, baseCurrencyOf(input.kind, symbol));
   const [monthQuote, latestQuote, latestDaily] = await Promise.all([
-    // A do usuário: a compartilhada ou a digitada por ele (spec 051).
+
     readMonthQuoteValues(prisma, month.referenceDate, [symbol]).then((quotes) => quotes.get(symbol)),
     prisma.marketQuote.findFirst({
       where: { symbol },
@@ -100,31 +125,29 @@ export async function checkTicker(
     }),
   ]);
 
-  // Um símbolo já cotado por outro provedor geraria duas regras de cotação para
-  // o mesmo símbolo, que é compartilhado entre os usuários (spec 051).
+
   const stored = monthQuote ?? latestQuote ?? latestDaily;
   if (stored && providerForQuote(stored.instrumentType, stored.baseCurrency) !== provider) {
     return {
       status: "conflict",
       symbol,
-      message: `${symbol} já é cotado na carteira por outro provedor (${providerLabel(
+      message: `${symbol} is already quoted in the portfolio by another provider (${providerLabel(
         providerForQuote(stored.instrumentType, stored.baseCurrency),
-      )}). Escolha o tipo correspondente.`,
+      )}). Choose the corresponding type.`,
     };
   }
 
-  if (monthQuote) {
+  if (monthQuote && input.kind !== "crypto") {
     return { status: "known", symbol, priceBrl: monthQuote.valueBrl.toNumber() };
   }
 
   const now = options.now ?? new Date();
   const context = { userId: await currentUserId(), monthId: input.monthId, now };
-  // Cada moeda escolhida é uma consulta própria no cache (spec 033).
+
   const cacheSymbol = provider === "coingecko" && input.coinId ? `${symbol}:${input.coinId}` : symbol;
   const { lookup, fetchedAt } = await cachedLookup(provider, cacheSymbol, now, async () => {
-    // Um cripto cuja moeda já está guardada num ativo é conferido por ela, sem
-    // nova busca: a cotação é do símbolo, e o símbolo tem uma moeda só, a mesma
-    // para todos os usuários (spec 051).
+
+
     const stored =
       provider === "coingecko"
         ? await getPrismaClient()!.asset.findFirst({
@@ -151,7 +174,7 @@ export async function checkTicker(
       status: "not-found",
       symbol,
       provider,
-      message: `${providerLabel(provider)} não encontrou o ticker ${symbol}.`,
+      message: `${providerLabel(provider)} did not find the ticker ${symbol}.`,
     };
   }
 
@@ -186,6 +209,8 @@ export async function checkTicker(
     provider,
     priceBrl: lookup.priceBrl,
     name: lookup.name,
+    priceNative: lookup.priceNative,
+    currency: lookup.currency,
     quoteDate: toDateKey(quoteDate),
     token,
     coinId: lookup.coinId,
@@ -238,16 +263,16 @@ async function lookupSymbol(
   try {
     switch (provider) {
       case "tesouro": {
-        const series = treasurySeriesOf(await readTreasuryBook(), { symbol, providerId: chosenCoinId });
+        const series = treasurySeriesOf(await readCurrentTreasuryBook(), { symbol, providerId: chosenCoinId });
         if (!series || series.maturityDate <= today) return { state: "not-found" };
         const point = latestTreasuryPoint(series, today);
         return point
           ? { state: "found", priceBrl: point.value, quoteDate: point.day, coinId: series.providerId, name: series.name }
-          : { state: "unavailable", code: "MISSING_QUOTE", message: "O Tesouro não publicou preço de mercado para este título." };
+          : { state: "unavailable", code: "MISSING_QUOTE", message: "Tesouro Direto has not published a market price for this security." };
       }
       case "finnhub": {
-        // EUA: Finnhub e, sem a chave ou com ele fora do ar, o Yahoo Finance
-        // (spec 037). Os dois cotam em dólar; o real sai do câmbio do dia.
+
+
         let priceUsd: number | null = null;
 
         if (configuration.finnhubApiKey) {
@@ -274,8 +299,7 @@ async function lookupSymbol(
           priceUsd = yahoo.price;
         }
 
-        // Sem o câmbio do dia não há preço em reais, mas o ticker existe e pode
-        // ser salvo com a cotação digitada.
+
         try {
           const usdBrl = await fetchUsdBrl(configuration.awesomeApiKey);
           return { state: "found", priceBrl: priceUsd * usdBrl, coinId: null, name: null };
@@ -284,17 +308,17 @@ async function lookupSymbol(
           return {
             state: "unavailable",
             code: described.code,
-            message: `${symbol} existe, mas o câmbio do dia não respondeu na AwesomeAPI: ${described.message}`,
+            message: `${symbol} exists, but AwesomeAPI did not return today's exchange rate: ${described.message}`,
           };
         }
       }
       case "yahoo": {
-        // B3: Yahoo Finance e, se ele falhar sem dizer que o ticker não existe,
-        // o Alpha Vantage, que tem 25 consultas por dia (spec 037).
+
+
         const yahoo = await lookupYahoo(symbol);
 
         if (yahoo.state === "found") {
-          return { state: "found", priceBrl: yahoo.price, coinId: null, name: null };
+          return { state: "found", priceBrl: yahoo.price, coinId: null, name: yahoo.name };
         }
 
         if (yahoo.state === "not-found" || !configuration.alphaVantageApiKey) {
@@ -317,10 +341,8 @@ async function lookupSymbol(
           : { state: "not-found" };
       }
       case "coingecko": {
-        // A moeda guardada num ativo vale para o símbolo inteiro, sem escolha;
-        // ela não tem o nome à mão, e a checagem mostra só o ticker. Sem moeda
-        // guardada, a busca lista as candidatas e o usuário pode escolher outra
-        // além da de maior capitalização (spec 033). BTC e SOL têm moeda fixa.
+
+
         let coin: { id: string; name: string | null } | null;
         let coins: CoinCandidate[] | undefined;
 
@@ -337,13 +359,13 @@ async function lookupSymbol(
           return { state: "not-found" };
         }
 
-        const price = (await fetchCoinGeckoPrices([coin.id], configuration.coinGeckoApiKey)).get(coin.id);
+        const price = await fetchCoinGeckoPricePair(coin.id, configuration.coinGeckoApiKey);
         return price
-          ? { state: "found", priceBrl: price, coinId: coin.id, name: coin.name, coins }
-          : { state: "unavailable", code: "MISSING_QUOTE", message: `A CoinGecko não retornou o preço de ${symbol}.` };
+          ? { state: "found", priceBrl: price.brl, priceNative: price.usd ?? null, currency: "USD", coinId: coin.id, name: coin.name, coins }
+          : { state: "unavailable", code: "MISSING_QUOTE", message: `CoinGecko did not return the price for ${symbol}.` };
       }
       default:
-        return { state: "unavailable", code: "UNSUPPORTED", message: "Este tipo não tem provedor para conferir." };
+        return { state: "unavailable", code: "UNSUPPORTED", message: "This type has no verification provider." };
     }
   } catch (error) {
     const described = describeProviderError(error);
@@ -353,9 +375,10 @@ async function lookupSymbol(
 
 async function lookupYahoo(
   symbol: string,
-): Promise<{ state: "found"; price: number } | { state: "not-found" } | { state: "unavailable"; code: string; message: string }> {
+): Promise<{ state: "found"; price: number; name: string | null } | { state: "not-found" } | { state: "unavailable"; code: string; message: string }> {
   try {
-    return { state: "found", price: (await fetchYahooPrice(symbol)).price };
+    const result = await fetchYahooPrice(symbol);
+    return { state: "found", price: result.price, name: result.name };
   } catch (error) {
     const described = describeProviderError(error);
 
@@ -371,6 +394,6 @@ function missingKey(variable: string): Lookup {
   return {
     state: "unavailable",
     code: "MISSING_API_KEY",
-    message: `Configure ${variable} para conferir este ticker.`,
+    message: `Configure ${variable} to verify this ticker.`,
   };
 }

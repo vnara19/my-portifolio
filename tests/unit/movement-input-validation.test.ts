@@ -16,7 +16,7 @@ function operation(patch: Partial<MovementInput> = {}): MovementInput {
   };
 }
 
-test("campo digitado inválido não é substituído por cálculo dos dois outros", () => {
+test("invalid entered fields are not overwritten by inferred values", () => {
   for (const field of ["quantity", "unitPrice", "amount"] as TrioField[]) {
     for (const value of [null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 0]) {
       const input = operation();
@@ -26,12 +26,12 @@ test("campo digitado inválido não é substituído por cálculo dos dois outros
       assert.deepEqual(result.computed, []);
       assert.equal(result.after, 10);
       const received = field === "unitPrice" ? result.unitPrice : result[field];
-      assert.ok(Object.is(received, value), `${field} foi substituído`);
+      assert.ok(Object.is(received, value), `${field} was replaced`);
     }
   }
 });
 
-test("dividendos aceitam quantidade ausente ou zero, sem inventar unidades", () => {
+test("dividends accept missing or zero quantity without creating units", () => {
   for (const quantity of [null, 0]) {
     const result = resolveMovement(operation({
       kind: "INCOME",
@@ -50,7 +50,7 @@ test("dividendos aceitam quantidade ausente ou zero, sem inventar unidades", () 
   assert.equal(negativeQuantity.quantity, -1);
 });
 
-test("campo vazio não digitado continua calculável pela cotação sugerida", () => {
+test("an untouched blank field remains inferable from the suggested quote", () => {
   const result = resolveMovement(operation({ typed: { quantity: 2, unitPrice: null, amount: null, total: null }, order: ["quantity"] }));
   assert.equal(result.issue, null);
   assert.equal(result.unitPrice, 30);
@@ -58,7 +58,7 @@ test("campo vazio não digitado continua calculável pela cotação sugerida", (
   assert.equal(result.suggestedPrice, true);
 });
 
-test("novo total ignora trio oculto, mas valida preço executado digitado ativo", () => {
+test("new totals ignore hidden fields but validate an entered execution price", () => {
   const input = operation({ mode: "total", typed: { quantity: -1, unitPrice: 25, amount: 0, total: 12 } });
   const result = resolveMovement(input);
   assert.equal(result.issue, null);
@@ -72,7 +72,7 @@ test("novo total ignora trio oculto, mas valida preço executado digitado ativo"
   }
 });
 
-test("saldo manual valida apenas valor ativo; total ignora o trio anterior", () => {
+test("manual balance mode validates only active fields", () => {
   const result = resolveMovement(operation({ quoted: false, typed: { quantity: -1, unitPrice: 0, amount: 500, total: null } }));
   assert.equal(result.issue, null);
   assert.equal(result.quantity, 500);
@@ -85,7 +85,7 @@ test("saldo manual valida apenas valor ativo; total ignora o trio anterior", () 
   assert.ok(invalidAmount.issue);
 });
 
-test("novo valor de mercado zero permite retirar a posição inteira", () => {
+test("zero market value allows withdrawing the entire position", () => {
   const result = resolveMovement(operation({ kind: "WITHDRAWAL", mode: "total", totalTarget: "marketValue", typed: { quantity: null, unitPrice: null, amount: null, total: 0 }, order: [] }));
   assert.equal(result.issue, null);
   assert.equal(result.kind, "WITHDRAWAL");
@@ -94,7 +94,7 @@ test("novo valor de mercado zero permite retirar a posição inteira", () => {
   assert.equal(result.after, 0);
 });
 
-test("corrigir saldo inicial pelo total usa valor de mercado sem criar custo de compra", () => {
+test("opening balance corrections use market value without inventing purchase cost", () => {
   for (const [totalTarget, total] of [["quantity", 12], ["marketValue", 360]] as const) {
     const result = resolveMovement(operation({
       kind: "OPENING", mode: "total", totalTarget, current: { quantity: 2, marketPrice: 30 },
@@ -109,7 +109,7 @@ test("corrigir saldo inicial pelo total usa valor de mercado sem criar custo de 
   }
 });
 
-test("resultados não finitos ou sem centavos registráveis não avançam", () => {
+test("nonfinite or unrecordable cent values cannot proceed", () => {
   const overflow = resolveMovement(operation({ typed: { quantity: 1e308, unitPrice: 1e308, amount: null, total: null }, order: ["quantity", "unitPrice"] }));
   assert.ok(overflow.issue);
   const underflow = resolveMovement(operation({ typed: { quantity: 1e-12, unitPrice: 0.001, amount: null, total: null }, order: ["quantity", "unitPrice"] }));

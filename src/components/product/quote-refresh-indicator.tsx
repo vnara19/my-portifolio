@@ -1,23 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
+import Link from "next/link";
 
-import { MonthRolloverPrompt } from "@/components/product/month-rollover-prompt";
-import { runOpenCheck } from "@/components/product/quote-refresh-client";
+import { useEffect, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { hasUnreadQuoteIssue, inspectQuoteRun, readInspectedQuoteRun, serverInspectedQuoteRun, subscribeInspectedQuoteRun } from "@/components/product/quote-issue-read";
+
+import { QUOTE_OPEN_CHECK_INTERVAL_MS, runOpenCheck } from "@/components/product/quote-refresh-client";
 import { useQuoteRefresh } from "@/components/product/use-quote-refresh";
 import { cn } from "@/lib/utils";
 import type { QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 
-const OPEN_CHECK_POLL_MS = 60 * 1000;
 
-/**
- * Há quanto tempo as cotações foram atualizadas. Sem botão: o job agendado as
- * atualiza de hora em hora (spec 053). Este componente dispara a checagem de
- * abertura ao abrir o aplicativo e de novo com ele visível, que traz a virada
- * de mês e o resumo da última execução.
- */
+
 export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: QuoteRefreshSummary | null }) {
-  const { client, summary, time, hasIssues, issueText, onDataChanged } = useQuoteRefresh(serverSummary);
+  const { summary, time, hasIssues, issueText, onDataChanged } = useQuoteRefresh(serverSummary);
+
+  const pathname = usePathname();
+  const onQuotesPage = pathname === "/posicoes/cotacoes";
+  const runId = summary?.lastRun?.id ?? null;
+  const inspectedId = useSyncExternalStore(subscribeInspectedQuoteRun, readInspectedQuoteRun, serverInspectedQuoteRun);
+  const unreadIssue = hasUnreadQuoteIssue(hasIssues, runId, inspectedId, onQuotesPage);
+
+  useEffect(() => {
+    if (onQuotesPage && runId && hasIssues) inspectQuoteRun(runId);
+  }, [onQuotesPage, runId, hasIssues]);
 
   useEffect(() => {
     runOpenCheck(onDataChanged, serverSummary);
@@ -28,11 +35,8 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
       }
     };
 
-    // Com o aplicativo aberto e visível, a checagem também roda sozinha: a cada
-    // minuto o cliente tenta, e `runOpenCheck` só chama o servidor a cada cinco
-    // minutos. Assim a virada de mês e as cotações gravadas pelo job aparecem
-    // sem recarregar a página (spec 034).
-    const timer = window.setInterval(checkWhenVisible, OPEN_CHECK_POLL_MS);
+
+    const timer = window.setInterval(checkWhenVisible, QUOTE_OPEN_CHECK_INTERVAL_MS);
 
     document.addEventListener("visibilitychange", checkWhenVisible);
     return () => {
@@ -41,20 +45,20 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
     };
   }, [onDataChanged, serverSummary]);
 
-  const longLabel = time?.long ?? (summary?.lastUpdatedAt ? null : "Cotações sem atualização");
+  const longLabel = time?.long ?? (summary?.lastUpdatedAt ? null : "Quotes not updated yet");
   const shortLabel = time?.short ?? (summary?.lastUpdatedAt ? null : "—");
-  const title = [time ? `Última atualização das cotações em ${time.absolute}` : null, issueText]
+  const title = [time ? `Quotes last updated on ${time.absolute}` : null, issueText]
     .filter(Boolean)
     .join(". ");
 
   return (
     <>
-    <div
+    <Link
+      href="/posicoes/cotacoes"
       data-testid="quote-refresh"
       title={title || undefined}
-      aria-label={[longLabel ?? "Cotações", issueText].filter(Boolean).join(". ")}
-      role="status"
-      className="relative flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-card/70 px-1 md:px-3"
+      aria-label={[longLabel ?? "Quotes", issueText].filter(Boolean).join(". ")}
+      className="relative flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-card/70 px-1 transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary md:px-3"
     >
       <span
         className={cn(
@@ -62,7 +66,7 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
           longLabel === null && "invisible",
         )}
       >
-        {longLabel ?? "Atualizado há 10 min"}
+        {longLabel ?? "Updated 10 min ago"}
       </span>
       <span
         aria-hidden="true"
@@ -73,15 +77,14 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
       >
         {shortLabel ?? "10 min"}
       </span>
-      {hasIssues ? (
+      {unreadIssue ? (
         <span
           aria-hidden="true"
           data-testid="quote-refresh-issue"
           className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive ring-2 ring-card"
         />
       ) : null}
-    </div>
-    <MonthRolloverPrompt pending={client.pendingRollover} creating={client.rollingOver} onDataChanged={onDataChanged} />
+    </Link>
     </>
   );
 }

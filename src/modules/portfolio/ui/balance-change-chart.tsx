@@ -1,12 +1,16 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
+import { englishLabel } from "@/lib/english-labels";
+
+import { CHART_PERIODS, periodStart, monthlyObservationTime, type ChartPeriod } from "../domain/chart-period";
 import { useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import type { HistorySlot } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatSignedBrl, monthLabel } from "@/modules/portfolio/presentation/position-page";
+import { formatPercent } from "@/modules/portfolio/presentation/portfolio-format";
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type ChangeRow = {
@@ -14,31 +18,17 @@ type ChangeRow = {
   label: string;
   slot: HistorySlot;
   change: number | null;
-  /** Aportes menos retiradas do mês, quando conhecidos. */
+
   flow: number | null;
-  /** O restante da variação: rendimento e, nos cotados, o efeito de preço. */
+
   income: number | null;
-  /** Variação sem separação, no legado de saldos sem cotação. */
+
   mixed: number | null;
 };
 
-type Period = "6m" | "12m" | "ytd" | "all";
+type Period = ChartPeriod;
+const PERIODS = CHART_PERIODS;
 
-const PERIODS: { key: Period; label: string }[] = [
-  { key: "6m", label: "6M" },
-  { key: "12m", label: "12M" },
-  { key: "ytd", label: "YTD" },
-  { key: "all", label: "Tudo" },
-];
-
-/**
- * Variação do saldo de uma competência para a anterior, em todas as posições
- * (spec 073): cada barra separa aportes e retiradas do rendimento do mês, que
- * nos ativos cotados inclui a variação da cotação. No legado sem movimentações
- * de um saldo em reais, a variação fica numa barra só. Lacunas ficam sem barra.
- * O período (spec 075) termina na competência selecionada; "Tudo" mostra o
- * histórico inteiro.
- */
 export function BalanceChangeChart({
   slots,
   selectedMonth,
@@ -48,8 +38,10 @@ export function BalanceChangeChart({
   selectedMonth: string;
   scope: "account" | "all";
 }) {
+ const { formatBrl, formatSignedBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
-  const [period, setPeriod] = useState<Period>("12m");
+  const [period, setPeriod] = useState<Period>("all");
   const firstIndex = slots.findIndex((slot) => slot.kind === "present");
   const allRows: ChangeRow[] =
     firstIndex === -1
@@ -77,8 +69,7 @@ export function BalanceChangeChart({
 
   if (!allRows.some((row) => row.change !== null)) {
     return (
-      <div className="grid h-[220px] place-items-center rounded-xl border border-dashed border-border/70 px-6 text-center text-[11px] leading-5 text-muted-foreground">
-        Sem competências seguidas para comparar.
+      <div className="grid h-[220px] place-items-center rounded-xl border border-dashed border-border/70 px-6 text-center text-[11px] leading-5 text-muted-foreground">No consecutive reporting months to compare.
       </div>
     );
   }
@@ -86,27 +77,23 @@ export function BalanceChangeChart({
   return (
     <div data-testid="balance-change-chart">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-      <ul aria-label="Legenda" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <ul aria-label="Legend" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="size-2.5 rounded-[3px] bg-chart-up" />
-          Rendimento
+          <span className="size-2.5 rounded-[3px] bg-chart-up" />Return
         </li>
         <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="size-2.5 rounded-[3px] bg-chart-down" />
-          Rendimento negativo
+          <span className="size-2.5 rounded-[3px] bg-chart-down" />Negative return
         </li>
         <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="size-2.5 rounded-[3px] bg-foreground/30" />
-          Aportes e retiradas
+          <span className="size-2.5 rounded-[3px] bg-foreground/30" />Contributions and withdrawals
         </li>
         {hasMixed ? (
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="size-2.5 rounded-[3px] bg-foreground/60" />
-            Variação sem movimentações registradas
+            <span className="size-2.5 rounded-[3px] bg-foreground/60" />Change without recorded transactions
           </li>
         ) : null}
       </ul>
-      <div role="group" aria-label="Período da variação mensal" className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+      <div role="group" aria-label="Monthly change period" className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
         {PERIODS.map((option) => (
           <button
             key={option.key}
@@ -118,7 +105,7 @@ export function BalanceChangeChart({
               period === option.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {option.label}
+            {englishLabel(option.label)}
           </button>
         ))}
       </div>
@@ -138,6 +125,8 @@ export function BalanceChangeChart({
             minTickGap={12}
           />
           <YAxis
+              tickCount={10}
+              minTickGap={18}
             axisLine={false}
             tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
             tickFormatter={(value: number) => formatBrl(value, { compact: true })}
@@ -159,46 +148,44 @@ export function BalanceChangeChart({
 
               return (
                 <div className="max-w-[240px] rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-                  <p className="text-[11px] font-medium text-foreground">{row.label}</p>
+                  <p className="text-[11px] font-medium text-foreground">{englishLabel(row.label)}</p>
                   {slot.kind === "missing" ? (
-                    <p className="mt-1 text-[11px] text-muted-foreground">Sem competência no histórico</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">No reporting month in history</p>
                   ) : slot.kind === "absent" ? (
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      {scope === "account" ? "Fora desta conta" : "Fora da carteira"}
+                      {scope === "account" ? "Outside this account" : "Outside the portfolio"}
                     </p>
                   ) : slot.step ? (
                     <>
                       <p className="mt-1 font-mono text-xs text-foreground">{formatSignedBrl(slot.step.changeBrl)}</p>
                       <p className="mt-1 text-[10px] text-muted-foreground">
                         {slot.step.changePercent !== null ? `${formatPercent(slot.step.changePercent)} ` : ""}
-                        desde {monthLabel(slot.step.fromMonth)} · saldo {formatBrl(slot.valueBrl)}
+                        since {monthLabel(slot.step.fromMonth)}· balance {formatBrl(slot.valueBrl)}
                       </p>
                       {row.flow !== null ? (
                         <div className="mt-2 space-y-0.5 text-[10px]">
-                          <p className="flex justify-between gap-4 text-muted-foreground">
-                            Aportes e retiradas <span className="font-mono text-foreground">{formatSignedBrl(row.flow)}</span>
+                          <p className="flex justify-between gap-4 text-muted-foreground">Contributions and withdrawals <span className="font-mono text-foreground">{formatSignedBrl(row.flow)}</span>
                           </p>
-                          <p className="flex justify-between gap-4 text-muted-foreground">
-                            Rendimento <span className="font-mono text-foreground">{formatSignedBrl(row.income ?? 0)}</span>
+                          <p className="flex justify-between gap-4 text-muted-foreground">Return <span className="font-mono text-foreground">{formatSignedBrl(row.income ?? 0)}</span>
                           </p>
                         </div>
                       ) : null}
                     </>
                   ) : (
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      {slot.entryBrl !== null ? "Volta" : "Entrada"} com {formatBrl(slot.valueBrl)}
+                      {slot.entryBrl !== null ? "Back" : "Opening"} com {formatBrl(slot.valueBrl)}
                     </p>
                   )}
                 </div>
               );
             }}
           />
-          <Bar dataKey="flow" name="Aportes e retiradas" stackId="change" maxBarSize={28}>
+          <Bar dataKey="flow" name="Contributions and withdrawals" stackId="change" maxBarSize={28}>
             {rows.map((row) => (
               <Cell key={row.month} fill="var(--foreground)" fillOpacity={row.month === selectedMonth ? 0.42 : 0.2} />
             ))}
           </Bar>
-          <Bar dataKey="income" name="Rendimento" stackId="change" maxBarSize={28}>
+          <Bar dataKey="income" name="Return" stackId="change" maxBarSize={28}>
             {rows.map((row) => (
               <Cell
                 key={row.month}
@@ -207,7 +194,7 @@ export function BalanceChangeChart({
               />
             ))}
           </Bar>
-          <Bar dataKey="mixed" name="Variação do saldo" stackId="change" maxBarSize={28}>
+          <Bar dataKey="mixed" name="Balance change" stackId="change" maxBarSize={28}>
             {rows.map((row) => (
               <Cell key={row.month} fill="var(--foreground)" fillOpacity={row.month === selectedMonth ? 0.75 : 0.45} />
             ))}
@@ -219,7 +206,7 @@ export function BalanceChangeChart({
   );
 }
 
-/** Meses do período, terminando na competência selecionada. */
+
 function periodRows(rows: ChangeRow[], selectedMonth: string, period: Period) {
   if (period === "all" || rows.length === 0) {
     return rows;
@@ -233,7 +220,11 @@ function periodRows(rows: ChangeRow[], selectedMonth: string, period: Period) {
     return rows.slice(0, end + 1).filter((row) => row.month.startsWith(`${year}-`));
   }
 
-  const size = period === "6m" ? 6 : 12;
+  if (period === "1m") {
+    const cutoff = periodStart(monthlyObservationTime(rows[end].month), period);
+    return rows.slice(0,end+1).filter(row => monthlyObservationTime(row.month) >= cutoff);
+  }
+  const size = CHART_PERIODS.find(p=>p.key===period)?.months as number;
   return rows.slice(Math.max(end - size + 1, 0), end + 1);
 }
 

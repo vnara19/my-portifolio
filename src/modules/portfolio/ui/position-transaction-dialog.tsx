@@ -1,5 +1,10 @@
 "use client";
 
+/** Record a contribution, withdrawal, opening balance or return. Cash amounts and market values are distinct; infer only a missing quantity, price or amount. */
+
+import { BRAZILIAN_DEBT_PRODUCTS, brazilianFixedIncomeSchema, type BrazilianFixedIncome } from "../domain/brazilian-fixed-income";
+import { englishLabel } from "@/lib/english-labels";
+
 import { Dialog } from "@base-ui/react/dialog";
 import { XIcon } from "@phosphor-icons/react/dist/ssr";
 import { useState, useTransition, type ReactNode } from "react";
@@ -24,6 +29,7 @@ import {
   formatMonthCompact,
   formatPriceBrl,
   parseLocaleNumber,
+  normalizeLocaleNumberInput,
 } from "@/modules/portfolio/presentation/portfolio-format";
 import {
   backdropClass,
@@ -33,31 +39,25 @@ import {
   secondaryButtonClass,
 } from "@/modules/portfolio/ui/edit-dialogs";
 
-// Movimentação de uma posição (specs 056 e 057): aporte, retirada ou
-// rendimento num formulário só, aberto pelo ícone ao lado do lápis, e a
-// correção de uma movimentação do mês aberto. O usuário informa o valor desta
-// operação ou o novo total da posição; o app calcula o resto, marca o que
-// calculou, mostra a divergência quando os números digitados não fecham e a
-// prévia antes → movimentação → depois. Preço executado e cotação do mês são
-// coisas diferentes: a cotação só sugere o preço quando nenhum foi digitado.
 
 export type TransactionTarget = {
   positionId: string;
   assetName: string;
-  /** Nulo nos saldos em reais, sem cotação. */
+
   quoteSymbol: string | null;
   quantity: number;
-  /** Cotação do mês da posição. */
+
   unitPriceBrl: number | null;
   totalBrl: number;
-  /** Rendimento calculado pela taxa (spec 079): sem a opção Rendimento. */
+
   autoIncome?: boolean;
 };
 
-/** Movimentação existente, para corrigir. */
+
 export type TransactionEdit = {
   id: string;
   kind: StoredTransactionKind;
+  fixedIncomePurchase?: { quantity: string | null; contract: BrazilianFixedIncome; maturityDate: string };
   occurredOn: string;
   quantity: number;
   unitPriceBrl: number | null;
@@ -68,20 +68,20 @@ export type TransactionEdit = {
 export type TransactionMonth = {
   id: string;
   label: string;
-  /** AAAA-MM-DD do primeiro e do último dia aceitos (o último nunca depois de hoje). */
+
   firstDay: string;
   lastDay: string;
 };
 
 const KIND_HINTS: Record<TransactionKind, string> = {
-  CONTRIBUTION: "entrou dinheiro novo",
-  WITHDRAWAL: "saiu dinheiro",
-  INCOME: "retorno do investimento",
+  CONTRIBUTION: "new capital added",
+  WITHDRAWAL: "money removed from this investment",
+  INCOME: "investment return",
 };
 
 const MODE_OPTIONS = [
-  { value: "operation", label: "Pelo valor desta operação" },
-  { value: "total", label: "Pelo novo total da posição" },
+  { value: "operation", label: "By transaction amount" },
+  { value: "total", label: "By New Position Total" },
 ];
 
 const popupClass =
@@ -98,7 +98,7 @@ export function PositionTransactionDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Continua definido depois de fechar, para o conteúdo não sumir na animação. */
+
   target: TransactionTarget | null;
   edit?: TransactionEdit | null;
   formKey: number;
@@ -142,10 +142,10 @@ function TransactionForm({
   const quoted = target.quoteSymbol !== null;
   const dollars = target.quoteSymbol === "USD";
   const opening = edit?.kind === "OPENING";
-  // Na correção, o "antes" é a posição sem esta movimentação.
+
   const editDelta = edit ? (edit.kind === "WITHDRAWAL" ? -edit.quantity : edit.quantity) : 0;
-  const before = { quantity: target.quantity - editDelta, marketPrice: target.unitPriceBrl };
-  const [step, setStep] = useState(0);
+  const before = { quantity: (quoted ? target.quantity : target.totalBrl) - editDelta, marketPrice: target.unitPriceBrl };
+  const [step, setStep] = useState(edit ? 1 : 0);
   const [kindSelected, setKindSelected] = useState(Boolean(edit));
   const [modeSelected, setModeSelected] = useState(Boolean(edit));
   const [kind, setKind] = useState<StoredTransactionKind>(edit?.kind ?? "CONTRIBUTION");
@@ -165,7 +165,15 @@ function TransactionForm({
         )
       : [],
   );
-  const [note, setNote] = useState(edit?.note ?? "");
+  const [purchaseQuantity, setPurchaseQuantity] = useState(edit?.fixedIncomePurchase?.quantity ?? "");
+  const normalizedQuantity = normalizeLocaleNumberInput(purchaseQuantity);
+  const [contract, setContract] = useState(edit?.fixedIncomePurchase?.contract);
+  const [maturity, setMaturity] = useState(edit?.fixedIncomePurchase?.maturityDate ?? "");
+  const fixedTerms = contract ? brazilianFixedIncomeSchema.required({ purchaseQuantity: true }).safeParse({
+    ...contract, rate: normalizeLocaleNumberInput(contract.rate), purchaseQuantity: normalizedQuantity,
+  }) : null;
+  const today = new Date().toISOString().slice(0, 10);
+  const dateValid = contract ? Boolean(day >= "2000-01-01" && day <= today && maturity > day) : day >= month.firstDay && day <= month.lastDay;
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
@@ -189,7 +197,7 @@ function TransactionForm({
     );
   };
 
-  // O que aparece num campo do trio: o digitado ou o calculado pelo app.
+
   const shown = (field: TrioField) => {
     if (order.includes(field)) {
       return texts[field];
@@ -202,9 +210,9 @@ function TransactionForm({
     order.includes(field)
       ? null
       : plan.computed.includes(field)
-        ? "calculado"
+        ? "Calculated"
         : field === "unitPrice" && plan.suggestedPrice
-          ? "cotação do mês"
+          ? "monthly quote"
           : null;
 
   const save = () =>
@@ -217,10 +225,10 @@ function TransactionForm({
         quantity: quoted && plan.quantity ? String(plan.quantity) : null,
         unitPriceBrl: quoted && plan.quantity && plan.unitPrice ? String(plan.unitPrice) : null,
         amountBrl: String(plan.amount),
-        note: note.trim() || null,
+        note: edit?.note ?? null,
       };
       const result = edit
-        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction })
+        ? await updateTransactionAction({ monthId: month.id, transactionId: edit.id, transaction, ...(fixedTerms?.success ? { fixedIncome: { contract: fixedTerms.data, maturityDate: maturity } } : {}) })
         : await addTransactionAction({ monthId: month.id, transaction });
 
       if (result.ok) {
@@ -230,7 +238,7 @@ function TransactionForm({
       }
     });
 
-  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && day >= month.firstDay && day <= month.lastDay && !isSaving;
+  const canSave = !plan.issue && plan.amount !== null && plan.amount > 0 && dateValid && (!contract || (fixedTerms?.success && (contract.indexer === "CDI" || Number(fixedTerms.data.rate) <= 100))) && !isSaving;
   const showIssue = plan.issue !== null && (order.length > 0 || texts.total.trim() !== "");
 
   return (
@@ -238,57 +246,58 @@ function TransactionForm({
       <header className="flex items-start gap-4 border-b border-border/70 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold tracking-[-0.02em]">
-            {edit ? `Corrigir ${TRANSACTION_LABELS[edit.kind].toLocaleLowerCase("pt-BR")}` : `Movimentar ${target.assetName}`}
+            {edit ? "Edit Transaction" : `Transactions ${target.assetName}`}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-xs leading-5 text-muted-foreground">
             {edit ? `${target.assetName} · ` : ""}
-            {month.label}
-            {quoted && target.unitPriceBrl ? ` · cotação do mês ${formatPriceBrl(target.unitPriceBrl)}` : ""}
+            {englishLabel(month.label)}
+            {quoted && target.unitPriceBrl ? ` · monthly quote ${formatPriceBrl(target.unitPriceBrl)}` : ""}
           </Dialog.Description>
         </div>
         <Dialog.Close
-          aria-label="Fechar"
+          aria-label="Close"
           className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <XIcon aria-hidden="true" size={14} weight="bold" />
         </Dialog.Close>
       </header>
 
-      <FlowSteps steps={["Movimento", "Valores", "Conferir"]} current={step} />
+      <FlowSteps steps={edit ? ["Values", "Review"] : ["Transaction", "Values", "Review"]} current={edit ? step - 1 : step} />
       <div className="min-h-[min(20rem,42dvh)] flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
         {step === 0 ? <>
-          <FlowHeading title={edit ? "Qual movimento você quer corrigir?" : "O que aconteceu com esta posição?"} description="Escolha o movimento. Os campos da próxima etapa se adaptam à sua escolha." />
-          {opening ? <p className="text-sm text-foreground">Correção do saldo inicial</p> : <Field label="Movimento">
+          <FlowHeading title={edit ? "Which transaction would you like to correct?" : "What happened to this position?"} description="Choose the transaction. The next step adapts to your selection." />
+          {opening ? <p className="text-sm text-foreground">Opening balance correction</p> : <Field label="Transaction">
             <Picker
-              aria-label="Tipo de movimentação"
+              aria-label="Transaction type"
               options={TRANSACTION_KINDS.filter((option) => !(target.autoIncome && option === "INCOME" && edit?.kind !== "INCOME")).map((option) => ({ value: option, label: TRANSACTION_LABELS[option], hint: KIND_HINTS[option] }))}
               value={kindSelected ? kind : null}
               onValueChange={(next) => { setKind(next as TransactionKind); setKindSelected(true); }}
-              placeholder="Escolha o movimento"
+              placeholder="Choose the transaction"
             />
           </Field>}
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span>Saldo antes do movimento</span><span className="font-mono text-foreground">{formatBrl(marketBefore)}{quoted ? ` · ${formatNumber(before.quantity, 8)} ${unit}` : ""}</span></div>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span>Balance before the transaction</span><span className="font-mono text-foreground">{formatBrl(marketBefore)}{quoted ? ` · ${formatNumber(before.quantity, 8)} ${unit}` : ""}</span></div>
         </> : step === 1 ? <>
-          <FlowHeading title={`Informe os valores ${kind === "WITHDRAWAL" ? "da retirada" : kind === "INCOME" ? "do rendimento" : opening ? "do saldo inicial" : "do aporte"}`} description="Preencha os dados que você tem. O app calcula o restante e sinaliza qualquer diferença." />
-          <Field label="Como você quer informar?">
+          <FlowHeading title={`Enter the values ${kind === "WITHDRAWAL" ? "for the withdrawal" : kind === "INCOME" ? "for the return" : opening ? "for the opening balance" : "for the purchase"}`} description={edit?.fixedIncomePurchase ? "Review the purchase and contract details." : "Enter the details you have. The application calculates the rest and highlights any mismatch."} />
+          {edit ? null : <Field label="How would you like to enter this?">
             <Picker
-              aria-label="Como informar"
+              aria-label="Entry method"
               options={MODE_OPTIONS}
               value={modeSelected ? mode : null}
               onValueChange={(next) => { setMode(next as MovementMode); setModeSelected(true); }}
-              placeholder="Escolha como informar os valores"
+              placeholder="Choose how to enter values"
             />
-          </Field>
+          </Field>}
+          {edit ? <p className="mt-3 text-sm font-medium">{quoted && kind === "CONTRIBUTION" ? "Buy" : quoted && kind === "WITHDRAWAL" ? "Sell" : kind === "INCOME" ? "Income / Dividend" : TRANSACTION_LABELS[kind]}</p> : null}
           {modeSelected ? <div className="mt-5 space-y-4">
         {mode === "total" ? (
           <div className="space-y-2">
             {quoted ? (
-              <Field label="Novo total em">
+              <Field label="New total in">
                 <Picker
-                  aria-label="Novo total em"
+                  aria-label="New total in"
                   options={[
-                    { value: "quantity", label: dollars ? "Dólares" : "Quantidade" },
-                    { value: "marketValue", label: "Valor de mercado (R$)" },
+                    { value: "quantity", label: dollars ? "US dollars" : "Quantity" },
+                    { value: "marketValue", label: "Market value (BRL)" },
                   ]}
                   value={totalTarget}
                   onValueChange={(next) => setTotalTarget(next as TotalTarget)}
@@ -298,16 +307,16 @@ function TransactionForm({
             <Field
               label={
                 !quoted
-                  ? "Novo saldo (R$)"
+                  ? "New balance (BRL)"
                   : totalTarget === "marketValue"
-                    ? "Novo valor de mercado (R$)"
+                    ? "New market value (BRL)"
                     : dollars
-                      ? "Novo saldo (US$)"
-                      : "Nova quantidade"
+                      ? "New balance (USD)"
+                      : "New quantity"
               }
             >
               <NumberInput
-                label="Novo total da posição"
+                label="New position total"
                 value={texts.total}
                 onChange={(text) => setTexts((current) => ({ ...current, total: text }))}
               />
@@ -319,23 +328,23 @@ function TransactionForm({
           <div className="grid grid-cols-2 gap-3">
             {mode === "operation" ? (
               <TrioInput
-                label={dollars ? "Dólares (US$)" : plan.kind === "INCOME" ? "Quantidade recebida" : "Quantidade"}
-                aria="Quantidade movimentada"
+                label={dollars ? "US dollars (USD)" : plan.kind === "INCOME" ? "Quantity received" : "Quantity"}
+                aria="Transaction quantity"
                 value={shown("quantity")}
                 badge={badge("quantity")}
                 onChange={(text) => type("quantity", text)}
               />
             ) : (
               <ReadOnlyValue
-                label={dollars ? "Dólares movimentados" : "Quantidade movimentada"}
+                label={dollars ? "Transaction amount in USD" : "Transaction quantity"}
                 value={plan.quantity ? formatNumber(plan.quantity, 12) : "—"}
-                badge="calculado"
+                badge="Calculated"
               />
             )}
             {opening ? null : (
               <TrioInput
-                label={dollars ? "Câmbio executado (R$)" : "Preço executado (R$)"}
-                aria="Preço executado"
+                label={dollars ? "Execution exchange rate (BRL)" : "Execution price (BRL)"}
+                aria="Execution price"
                 value={shown("unitPrice")}
                 badge={badge("unitPrice")}
                 onChange={(text) => type("unitPrice", text)}
@@ -345,93 +354,103 @@ function TransactionForm({
               <TrioInput
                 label={
                   plan.kind === "WITHDRAWAL"
-                    ? "Valor recebido (R$)"
+                    ? "Amount received (BRL)"
                     : plan.kind === "INCOME"
-                      ? "Valor do rendimento (R$)"
+                      ? "Return amount (BRL)"
                       : opening
-                        ? "Valor (R$)"
-                        : "Valor pago (R$)"
+                        ? "Amount (BRL)"
+                        : "Amount paid (BRL)"
                 }
-                aria="Valor da operação"
+                aria="Transaction amount"
                 value={shown("amount")}
                 badge={badge("amount")}
                 onChange={(text) => type("amount", text)}
               />
             ) : (
-              <ReadOnlyValue label="Valor da operação" value={plan.amount ? formatBrl(plan.amount) : "—"} badge="calculado" />
+              <ReadOnlyValue label="Transaction amount" value={plan.amount ? formatBrl(plan.amount) : "—"} badge="Calculated" />
             )}
           </div>
         ) : mode === "operation" ? (
           <Field
             label={
               plan.kind === "WITHDRAWAL"
-                ? "Valor retirado (R$)"
+                ? "Withdrawal amount (BRL)"
                 : plan.kind === "INCOME"
-                  ? "Valor do rendimento (R$)"
+                  ? "Return amount (BRL)"
                   : opening
-                    ? "Saldo inicial (R$)"
-                    : "Valor aportado (R$)"
+                    ? "Opening balance (BRL)"
+                    : edit?.fixedIncomePurchase ? "Total Invested (BRL)" : "Contribution amount (BRL)"
             }
           >
-            <NumberInput label="Valor da operação" value={texts.amount} onChange={(text) => type("amount", text)} />
+            <NumberInput label="Transaction amount" value={texts.amount} onChange={(text) => type("amount", text)} />
           </Field>
         ) : null}
 
+        {contract ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Quantity Purchased"><NumberInput label="Quantity Purchased" value={purchaseQuantity} onChange={setPurchaseQuantity} /></Field>
+            <Field label="Product"><Picker aria-label="Product" value={contract.product} options={BRAZILIAN_DEBT_PRODUCTS.map(value => ({value, label: value}))} onValueChange={value => setContract({...contract, product: value as BrazilianFixedIncome["product"]})} /></Field>
+            <Field label="Issuer"><input aria-label="Issuer" className={inputClass} maxLength={40} value={contract.issuer} onChange={event => setContract({...contract, issuer: event.target.value})} /></Field>
+            <Field label="Purchase Date"><DatePicker aria-label="Purchase Date" value={day} min="2000-01-01" max={today} onChange={setDay} /></Field>
+            <Field label="Maturity Date"><DatePicker aria-label="Maturity Date" value={maturity} min={day} onChange={setMaturity} /></Field>
+            <Field label="Return Type"><Picker aria-label="Return Type" value={contract.indexer} options={[{value:"CDI",label:"Floating Rate · CDI"},{value:"PRE",label:"Fixed Rate"},{value:"IPCA",label:"Inflation-Linked · IPCA"}]} onValueChange={value => setContract({...contract, indexer: value as BrazilianFixedIncome["indexer"], rate: ""})} /></Field>
+            <Field label={contract.indexer === "CDI" ? "Percentage of CDI (%)" : contract.indexer === "IPCA" ? "Annual Yield Above IPCA (%)" : "Annual Yield (%)"}><NumberInput label="Contracted Rate" value={contract.rate} onChange={rate => setContract({...contract, rate})} /></Field>
+          </div>
+        ) : null}
+
         {quoted && plan.kind === "INCOME" && mode === "operation" ? (
-          <p className="text-[11px] leading-5 text-muted-foreground">
-            Sem quantidade, o rendimento é dinheiro recebido, como dividendos: fica registrado sem criar unidades.
+          <p className="text-[11px] leading-5 text-muted-foreground">Without a quantity, the return is cash received, such as dividends: it is recorded without creating units.
           </p>
         ) : null}
 
 
-            {plan.kind !== kind ? <p className="text-xs leading-5 text-warning-foreground">O novo total é {plan.kind === "WITHDRAWAL" ? "menor" : "maior"} que o saldo atual. Este movimento será registrado como {TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("pt-BR")}.</p> : null}
+            {plan.kind !== kind ? <p className="text-xs leading-5 text-warning-foreground">The new total is {plan.kind === "WITHDRAWAL" ? "lower" : "higher"}than the current balance. This transaction will be recorded as {TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("en-GB")}.</p> : null}
           </div> : null}
         </> : <>
-          <FlowHeading title="Confira o movimento" description="O dinheiro movimentado e o valor de mercado aparecem separados. Você pode voltar para ajustar os valores antes de registrar." />
+          <FlowHeading title="Review the transaction" description="Cash movements and market value are shown separately. You can go back to adjust values before recording." />
         <section
-          aria-label="Prévia"
+          aria-label="Preview"
           data-testid="transaction-preview"
           className="grid gap-4 border-y border-border/60 py-5 sm:grid-cols-3"
         >
-          <PreviewCell title="Antes" lines={[quoted ? `${formatNumber(before.quantity, 8)} ${unit}` : null, formatBrl(marketBefore)]} />
+          {edit ? null : <PreviewCell title="Before" lines={[quoted ? `${formatNumber(before.quantity, 8)} ${unit}` : null, formatBrl(marketBefore)]} />}
           <PreviewCell
             title={TRANSACTION_LABELS[plan.kind]}
             tone={plan.kind === "WITHDRAWAL" ? "down" : "up"}
-            note={quoted && plan.quantity && plan.unitPrice ? `${formatPriceBrl(plan.unitPrice)} por ${dollars ? "dólar" : "unidade"}` : undefined}
+            note={quoted && plan.quantity && plan.unitPrice ? `${formatPriceBrl(plan.unitPrice)} per ${dollars ? "US dollar" : "unit"}` : undefined}
             lines={[
               quoted && plan.quantity
                 ? `${sign}${formatNumber(plan.quantity, 8)} ${unit}`
                 : plan.cashIncome
-                  ? "sem unidades"
+                  ? "without units"
                   : null,
               plan.amount ? `${sign}${formatBrl(plan.amount)}` : "—",
             ]}
           />
-          <PreviewCell
-            title="Depois"
+          {edit ? null : <PreviewCell
+            title="After"
             lines={[quoted ? `${formatNumber(Math.max(plan.after, 0), 8)} ${unit}` : null, formatBrl(Math.max(marketAfter, 0))]}
-            note={quoted ? "pela cotação do mês" : undefined}
-          />
+            note={quoted ? "using the monthly quote" : undefined}
+          />}
         </section>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="Dia da movimentação"><DatePicker aria-label="Dia da movimentação" value={day} min={month.firstDay} max={month.lastDay} onChange={setDay} /></Field>
-            <Field label="Observação (opcional)"><input value={note} maxLength={200} aria-label="Observação" onChange={(event) => setNote(event.target.value)} className={inputClass} /></Field>
-          </div>
+          {contract ? <p className="mt-5 text-xs text-muted-foreground">{contract.product} · {contract.issuer} · {contract.rate}% {contract.indexer === "CDI" ? "of CDI" : contract.indexer === "IPCA" ? "above IPCA" : "per year"} · {purchaseQuantity} units<br />Purchase Date {day.split("-").reverse().join("/")} · Maturity Date {maturity.split("-").reverse().join("/")}</p> : <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Field label="Transaction date"><DatePicker aria-label="Transaction date" value={day} min={month.firstDay} max={month.lastDay} onChange={setDay} /></Field>
+          </div>}
         </>}
         {step === 1 && showIssue ? <p role="status" data-testid="transaction-issue" className="mt-4 text-xs leading-5 text-warning-foreground">{plan.issue}</p> : null}
         {error ? <p role="alert" className="mt-4 text-xs text-destructive">{error}</p> : null}
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border/70 bg-background/30 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
-        <span className="hidden text-[11px] text-muted-foreground sm:inline">Etapa {step + 1} de 3</span>
-        {/* As ações ficam juntas à direita (spec 073); a etapa fica à esquerda. */}
+        <span className="hidden text-[11px] text-muted-foreground sm:inline">Step {edit ? step : step + 1} of {edit ? 2 : 3}</span>
+
         <div className="ml-auto flex items-center gap-2">
-          {step === 0 ? <Dialog.Close className={secondaryButtonClass}>Cancelar</Dialog.Close> : <button type="button" onClick={() => setStep(step - 1)} disabled={isSaving} className={secondaryButtonClass}>Voltar</button>}
+          {step === 0 || (edit && step === 1) ? <Dialog.Close className={secondaryButtonClass}>Cancel</Dialog.Close> : <button type="button" onClick={() => setStep(step - 1)} disabled={isSaving} className={secondaryButtonClass}>Back</button>}
           {step < 2 ? <button type="button" onClick={() => setStep(step + 1)} disabled={step === 0 ? !kindSelected && !opening : !modeSelected || !canSave} className={primaryButtonClass}>
-            {step === 1 ? "Conferir movimento" : "Continuar"}
+            {step === 1 ? "Review transaction" : "Continue"}
           </button> : <button type="button" onClick={save} disabled={!canSave} className={primaryButtonClass}>
-            {isSaving ? "Salvando…" : edit ? "Salvar correção" : `Registrar ${TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("pt-BR")}`}
+            {isSaving ? "Saving…" : edit ? "Save Changes" : `Record ${TRANSACTION_LABELS[plan.kind].toLocaleLowerCase("en-GB")}`}
           </button>}
         </div>
       </footer>
@@ -453,7 +472,7 @@ function TrioInput({
   onChange: (text: string) => void;
 }) {
   return (
-    <LabeledValue label={label} badge={badge}>
+    <LabeledValue label={englishLabel(label)} badge={badge}>
       <NumberInput label={aria} value={value} onChange={onChange} computed={badge !== null} />
     </LabeledValue>
   );
@@ -461,9 +480,9 @@ function TrioInput({
 
 function ReadOnlyValue({ label, value, badge }: { label: string; value: string; badge: string }) {
   return (
-    <LabeledValue label={label} badge={badge}>
+    <LabeledValue label={englishLabel(label)} badge={badge}>
       <p
-        aria-label={label}
+        aria-label={englishLabel(label)}
         className="flex h-9 items-center justify-end rounded-lg border border-dashed border-border px-2.5 font-mono text-xs text-muted-foreground"
       >
         {value}
@@ -476,7 +495,7 @@ function LabeledValue({ label, badge, children }: { label: string; badge: string
   return (
     <div>
       <span className="mb-1 flex items-center justify-between gap-2 text-[10px] tracking-[0.08em] text-muted-foreground uppercase">
-        <span className="truncate">{label}</span>
+        <span className="truncate">{englishLabel(label)}</span>
         {badge ? (
           <span className="shrink-0 rounded-full bg-primary/10 px-1.5 text-[9px] tracking-normal text-primary normal-case">
             {badge}
@@ -504,7 +523,7 @@ function NumberInput({
   return (
     <input
       inputMode="decimal"
-      aria-label={label}
+      aria-label={englishLabel(label)}
       aria-invalid={invalid}
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -557,17 +576,14 @@ function formatNumber(value: number, digits: number) {
   let format = FORMATS.get(digits);
 
   if (!format) {
-    format = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits, useGrouping: false });
+    format = new Intl.NumberFormat("en-GB", { maximumFractionDigits: digits, useGrouping: false });
     FORMATS.set(digits, format);
   }
 
   return format.format(value);
 }
 
-/**
- * Dias aceitos numa competência aberta: do primeiro dia do mês até o último,
- * ou até hoje no mês corrente.
- */
+
 export function transactionMonthOf(id: string, referenceDate: Date, label?: string): TransactionMonth {
   const first = referenceDate.toISOString().slice(0, 10);
   const last = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0))

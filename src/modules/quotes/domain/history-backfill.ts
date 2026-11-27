@@ -1,20 +1,15 @@
-// Histórico de fechamento mensal de um ativo novo (spec 029). Sem
-// dependências de banco nem de rede.
 
-/** Meses de histórico buscados ao incluir um ativo novo. */
+
+
 export const HISTORY_BACKFILL_MONTHS = 36;
 
 export type DayValue = {
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   day: string;
   value: number;
 };
 
-/**
- * Último ponto de cada mês, de `fromMonth` (inclusive) a `toMonth` (exclusive),
- * ambos AAAA-MM: o fechamento do mês, mesmo quando o último pregão não é o
- * último dia do calendário.
- */
+
 export function monthEndPoints(points: DayValue[], fromMonth: string, toMonth: string) {
   const closings = new Map<string, DayValue>();
 
@@ -35,7 +30,7 @@ export function monthEndPoints(points: DayValue[], fromMonth: string, toMonth: s
   return closings;
 }
 
-/** Meses AAAA-MM de `fromMonth` (inclusive) a `toMonth` (exclusive). */
+/** YYYY-MM months from `fromMonth` (inclusive) to `toMonth` (exclusive). */
 export function monthsBetween(fromMonth: string, toMonth: string) {
   const months: string[] = [];
   let [year, month] = fromMonth.split("-").map(Number);

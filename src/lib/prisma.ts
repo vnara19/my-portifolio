@@ -1,3 +1,5 @@
+
+/** Scope the PostgreSQL adapter and search_path to the schema explicitly supplied in DATABASE_URL. */
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/generated/prisma/client";
@@ -6,12 +8,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-/**
- * Schema do Postgres indicado em `?schema=` na DATABASE_URL. O Prisma CLI já o
- * usa nas migrações; o adaptador não lê a URL, então o schema é repassado a ele
- * e ao `search_path` da conexão, para as consultas cruas irem ao mesmo lugar.
- * Permite rodar o app e os roteiros num schema de teste do banco local.
- */
+
 export function databaseSchema(connectionString: string) {
   try {
     const schema = new URL(connectionString).searchParams.get("schema");

@@ -1,15 +1,15 @@
-// As rotas que disparam consultas aos provedores só atendem a própria interface.
-// Exigir JSON força o pré-voo do navegador em chamadas de outra origem, e a
-// origem declarada precisa coincidir com o host que recebeu o pedido.
+
+
+
 export function rejectForeignRequest(request: Request): Response | null {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (!contentType.includes("application/json")) {
-    return Response.json({ message: "Envie o pedido como JSON." }, { status: 415 });
+    return Response.json({ message: "Send the request as JSON." }, { status: 415 });
   }
 
   if (request.headers.get("sec-fetch-site") === "cross-site") {
-    return Response.json({ message: "Origem não permitida." }, { status: 403 });
+    return Response.json({ message: "Origin not allowed." }, { status: 403 });
   }
 
   const origin = request.headers.get("origin");
@@ -18,10 +18,10 @@ export function rejectForeignRequest(request: Request): Response | null {
   if (origin && host) {
     try {
       if (new URL(origin).host !== host) {
-        return Response.json({ message: "Origem não permitida." }, { status: 403 });
+        return Response.json({ message: "Origin not allowed." }, { status: 403 });
       }
     } catch {
-      return Response.json({ message: "Origem não permitida." }, { status: 403 });
+      return Response.json({ message: "Origin not allowed." }, { status: 403 });
     }
   }
 

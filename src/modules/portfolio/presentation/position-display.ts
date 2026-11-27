@@ -1,0 +1,65 @@
+import type { AssetType } from "../domain/classification";
+
+/** Listing/contract currency is distinct from crypto units (BTC, Altcoins). */
+export function valuationCurrency(assetType: AssetType, baseCurrency: string): "BRL" | "USD" | "EUR" {
+  if (assetType === "crypto") return baseCurrency === "EUR" || baseCurrency === "BRL" ? baseCurrency : "USD";
+  return baseCurrency === "USD" || baseCurrency === "EUR" ? baseCurrency : "BRL";
+}
+
+export function nativePositionValue(input: { assetType: AssetType; baseCurrency: string; totalBrl: number; quantity: number; usdRate: number | null; eurRate: number | null; bondCost?: number }) {
+  const currency = valuationCurrency(input.assetType, input.baseCurrency);
+  if (input.assetType === "usd-balance" || input.assetType === "eur-balance") return input.quantity;
+  if (input.bondCost !== undefined) return input.bondCost;
+  if (currency === "BRL") return input.totalBrl;
+  const rate = currency === "EUR" ? input.eurRate : input.usdRate;
+  return rate !== null && Number.isFinite(rate) && rate > 0 ? input.totalBrl / rate : null;
+}
+
+/** Cash and balance-only holdings have no security count; never repeat cash as Quantity. */
+export function hasSecurityQuantity(assetType: AssetType, quoteSymbol: string | null) {
+  return !["brl-cash", "usd-balance", "eur-balance"].includes(assetType) && Boolean(quoteSymbol);
+}
+
+/** Convert the stored valuation unit price using the same reporting-month FX as the row. */
+export function nativeUnitPrice(priceBrl: number | null, currency: "BRL" | "USD" | "EUR", usdRate: number | null, eurRate: number | null) {
+  if (priceBrl === null || !Number.isFinite(priceBrl) || priceBrl < 0) return null;
+  if (currency === "BRL") return priceBrl;
+  const rate = currency === "EUR" ? eurRate : usdRate;
+  return rate !== null && Number.isFinite(rate) && rate > 0 ? priceBrl / rate : null;
+}
+
+/** Normalize generated ETF labels without renaming saved assets or repeating their ticker. */
+export function positionTitle(name: string, ticker: string | null, bondIssuer?: string) {
+  if (bondIssuer) return bondIssuer;
+  if (/^Tesouro\s/i.test(name)) {
+    return name.replace(/\s*[·–—]\s*(?:\d{2}\/\d{2}\/(\d{4})|(\d{4})-\d{2}-\d{2})(?:\s*[·–—].*)?$/, (_, year, isoYear) => ` ${year ?? isoYear}`);
+  }
+  if (/^(CDB|LCI|LCA)\s/i.test(name)) {
+    return name.replace(/\s+·\s+\d{4}-\d{2}-\d{2}(?:\s+·\s+.*)?$/, "")
+      .replace(/(\d+\.\d*?[1-9])0+(?=%)|(\d+)\.0+(?=%)/g, "$1$2");
+  }
+  return ticker && /^ETF\s*[-–—]\s*/i.test(name) ? name.replace(/^ETF\s*[-–—]\s*/i, "").trim() : name;
+}
+export function showPositionTicker(name: string, ticker: string | null) {
+  return Boolean(ticker) && !ticker!.startsWith("TD:") && positionTitle(name, ticker).toUpperCase() !== ticker!.replace(/\.(SAO|SA)$/i, "").toUpperCase();
+}
+
+/** Exposure grouping is distinct from the currency used to value an asset. */
+export function exposureCurrency(assetType: AssetType, baseCurrency: string): string {
+  return valuationCurrency(assetType, baseCurrency);
+}
+
+/** Human-readable Treasury names replace internal provider keys across Overview. */
+export function overviewAssetLabel(name:string,ticker:string|null) {
+  return ticker?.startsWith("TD:") ? positionTitle(name,ticker) : ticker?.replace(/\.(SAO|SA)$/i, "") || positionTitle(name,ticker);
+}
+
+/** Chart labels add only the maturity year; the full date stays in details. */
+export function maturityChartLabel(name:string,ticker:string|null,maturityDate:string|null) {
+  const title=positionTitle(name,ticker);
+  return /^(CDB|LCI|LCA)\s/i.test(title)&&maturityDate ? `${title} · ${maturityDate.slice(0,4)}` : overviewAssetLabel(name,ticker);
+}
+
+export function displayMaturityDate(day:string|null|undefined) {
+  return day&&/^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day.slice(8,10)}/${day.slice(5,7)}/${day.slice(0,4)}` : null;
+}

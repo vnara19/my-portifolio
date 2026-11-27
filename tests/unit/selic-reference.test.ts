@@ -12,7 +12,7 @@ const now = new Date(`${today}T15:00:00.000Z`);
 const observation = { observedOn: today, percentAnnual: "14.00", source: "bcb-sgs-432" };
 const history = { source: "bcb-sgs-432", observations: [{ observedOn: today, percentAnnual: "14.00" }] };
 
-test("meta anual usa apenas data válida, não futura, e mantém zero válido", () => {
+test("annual reference rates require valid nonfuture dates and retain valid zero values", () => {
   assert.deepEqual(latestSelicObservation([
     { data: "03/10/2026", valor: "13,75" },
     { data: "04/10/2026", valor: "14.00" },
@@ -21,18 +21,18 @@ test("meta anual usa apenas data válida, não futura, e mantém zero válido", 
     { data: "04/10/2026", valor: "-1" },
   ], today, observation.source), observation);
   assert.equal(latestSelicObservation([{ data: "04/10/2026", valor: "0" }], today, "test").percentAnnual, "0");
-  assert.throws(() => latestSelicObservation([{ data: "05/10/2026", valor: "14" }], today, "test"), /válida/);
+  assert.throws(() => latestSelicObservation([{ data: "05/10/2026", valor: "14" }], today, "test"), /valid/);
 });
 
-test("reserva SOAP lê somente SGS432, ignora bloqueado e não usa outro indexador", () => {
+test("SOAP fallback reads only SGS432 and rejects another indexer", () => {
   const xml = "<root><SERIE ID='12'><ITEM><DATA>4/10/2026</DATA><VALOR>1</VALOR></ITEM></SERIE><SERIE ID='432'><ITEM><DATA>3/10/2026</DATA><VALOR>14</VALOR></ITEM><ITEM><DATA>4/10/2026</DATA><VALOR>15</VALOR><BLOQUEADO>true</BLOQUEADO></ITEM></SERIE></root>";
   const result = parseSelicSoap(xml.replaceAll("<", "&lt;").replaceAll(">", "&gt;"), today);
   assert.deepEqual(result.observations, [{ observedOn: "2026-10-03", percentAnnual: "14" }]);
   assert.equal(result.source, "bcb-sgs-432-soap");
-  assert.throws(() => parseSelicSoap(xml.replace("ID='432'", "ID='11'"), today), /sem a série/);
+  assert.throws(() => parseSelicSoap(xml.replace("ID='432'", "ID='11'"), today), /without the Selic target series/);
 });
 
-test("API JSON é primária, falha usa somente reserva oficial e janela não passa hoje", async () => {
+test("JSON is primary; fallback remains official and the date window ends today", async () => {
   const originalFetch = globalThis.fetch;
   const requests: { url: string; body: string }[] = [];
   globalThis.fetch = async (url, init) => {
@@ -43,19 +43,19 @@ test("API JSON é primária, falha usa somente reserva oficial e janela não pas
   try {
     const result = await fetchSelicTarget("2016-10-05", today);
     assert.equal(result.observations.at(-1)?.percentAnnual, "14");
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     assert.match(requests[0].url, /bcdata.sgs.432\/dados/);
     assert.equal(new URL(requests[0].url).searchParams.get("dataInicial"), "05/10/2016");
     assert.equal(new URL(requests[0].url).searchParams.get("dataFinal"), "04/10/2026");
-    assert.match(requests[1].body, /<dataInicio>05\/10\/2016<\/dataInicio>/);
-    assert.equal(requests[1].url, "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS");
-    assert.match(requests[1].body, /<item>432<\/item>/);
+    assert.match(requests[2].body, /<dataInicio>05\/10\/2016<\/dataInicio>/);
+    assert.equal(requests[2].url, "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS");
+    assert.match(requests[2].body, /<item>432<\/item>/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("o histórico guarda só as mudanças da meta, sem repetir o ponto vigente", () => {
+test("reference history stores rate changes without duplicating an unchanged point", () => {
   const daily = {
     source: "test",
     observations: [
@@ -109,7 +109,7 @@ function rateFixture(initial: ReferenceRate | null = null, initialPoints: Refere
 
 const point = (day: string, percent: string): ReferenceRatePoint => ({ key: "SELIC_TARGET", effectiveOn: new Date(`${day}T00:00:00.000Z`), percentAnnual: new Prisma.Decimal(percent) });
 
-test("consultas concorrentes e repetições dentro de 24h só chamam fonte uma vez", async () => {
+test("concurrent and repeated checks within 15 minutes call the source once", async () => {
   const fixture = rateFixture();
   let calls = 0;
   const starts: string[] = [];
@@ -120,18 +120,18 @@ test("consultas concorrentes e repetições dentro de 24h só chamam fonte uma v
   ]);
   assert.equal(calls, 1);
   assert.deepEqual([one.state, two.state].sort(), ["fetched", "fresh"]);
-  const repeat = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 23 * 60 * 60 * 1000), fetchRate });
+  const repeat = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 14 * 60 * 1000), fetchRate });
   assert.equal(repeat.state, "fresh");
   assert.equal(calls, 1);
-  const next = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 24 * 60 * 60 * 1000), fetchRate });
+  const next = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 15 * 60 * 1000), fetchRate });
   assert.equal(next.state, "fetched");
   assert.equal(calls, 2);
-  // A primeira carga busca dez anos; as seguintes, desde a última observação.
+
   assert.deepEqual(starts, ["2016-10-05", today]);
   assert.deepEqual(fixture.points().map((entry) => entry.percentAnnual.toString()), ["14"]);
 });
 
-test("sem histórico, a taxa já buscada hoje carrega os pontos sem esperar 24h", async () => {
+test("missing history backfills points without waiting another refresh interval", async () => {
   const fixture = rateFixture({ key: "SELIC_TARGET", percentAnnual: new Prisma.Decimal(13.75), observedOn: new Date(today), fetchedAt: now, lastAttemptAt: now, source: "bcb-sgs-432", errorMessage: null });
   let calls = 0;
   const fetchRate = async () => { calls++; return history; };
@@ -141,7 +141,7 @@ test("sem histórico, a taxa já buscada hoje carrega os pontos sem esperar 24h"
   assert.equal(fixture.points().length, 1);
 });
 
-test("falha preserva valor anual e data anteriores e não tenta repetidamente", async () => {
+test("failures retain the previous annual rate and date without repeated requests", async () => {
   const fixture = rateFixture({ key: "SELIC_TARGET", percentAnnual: new Prisma.Decimal(13.75), observedOn: new Date("2026-10-02"), fetchedAt: new Date("2026-10-02"), lastAttemptAt: new Date("2026-10-02"), source: "bcb-sgs-432", errorMessage: null }, [point("2026-09-17", "13.75")]);
   let calls = 0;
   const fetchRate = async () => { calls++; throw new TypeError("offline"); };
@@ -155,7 +155,7 @@ test("falha preserva valor anual e data anteriores e não tenta repetidamente", 
   assert.equal(isQuoteSyncFailure({ state: "idle", selic: result }), true);
 });
 
-test("dev-sync em produção recusa antes de sessão, banco ou provedores", async () => {
+test("production dev-sync rejects before sessions, database or providers", async () => {
   const original = process.env.NODE_ENV;
   const originalFetch = globalThis.fetch;
   let calls = 0;
@@ -170,4 +170,39 @@ test("dev-sync em produção recusa antes de sessão, banco ou provedores", asyn
     if (original === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("transient SGS HTTP 500 retries JSON before using the SOAP fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /^https:\/\/api\.bcb\.gov\.br\//);
+    calls++;
+    return calls === 1 ? new Response("Temporary upstream error", { status: 500 }) : Response.json([{ data: "04/10/2026", valor: "14.00" }]);
+  };
+  try {
+    const result = await fetchSelicTarget(today, today);
+    assert.equal(calls, 2);
+    assert.equal(result.source, "bcb-sgs-432");
+    assert.equal(result.observations[0].percentAnnual, "14.00");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("cached Selic failure retries after 30 minutes and clears after source recovery", async () => {
+  const fixture = rateFixture({ key: "SELIC_TARGET", percentAnnual: new Prisma.Decimal(13.75), observedOn: new Date("2026-10-02"), fetchedAt: new Date("2026-10-02"), lastAttemptAt: new Date("2026-10-02"), source: "bcb-sgs-432", errorMessage: null }, [point("2026-09-17", "13.75")]);
+  let calls = 0;
+  const fetchRate = async () => { calls++; if (calls === 1) throw new TypeError("Banco Central HTTP 500"); return history; };
+  const failed = await syncSelicReference(fixture.prisma, { now, fetchRate });
+  assert.equal(failed.state, "failed");
+  assert.equal(fixture.row()?.percentAnnual?.toString(), "13.75");
+  const early = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 29 * 60_000), fetchRate });
+  assert.equal(early.state, "failed"); assert.equal(calls, 1);
+  const recovered = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 30 * 60_000), fetchRate });
+  assert.equal(recovered.state, "fetched"); assert.equal(calls, 2);
+  assert.equal(fixture.row()?.errorMessage, null);
+  assert.equal(fixture.row()?.percentAnnual?.toString(), "14");
+  const repeated = await syncSelicReference(fixture.prisma, { now: new Date(now.getTime() + 44 * 60_000), fetchRate });
+  assert.equal(repeated.state, "fresh"); assert.equal(calls, 2);
+  assert.equal(isQuoteSyncFailure({ state: "idle", selic: recovered }), false);
 });

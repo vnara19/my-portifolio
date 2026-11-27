@@ -1,96 +1,68 @@
 "use client";
+import type { GainComposition } from "../domain/portfolio-gains";
+import { positionTitle } from "../presentation/position-display";
+import { GainCompositionCard } from "./gain-composition-card";
+import { BondPurchaseCorrectionDialog } from "./bond-purchase-correction-dialog";
+import { TradeCorrectionDialog } from "./trade-correction-dialog";
+import { investmentMonthReturn } from "../domain/position-money";
+import { usePositionMoney } from "./position-money-context";
+
+import { PositionMoneyProvider } from "./position-money-context";
+import { bondCostReturn } from "../domain/international-bond";
+
+import { englishLabel } from "@/lib/english-labels";
 
 import { Dialog } from "@base-ui/react/dialog";
 import NumberFlow from "@number-flow/react";
-import {
-  ArrowLeftIcon,
-  ArrowsDownUpIcon,
-  ChartPieSliceIcon,
-  CoinsIcon,
-  HandCoinsIcon,
-  InfoIcon,
-  MagnifyingGlassIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-  TrendDownIcon,
-  TrendUpIcon,
-} from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeftIcon, ChartPieSliceIcon, CoinsIcon, HandCoinsIcon, InfoIcon, MagnifyingGlassIcon, TrashIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 import { useCallback, useRef, useState, useTransition } from "react";
 
-import {
-  removePositionAction,
-  removeTransactionAction,
-  undoChangeAction,
-  type EditActionResult,
-} from "@/app/actions/edit-month";
+import { removePositionAction, removeTransactionAction, undoChangeAction, type EditActionResult } from "@/app/actions/edit-month";
 import { KpiCard } from "@/components/product/kpi-card";
 import { cn } from "@/lib/utils";
 import type { EditingCatalog } from "@/modules/portfolio/application/get-editing-catalog";
 import type { MonthPosition } from "@/modules/portfolio/application/get-month-positions";
-import type { PositionHistoryView } from "@/modules/portfolio/application/get-position-history";
+import type { PositionHistoryView, PositionTransactionView } from "@/modules/portfolio/application/get-position-history";
 import type { HistorySlot, PositionSummary, PresentSlot } from "@/modules/portfolio/domain/position-history";
 import { categoryColor } from "@/modules/portfolio/presentation/category-colors";
-import {
-  formatBrl,
-  formatPriceBrl,
-} from "@/modules/portfolio/presentation/portfolio-format";
-import { allocationLabel, NO_STRATEGY } from "@/modules/portfolio/presentation/position-filters";
-import {
-  formatEstimatedPrice,
-  formatPoints,
-  formatQuantity,
-  formatSignedBrl,
-  formatUsd,
-  monthLabel,
-  monthRangeLabel,
-  positionHref,
-  positionsTableHref,
-} from "@/modules/portfolio/presentation/position-page";
+
+import { allocationLabel } from "@/modules/portfolio/presentation/position-filters";
+import { formatQuantity, monthLabel, monthRangeLabel, positionHref, positionsTableHref } from "@/modules/portfolio/presentation/position-page";
 import { AssetPriceChart } from "@/modules/portfolio/ui/asset-price-chart";
+import { TreasuryRedemptionTable } from "./treasury-redemption-table";
 import { BalanceChangeChart } from "@/modules/portfolio/ui/balance-change-chart";
 import { backdropClass, centeredPopupClass, secondaryButtonClass } from "@/modules/portfolio/ui/edit-dialogs";
 import { EditToast, handOffToast, type EditToastState } from "@/modules/portfolio/ui/edit-toast";
 import { ChangeKpiCard } from "@/modules/portfolio/ui/kpi-card";
-import { MaturityBadge } from "@/modules/portfolio/ui/maturity-badge";
-import { PositionAttribution } from "@/modules/portfolio/ui/position-attribution";
-import { PositionAllocation } from "@/modules/portfolio/ui/position-allocation";
 import { PositionEvolutionChart } from "@/modules/portfolio/ui/position-evolution-chart";
 import { MonthHighlights } from "@/modules/portfolio/ui/position-highlights";
-import { PositionFormDialog, type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
+import { type PositionFormMonth } from "@/modules/portfolio/ui/position-form-dialog";
 import { PositionMonthsTable } from "@/modules/portfolio/ui/position-months-table";
-import {
-  PositionTransactionDialog,
-  transactionMonthOf,
-  type TransactionEdit,
-} from "@/modules/portfolio/ui/position-transaction-dialog";
+import { PositionTransactionDialog, transactionMonthOf, type TransactionEdit, type TransactionMonth, type TransactionTarget } from "@/modules/portfolio/ui/position-transaction-dialog";
 import { PositionTransactions } from "@/modules/portfolio/ui/position-transactions";
+import { InternationalBondPanel } from "./international-bond-panel";
 import { CdiPanel } from "@/modules/portfolio/ui/cdi-panel";
 import { ratesLabel } from "@/modules/portfolio/presentation/income-rate";
 import { recordedByMonth } from "@/modules/portfolio/domain/position-transactions";
-import { LiquidationDialog } from "@/modules/portfolio/ui/liquidation-dialog";
 
 const SCOPES = ["todas"] as const;
 
-const brlWhole = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const signedPercent = new Intl.NumberFormat("pt-BR", {
+
+const signedPercent = new Intl.NumberFormat("en-GB", {
   style: "percent",
   maximumFractionDigits: 2,
   signDisplay: "exceptZero",
 });
-const sharePercent = new Intl.NumberFormat("pt-BR", {
+const sharePercent = new Intl.NumberFormat("en-GB", {
   style: "percent",
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
 
-/**
- * Edição da posição a partir da página dela (spec 043), com o mesmo formulário
- * da tabela: a posição da competência selecionada, se houver, e o mês, que
- * precisa estar aberto.
- */
+
 export type PositionEditing = {
   position: MonthPosition | null;
   month: PositionFormMonth & { isLocked: boolean };
@@ -98,27 +70,33 @@ export type PositionEditing = {
   catalog: EditingCatalog;
 };
 
-export function PositionDetail({
-  history,
+export function PositionDetail(props: {history: PositionHistoryView | null; editing: PositionEditing | null; composition?: Omit<GainComposition, "historicalReferences"> | null}) {
+  return <PositionMoneyProvider currency={props.history?.displayCurrency ?? "BRL"}><PositionDetailContent {...props} /></PositionMoneyProvider>;
+}
+function PositionDetailContent({
+  history: storedHistory,
   editing,
+  composition,
 }: {
   history: PositionHistoryView | null;
   editing: PositionEditing | null;
+  composition?: Omit<GainComposition, "historicalReferences"> | null;
 }) {
+
+  const history = storedHistory && storedHistory.native ? {...storedHistory,account:storedHistory.native.account,all:storedHistory.all?storedHistory.native.all:null,prices:storedHistory.native.prices} : storedHistory;
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  // Sem rolagem rasa: a faixa de competências mostra só os meses com a posição
-  // no recorte escolhido, e o servidor recalcula (spec 075).
+
+
   const [scopeParam, setScopeParam] = useQueryState("contas", parseAsStringLiteral(SCOPES).withOptions({ shallow: false }));
-  const [form, setForm] = useState({ open: false, key: 0 });
-  const [movement, setMovement] = useState<{ open: boolean; key: number; edit: TransactionEdit | null }>({
+  const [movement, setMovement] = useState<{ open: boolean; key: number; edit: TransactionEdit | null; target?: TransactionTarget; month?: TransactionMonth }>({
     open: false,
     key: 0,
     edit: null,
   });
-  const [liquidation, setLiquidation] = useState({ open: false, key: 0 });
-  // Remover apaga o registro do mês (spec 080); as ações saíram da tabela.
+
+  const [tradeCorrection, setTradeCorrection] = useState<PositionTransactionView | null>(null);
   const [removal, setRemoval] = useState(false);
   const [isDeleting, startDeleting] = useTransition();
   const [isRemoving, startRemoving] = useTransition();
@@ -150,9 +128,8 @@ export function PositionDetail({
         <span className="grid size-12 place-items-center rounded-2xl border border-border bg-card text-primary">
           <MagnifyingGlassIcon aria-hidden="true" size={22} weight="duotone" />
         </span>
-        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Posição não encontrada</h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Nenhuma competência tem esta combinação de conta e ativo.
+        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.04em]">Position not found</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">No reporting month contains this account and asset combination.
         </p>
         <BackLink href={backHref} className="mt-6" />
       </div>
@@ -161,37 +138,41 @@ export function PositionDetail({
 
   const scope: "account" | "all" = scopeParam === "todas" && history.all ? "all" : "account";
   const view = scope === "all" && history.all ? history.all : history.account;
-  const { summary, slots } = view;
-  // Todas as movimentações da posição, não só até o mês selecionado (spec 078):
-  // a liquidação aparece como a última, em qualquer mês aberto.
+  const { slots, summary } = view;
+  const performances = slots.flatMap((slot,index)=>{
+    if(slot.kind!=="present" || !slot.step || slot.month>history.selectedMonth)return [];
+    const previous=slots[index-1];
+    const result=investmentMonthReturn(slot,previous?.kind==="present"?previous.valueBrl:null);
+    return result.amount===null?[]:[{...slot.step,month:slot.month,changeBrl:result.amount,changePercent:result.percent,pricePercent:result.percent}];
+  });
+  const ranked=performances.filter(p=>p.changePercent!==null).sort((a,b)=>b.changePercent!-a.changePercent!);
+  const performanceSummary={...view.summary,monthStep:performances.find(p=>p.month===history.selectedMonth)??null,best:ranked.length>1?ranked[0]:null,worst:ranked.length>1?ranked.at(-1)!:null};
+
+
   const transactions = view.transactions;
   const quoted = Boolean(history.quoteSymbol);
+  const atCost = history.bond?.valuationMode === "Cost";
+  const costReturn = atCost && summary.current ? bondCostReturn(summary.current.valueBrl, transactions.filter((entry) => entry.occurredOn <= history.referenceDay)) : null;
   const dollarBalance = history.quoteSymbol === "USD";
   const current = summary.current;
   const snapshot = current ?? lastPresentUpTo(slots, history.selectedMonth) ?? firstPresent(slots);
   const selectedLabel = monthLabel(history.selectedMonth);
   const firstEver = firstPresent(slots)?.month ?? null;
   const allocations = snapshot?.allocations ?? [];
-  // Uma classificação só, de 100%, aparece como um selo discreto no cabeçalho,
-  // e a cotação ocupa a largura toda (spec 045).
+
+
   const singleAllocation = allocations.length === 1 ? allocations[0] : null;
   const classes = singleAllocation ? [] : [...new Set(allocations.map((slice) => slice.assetClass))];
   const editPosition = editing?.position ?? null;
   const editBlocked = !editing
-    ? "Indisponível."
-    : editing.month.isLocked
-      ? `${selectedLabel} está fechado. Abra o mês pelo cadeado para editar.`
-      : !editPosition
-        ? `Sem a posição em ${selectedLabel}.`
+    ? "Unavailable."
+    : !editPosition
+        ? `No position in ${selectedLabel}.`
         : null;
-  const strategy = snapshot ? (snapshot.strategy ?? NO_STRATEGY) : null;
-  // Qualquer posição com saldo no mês aberto pode ser liquidada (spec 076).
-  const canLiquidate = editBlocked === null && editPosition !== null && !editPosition.liquidated;
-  const usdValue = current && history.usdRate ? current.valueBrl / history.usdRate : null;
-  // A posição terminou numa liquidação (spec 076): o selo aparece em qualquer
-  // mês dela e leva ao mês da saída, onde fica a retirada total.
-  // No próprio mês de uma liquidação, o selo aparece também quando a posição
-  // voltou depois.
+
+
+
+
   const lastSlot = [...slots].reverse().find((slot): slot is PresentSlot => slot.kind === "present") ?? null;
   const exit = current?.liquidated ? current : lastSlot?.liquidated ? lastSlot : null;
   const exitParams = new URLSearchParams(searchParams.toString());
@@ -207,46 +188,39 @@ export function PositionDetail({
         <div className="min-w-0">
           <BackLink href={backHref} />
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] break-words sm:text-[2.65rem]">
-            {history.assetName}
+            {history.bond ? `${history.bond.issuer}${history.maturityDate ? ` · ${formatDayKey(history.maturityDate)}` : ""}` : positionTitle(history.assetName, history.ticker)}
           </h1>
-          <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+          {!history.quoteSymbol?.startsWith("TD:") ? <p className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
-              {history.ticker ?? "SALDO"}
+              {history.ticker ?? "BALANCE"}
             </span>
-            <span>
-              {scope === "all"
-                ? `Todas as contas: ${allAccountLabels(history).join(", ")}`
-                : history.institutionName}
-            </span>
-          </p>
+
+          </p> : null}
           <div className="mt-3 flex flex-wrap items-center gap-1.5" data-testid="position-chips">
             {exit ? (
               exit.month === history.selectedMonth ? (
                 <span
                   data-testid="position-liquidated"
                   className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/85"
-                >
-                  Liquidada em {formatDayKey(exit.liquidatedOn)}
+                >Liquidated on {formatDayKey(exit.liquidatedOn)}
                 </span>
               ) : (
                 <Link
                   href={`${pathname}?${exitParams.toString()}`}
                   data-testid="position-liquidated"
                   className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/85 outline-none transition-colors hover:border-primary/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  Liquidada em {formatDayKey(exit.liquidatedOn)}
+                >Liquidated on {formatDayKey(exit.liquidatedOn)}
                 </Link>
               )
             ) : null}
             {singleAllocation ? (
               <span
-                title="Rateio: 100% nesta classificação"
+                title="Asset classification"
                 data-testid="position-single-allocation"
                 className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-muted-foreground"
               >
                 <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(singleAllocation.assetClass) }} />
                 {allocationLabel(singleAllocation)}
-                <span className="font-mono text-[10px] text-muted-foreground/70">100%</span>
               </span>
             ) : null}
             {classes.map((assetClass) => (
@@ -255,91 +229,35 @@ export function PositionDetail({
                 className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] text-muted-foreground"
               >
                 <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(assetClass) }} />
-                {assetClass}
+                {englishLabel(assetClass)}
               </span>
             ))}
-            {strategy ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
-                <span className="size-1.5 rounded-full" style={{ backgroundColor: categoryColor(strategy) }} />
-                {strategy}
-              </span>
+            {history.maturityDate && !history.bond ? (
+              <span className="font-mono text-xs text-muted-foreground">{formatDayKey(history.maturityDate)}</span>
             ) : null}
-            {history.maturityDate ? (
-              <MaturityBadge
-                maturityDate={history.maturityDate}
-                referenceDay={history.referenceDay}
-                className="px-2.5 py-1 text-[11px]"
-                testId="position-maturity"
-              />
-            ) : null}
-            {/* Liquidez e vencimento ficam no cabeçalho, junto da classificação (spec 073). */}
-            {/* Rentabilidade das classificações (spec 079), com o cálculo automático marcado. */}
+
+
             {history.rate ? (
               <span
                 data-testid="position-rate"
                 className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
               >
                 <span className="text-foreground/85">{ratesLabel(history.rate.parts)}</span>
-                {history.rate.automatic ? <span className="text-primary">· automático</span> : null}
-              </span>
-            ) : null}
-            {history.liquidity ? (
-              <span
-                data-testid="position-liquidity"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
-              >
-                Liquidez <span className="font-mono text-foreground/85">{history.liquidity}</span>
+                {history.rate.automatic ? <span className="text-primary">· Automatic</span> : null}
               </span>
             ) : null}
           </div>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
-          <p className="font-mono text-xs text-muted-foreground">
-            {current
-              ? `${formatBrl(current.valueBrl)}${usdValue !== null ? ` · US$ ${formatUsd(usdValue)}` : ""}`
-              : `Sem a posição em ${selectedLabel}`}
-          </p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {canLiquidate ? (
-              <button
-                type="button"
-                onClick={() => setLiquidation((value) => ({ open: true, key: value.key + 1 }))}
-                title={`Retirada total em ${selectedLabel}`}
-                className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <HandCoinsIcon aria-hidden="true" size={14} weight="bold" />
-                Liquidar
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setMovement((value) => ({ open: true, key: value.key + 1, edit: null }))}
-              disabled={editBlocked !== null}
-              title={editBlocked ?? `Aporte, retirada ou rendimento em ${selectedLabel}`}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <ArrowsDownUpIcon aria-hidden="true" size={14} weight="bold" />
-              Movimentar
-            </button>
-            <button
-              type="button"
-              onClick={() => setForm((value) => ({ open: true, key: value.key + 1 }))}
-              disabled={editBlocked !== null}
-              title={editBlocked ?? `Editar a posição em ${selectedLabel}`}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-foreground outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <PencilSimpleIcon aria-hidden="true" size={14} weight="bold" />
-              Editar posição
-            </button>
             {editBlocked === null ? (
               <button
                 type="button"
                 onClick={() => setRemoval(true)}
-                title={`Remover o registro de ${selectedLabel}`}
+                title={`Remove the record for ${selectedLabel}`}
                 className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card/70 px-3.5 text-xs font-semibold text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring/50"
               >
-                <TrashIcon aria-hidden="true" size={14} />
-                Remover
+                <TrashIcon aria-hidden="true" size={14} />Remove
               </button>
             ) : null}
           </div>
@@ -348,14 +266,14 @@ export function PositionDetail({
 
       {history.all ? (
         <section
-          aria-label="Contas do ativo"
+          aria-label="Asset accounts"
           className="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3 sm:flex-row sm:items-center"
         >
-          <div role="group" aria-label="Contas consideradas" className="flex w-fit items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+          <div role="group" aria-label="Included accounts" className="flex w-fit items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
             {(
               [
-                { key: "account", label: "Nesta conta" },
-                { key: "all", label: "Todas as contas" },
+                { key: "account", label: "In this account" },
+                { key: "all", label: "All accounts" },
               ] as const
             ).map((option) => (
               <button
@@ -368,20 +286,19 @@ export function PositionDetail({
                   scope === option.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {option.label}
+                {englishLabel(option.label)}
               </button>
             ))}
           </div>
-          <p className="text-xs leading-5 text-muted-foreground">
-            Também em{" "}
+          <p className="text-xs leading-5 text-muted-foreground">Also in{" "}
             {history.otherAccounts.map((other, index) => (
               <span key={other.accountId}>
-                {index > 0 ? (index === history.otherAccounts.length - 1 ? " e " : ", ") : null}
+                {index > 0 ? (index === history.otherAccounts.length - 1 ? " and " : ", ") : null}
                 <Link
                   href={positionHref(other.accountId, history.assetId, searchParams)}
                   className="rounded-sm text-foreground/85 underline decoration-border underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  {other.label}
+                  Position {index + 1}
                 </Link>{" "}
                 ({monthRangeLabel(other.firstMonth, other.lastMonth)})
               </span>
@@ -395,33 +312,39 @@ export function PositionDetail({
           <InfoIcon aria-hidden="true" className="shrink-0 text-muted-foreground" size={16} weight="duotone" />
           <p className="text-xs text-muted-foreground">
             {summary.state === "before" && firstEver
-              ? `A posição entra no histórico em ${monthLabel(firstEver)}; em ${selectedLabel} ainda não existia.`
+              ? `The position first appears in ${monthLabel(firstEver)}; in ${selectedLabel} did not exist yet.`
               : summary.lastPresentMonth
-                ? `Sem a posição em ${selectedLabel}${scope === "account" ? " nesta conta" : ""}. Última competência com ela: ${monthLabel(summary.lastPresentMonth)}.`
-                : `Sem a posição em ${selectedLabel}.`}
+                ? `No position in ${selectedLabel}${scope === "account" ? " in this account" : ""}. Last reporting month containing it: ${monthLabel(summary.lastPresentMonth)}.`
+                : `No position in ${selectedLabel}.`}
           </p>
         </div>
       ) : null}
 
+      {storedHistory?.native?.error ? <p role="status" className="mt-5 text-sm text-warning-foreground">{storedHistory.native.error}</p> : null}
       <div className="mt-7">
         <PositionKpis
-          summary={summary}
+          grossBalance={Boolean(history.cdi?.contract)}
+          lifetime={scope === "account" ? history.cdi?.lifetime : null}
+          costReturn={costReturn}
+          atCost={atCost}
+          treasuryMaturity={history.quoteSymbol?.startsWith("TD:") ? history.maturityDate : null}
+          summary={performanceSummary}
           quoted={quoted}
           quoteSymbol={history.quoteSymbol}
           ticker={history.ticker}
-          usdValue={usdValue}
+          approximateCost={storedHistory?.native?.estimated ?? false}
           selectedLabel={selectedLabel}
           firstEver={firstEver}
           dollarBalance={dollarBalance}
         />
       </div>
 
-      {/* Ordem da página (specs 073 e 075): evolução; cotação, sozinha na
-          largura; variação mensal e de onde veio a variação lado a lado; rateio;
-          mês a mês e movimentações, recolhidos. */}
+      {composition !== undefined ? <GainCompositionCard composition={composition} /> : null}
+
+
+
       <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="position-evolution-title">
-        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">
-          Evolução da posição
+        <h2 id="position-evolution-title" className="text-base font-semibold tracking-[-0.025em]">{atCost ? "Carrying Value Over Time" : "Position Value Over Time"}
         </h2>
         <div className="mt-5">
           <PositionEvolutionChart
@@ -438,13 +361,13 @@ export function PositionDetail({
       {history.prices && history.quoteSymbol ? (
         <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="asset-price-title">
           <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">
-            {history.quoteSymbol === "USD" ? "Cotação do dólar" : `Cotação de ${history.ticker ?? history.quoteSymbol}`}
+            {history.quoteSymbol === "USD" ? "USD exchange rate" : `Quote for ${history.quoteSymbol?.startsWith("TD:") ? history.assetName : history.ticker ?? history.quoteSymbol}`}
           </h2>
           <PriceHistoryNotice state={history.history} />
           <div className="mt-5">
             <AssetPriceChart
               prices={history.prices}
-              symbol={history.quoteSymbol}
+              symbol={history.quoteSymbol.startsWith("TD:") ? history.assetName : history.quoteSymbol}
               selectedMonth={history.selectedMonth}
               averagePriceBrl={summary.averagePriceBrl}
               averageLabel={averagePriceLabel(summary.costSource, dollarBalance)}
@@ -458,30 +381,30 @@ export function PositionDetail({
         </section>
       ) : quoted ? (
         <section className="premium-panel mt-6 rounded-[24px] p-5 sm:p-7" aria-labelledby="asset-price-title">
-          <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">
-            Cotação de {history.ticker ?? history.quoteSymbol}
+          <h2 id="asset-price-title" className="text-base font-semibold tracking-[-0.025em]">Quote for {history.quoteSymbol?.startsWith("TD:") ? history.assetName : history.ticker ?? history.quoteSymbol}
           </h2>
           <PriceHistoryNotice state={history.history} />
         </section>
       ) : null}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2 [&>*]:min-w-0">
+      <div className="mt-6 grid grid-cols-1 gap-6 [&>*]:min-w-0">
         <section className="premium-panel rounded-[24px] p-5 sm:p-7" aria-labelledby="balance-change-title">
-          <h2 id="balance-change-title" className="text-base font-semibold tracking-[-0.025em]">
-            Variação mensal do saldo
+          <h2 id="balance-change-title" className="text-base font-semibold tracking-[-0.025em]">Monthly Balance Change
           </h2>
           <div className="mt-5">
             <BalanceChangeChart slots={slots} selectedMonth={history.selectedMonth} scope={scope} />
           </div>
         </section>
-        <PositionAttribution summary={summary} quoted={quoted} />
       </div>
 
-      {singleAllocation ? null : (
-        <PositionAllocation slot={snapshot} selectedMonth={history.selectedMonth} classTotals={history.classTotals} />
-      )}
 
-      {history.cdi ? <CdiPanel cdi={history.cdi} /> : null}
+
+      {history.quoteSymbol?.startsWith("TD:") ? (
+        <TreasuryRedemptionTable transactions={transactions} asOf={history.referenceDay} quote={history.treasuryQuote}
+          symbol={history.quoteSymbol} maturity={history.maturityDate} selicStockBrl={history.treasurySelicStockBrl} />
+      ) : null}
+      {history.bond ? <InternationalBondPanel faceHeld={editing?.position?.quantity ?? Number(history.bond.faceAmount)} bond={history.bond} asOf={history.referenceDay} /> : null}
+      {history.cdi ? <CdiPanel cdi={history.cdi} maturity={history.maturityDate} /> : null}
 
       <PositionMonthsTable
         slots={slots}
@@ -493,118 +416,72 @@ export function PositionDetail({
         recorded={recordedByMonth(view.transactions)}
       />
 
+
       <PositionTransactions
         transactions={transactions}
         quoted={quoted}
         dollars={dollarBalance}
-        editableMonthId={editing && !editing.month.isLocked ? editing.month.id : null}
-        editableAccountId={history.accountId}
+        editableMonthId="all"
+        editableAccountId={scope === "all" ? null : history.accountId}
         showAccountLabels={scope === "all"}
         removing={isRemoving}
-        onEdit={(entry) =>
+        onEdit={(entry) => {
+          if (entry.bondPurchase) { setTradeCorrection(entry); return; }
+          if (quoted && !dollarBalance && (entry.kind === "CONTRIBUTION" || entry.kind === "WITHDRAWAL")) { setTradeCorrection(entry); return; }
           setMovement((value) => ({
             open: true,
             key: value.key + 1,
+            month: transactionMonthOf(entry.monthId, new Date(`${entry.month}-01T00:00:00Z`)),
+            target: { positionId: entry.positionId!, assetName: history.assetName, quoteSymbol: history.quoteSymbol, quantity: storedHistory?.account.slots.find((s): s is PresentSlot=>s.kind==="present" && s.month===entry.month)?.quantity ?? entry.quantity, unitPriceBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.unitPriceBrl ?? null, totalBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl },
             edit: {
               id: entry.id,
+              fixedIncomePurchase: entry.fixedIncomePurchase,
               kind: entry.kind,
               occurredOn: entry.occurredOn,
               quantity: entry.quantity,
-              unitPriceBrl: entry.unitPriceBrl,
-              amountBrl: entry.amountBrl,
+              unitPriceBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.unitPriceBrl ?? entry.unitPriceBrl,
+              amountBrl: storedHistory?.transactions.find(t=>t.id===entry.id)?.amountBrl ?? entry.amountBrl,
               note: entry.note,
             },
-          }))
-        }
+          }));
+        }}
         onRemove={(entry) =>
           startRemoving(async () => {
             const result = await removeTransactionAction({ monthId: entry.monthId, transactionId: entry.id });
-            notify(result);
+            if (result.ok && entry.bondPurchase) {
+              handOffToast({ tone: "success", message: result.message, undoToken: result.undoToken });
+              router.push(backHref);
+              router.refresh();
+            } else notify(result);
           })
         }
       />
 
-      {editing && editPosition ? (
-        <LiquidationDialog
-          open={liquidation.open}
-          onOpenChange={(open) => setLiquidation((value) => ({ ...value, open }))}
-          target={{
-            positionId: editPosition.id,
-            assetName: editPosition.assetName,
-            quantity: editPosition.quantity,
-            quoteSymbol: editPosition.quoteSymbol,
-            totalBrl: editPosition.totalBrl,
-          }}
-          formKey={liquidation.key}
-          month={transactionMonthOf(editing.month.id, editing.month.referenceDate, editing.month.label)}
-          onSaved={notify}
-        />
-      ) : null}
-
-      {editing && editPosition ? (
+      {tradeCorrection?.bondPurchase ? <BondPurchaseCorrectionDialog entry={tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : tradeCorrection ? <TradeCorrectionDialog entry={tradeCorrection} original={storedHistory?.transactions.find(t=>t.id===tradeCorrection.id) ?? tradeCorrection} onClose={()=>setTradeCorrection(null)} onSaved={notify}/> : null}
+      {movement.target && movement.month ? (
         <PositionTransactionDialog
           open={movement.open}
           onOpenChange={(open) => setMovement((value) => ({ ...value, open }))}
-          target={{
-            positionId: editPosition.id,
-            assetName: editPosition.assetName,
-            quoteSymbol: editPosition.quoteSymbol,
-            quantity: editPosition.quantity,
-            unitPriceBrl: editPosition.unitPriceBrl,
-            totalBrl: editPosition.totalBrl,
-            autoIncome: Boolean(editPosition.autoIncome && editPosition.calculationStartDate),
-          }}
+          target={movement.target}
           edit={movement.edit}
           formKey={movement.key}
-          month={transactionMonthOf(editing.month.id, editing.month.referenceDate, editing.month.label)}
+          month={movement.month}
           onSaved={notify}
         />
       ) : null}
 
-      {editing ? (
-        <PositionFormDialog
-          open={form.open}
-          onOpenChange={(open) => setForm((value) => ({ ...value, open }))}
-          target={editPosition ? { mode: "edit", position: editPosition } : null}
-          formKey={form.key}
-          catalog={editing.catalog}
-          month={editing.month}
-          occupied={new Set(editing.occupied)}
-          onSaved={notify}
-        />
-      ) : null}
       {editing && editPosition ? (
         <Dialog.Root open={removal} onOpenChange={(open) => !isDeleting && setRemoval(open)}>
           <Dialog.Portal>
             <Dialog.Backdrop className={backdropClass} />
             <Dialog.Popup className={centeredPopupClass}>
-              <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">
-                Remover {editPosition.assetName}?
+              <Dialog.Title className="text-base font-semibold tracking-[-0.02em]">Remove {editPosition.assetName}?
               </Dialog.Title>
-              {/* Remover apaga o registro do mês; liquidar encerra a posição com
-                  uma retirada total e guarda o histórico (spec 076). */}
-              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-                Apaga o registro de {editPosition.institutionName} em {selectedLabel}.
-                {editPosition.liquidated ? "" : " Para encerrar a posição e manter o histórico, liquide."}
-              </Dialog.Description>
+
+              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{editPosition.assetType === "savings" ? "Removes this Savings registration from all reporting months. Use Withdraw Money for an actual withdrawal. Undo is available." : `Deletes this position in ${selectedLabel}. Record an actual sale from Positions to preserve its history.`}</Dialog.Description>
               <div className="mt-6 flex flex-wrap justify-end gap-2">
-                <Dialog.Close className={secondaryButtonClass} disabled={isDeleting}>
-                  Cancelar
+                <Dialog.Close className={secondaryButtonClass} disabled={isDeleting}>Cancel
                 </Dialog.Close>
-                {editPosition.liquidated ? null : (
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={() => {
-                      setRemoval(false);
-                      setLiquidation((value) => ({ open: true, key: value.key + 1 }));
-                    }}
-                    className={cn(secondaryButtonClass, "gap-2")}
-                  >
-                    <HandCoinsIcon aria-hidden="true" size={14} weight="bold" />
-                    Liquidar
-                  </button>
-                )}
                 <button
                   type="button"
                   disabled={isDeleting}
@@ -613,8 +490,8 @@ export function PositionDetail({
                       const result = await removePositionAction({ monthId: editing.month.id, positionId: editPosition.id });
                       setRemoval(false);
                       if (result.ok) {
-                        // Sem o registro, a página iria a outro mês: a tabela do
-                        // mês mostra o aviso, com o desfazer (spec 080).
+
+
                         handOffToast({ tone: "success", message: result.message, undoToken: result.undoToken });
                         router.push(backHref);
                       } else {
@@ -625,7 +502,7 @@ export function PositionDetail({
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-destructive px-3.5 text-xs font-semibold text-white outline-none transition-[background-color,transform] duration-150 hover:bg-destructive/90 focus-visible:ring-3 focus-visible:ring-destructive/40 active:scale-[0.98] disabled:opacity-50"
                 >
                   <TrashIcon aria-hidden="true" size={14} />
-                  {isDeleting ? "Removendo…" : "Remover"}
+                  {isDeleting ? "Removing…" : "Remove"}
                 </button>
               </div>
             </Dialog.Popup>
@@ -638,50 +515,63 @@ export function PositionDetail({
 }
 
 function PositionKpis({
+  grossBalance,
+  lifetime,
+  costReturn,
+  atCost,
+  treasuryMaturity,
   summary,
   quoted,
   quoteSymbol,
   ticker,
-  usdValue,
+  approximateCost,
   selectedLabel,
   firstEver,
   dollarBalance,
 }: {
+  grossBalance?: boolean;
+  lifetime?: NonNullable<PositionHistoryView["cdi"]>["lifetime"];
+  costReturn?: { gainBrl: number; contributionsBrl: number } | null;
+  atCost?: boolean;
+  treasuryMaturity?: string | null;
   summary: PositionSummary;
   quoted: boolean;
   quoteSymbol: string | null;
   ticker: string | null;
-  usdValue: number | null;
+  approximateCost: boolean;
   selectedLabel: string;
   firstEver: string | null;
   dollarBalance: boolean;
 }) {
+ const { formatBrl, formatSignedBrl, formatEstimatedPrice, currency } = usePositionMoney();
+
   const current = summary.current;
   const step = summary.monthStep;
   const applied = summary.appliedBrl ?? null;
-  const gain = summary.gainBrl ?? null;
-  const gainPercent = gain !== null && applied ? (gain / applied) * 100 : null;
+  const gain = costReturn?.gainBrl ?? summary.gainBrl ?? null;
+  const denominator = costReturn?.contributionsBrl ?? applied;
+  const gainPercent = gain !== null && denominator ? (gain / denominator) * 100 : null;
   const average = summary.averagePriceBrl;
   const absent = !current
     ? summary.state === "before" && firstEver
-      ? `Entra em ${monthLabel(firstEver)}`
-      : `Sem a posição em ${selectedLabel}`
+      ? `Opens in ${monthLabel(firstEver)}`
+      : `No position in ${selectedLabel}`
     : null;
-  const liquidatedOn = current?.liquidated ? `Liquidada em ${formatDayKey(current.liquidatedOn)}` : null;
+  const liquidatedOn = current?.liquidated ? `Liquidated on ${formatDayKey(current.liquidatedOn)}` : null;
 
   return (
-    <section aria-label="Indicadores da posição" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <section aria-label="Position metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
-        label="Valor da posição"
+        label={atCost ? "Carrying Value at Cost" : grossBalance ? "Gross Value" : "Value"}
         testId="position-value"
-        valueText={current ? brlWhole.format(current.valueBrl) : "—"}
+        valueText={current ? formatBrl(current.valueBrl) : "—"}
         icon={<CoinsIcon aria-hidden="true" size={18} weight="duotone" />}
         value={
           current ? (
             <NumberFlow
               value={current.valueBrl}
-              format={{ style: "currency", currency: "BRL", maximumFractionDigits: 0 }}
-              locales="pt-BR"
+              format={{ style: "currency", currency, maximumFractionDigits: 2 }}
+              locales="en-GB"
             />
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -690,25 +580,19 @@ function PositionKpis({
         detail={
           absent ??
           liquidatedOn ??
-          (quoted && current!.priceBrl !== null
-            ? `${formatQuantity(current!.quantity, quoteSymbol, ticker)} × ${formatPriceBrl(current!.priceBrl)}`
-            : usdValue !== null
-              ? `US$ ${formatUsd(usdValue)}`
-              : "Saldo em reais")
+          (grossBalance ? `Estimated Net Value ${lifetime?.netBrl != null ? formatBrl(lifetime.netBrl) : "—"}` : treasuryMaturity ? formatDayKey(treasuryMaturity) : quoted ? formatQuantity(current!.quantity, quoteSymbol, ticker) : `${currency} balance`)
         }
       />
 
-      {/* Valor aplicado e rendimento (spec 073): o quanto entrou de dinheiro e o
-          quanto ele rendeu, com o saldo inicial valendo como aplicação. O preço
-          médio fica aqui desde que os destaques saíram (spec 075). */}
+
       <KpiCard
-        label="Valor aplicado"
+        label="Invested Amount"
         testId="position-applied"
-        valueText={current && applied !== null ? brlWhole.format(applied) : "—"}
+        valueText={current && applied !== null ? formatBrl(applied) : "—"}
         icon={<HandCoinsIcon aria-hidden="true" size={18} weight="duotone" />}
         value={
           current && applied !== null ? (
-            <NumberFlow value={applied} format={{ style: "currency", currency: "BRL", maximumFractionDigits: 0 }} locales="pt-BR" />
+            <NumberFlow value={applied} format={{ style: "currency", currency, maximumFractionDigits: 2 }} locales="en-GB" />
           ) : (
             <span className="text-muted-foreground">—</span>
           )
@@ -716,11 +600,11 @@ function PositionKpis({
         detail={
           absent ??
           (quoted && average !== null ? (
-            <span data-testid="position-average-price" title={averagePriceLabel(summary.costSource, dollarBalance)}>
-              {dollarBalance ? "Câmbio médio" : "Preço médio"} {formatEstimatedPrice(average)}
+            <span data-testid="position-average-price" title={approximateCost ? "Converted using monthly exchange rates where dated execution FX is unavailable." : averagePriceLabel(summary.costSource, dollarBalance)}>
+              {dollarBalance ? "Average Exchange Rate" : "Average Price"} {formatEstimatedPrice(average)}
             </span>
           ) : firstEver ? (
-            `Desde ${monthLabel(firstEver)}`
+            `Since ${monthLabel(firstEver)}`
           ) : (
             "—"
           ))
@@ -728,8 +612,13 @@ function PositionKpis({
       />
 
       <KpiCard
-        label="Rendimento"
+        label={grossBalance ? "Gross Gain" : "Total Gain"}
         testId="position-gain"
+        footer={current && gain !== null && lifetime?.netBrl != null ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Estimated Net Interest {formatSignedBrl(lifetime.netBrl - lifetime.investedBrl)}
+          </p>
+        ) : null}
         valueText={current && gain !== null ? formatSignedBrl(gain) : "—"}
         icon={
           gain !== null && gain < 0 ? (
@@ -743,25 +632,25 @@ function PositionKpis({
         detail={
           absent ??
           (gainPercent !== null
-            ? `${signedPercent.format(gainPercent / 100)} sobre o aplicado`
+            ? `${signedPercent.format(gainPercent / 100)} on invested capital`
             : current?.liquidated
-              ? "Realizado na saída"
+              ? "Realized on withdrawal"
               : "—")
         }
       />
 
       <ChangeKpiCard
-        label="Variação no mês"
+        label="Monthly Change"
         testId="position-month-change"
         changeBrl={step?.changeBrl ?? null}
         changePercent={step?.changePercent ?? null}
-        detailSuffix={step?.acrossMissing ? `desde ${monthLabel(step.fromMonth)}` : undefined}
+        detailSuffix={step?.acrossMissing ? `since ${monthLabel(step.fromMonth)}` : undefined}
         emptyDetail={monthChangeEmpty(summary, selectedLabel)}
         footer={<MonthHighlights summary={summary} quoted={quoted} />}
       />
 
       <KpiCard
-        label="Participação na carteira"
+        label="Allocation"
         testId="position-share"
         valueText={current ? sharePercent.format(current.share / 100) : "—"}
         icon={<ChartPieSliceIcon aria-hidden="true" size={18} weight="duotone" />}
@@ -770,7 +659,7 @@ function PositionKpis({
             <NumberFlow
               value={current.share / 100}
               format={{ style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 }}
-              locales="pt-BR"
+              locales="en-GB"
             />
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -778,37 +667,33 @@ function PositionKpis({
         }
         detail={
           summary.shareChange !== null && summary.previousMonth
-            ? `${formatPoints(summary.shareChange)} desde ${monthLabel(summary.previousMonth)}`
+            ? `${summary.shareChange > 0 ? "Up from" : summary.shareChange < 0 ? "Down from" : "Unchanged from"} ${sharePercent.format((current!.share - summary.shareChange) / 100)} in ${monthLabel(summary.previousMonth)}`
             : current
-              ? `De ${formatBrl(current.portfolioTotalBrl)} na carteira`
-              : `Sem a posição em ${selectedLabel}`
+              ? `From ${formatBrl(current.portfolioTotalBrl)} in the portfolio`
+              : `No position in ${selectedLabel}`
         }
       />
     </section>
   );
 }
 
-/** Rótulo do preço médio pela origem do custo (spec 073). */
+
 function averagePriceLabel(costSource: PositionSummary["costSource"], dollarBalance: boolean) {
-  const subject = dollarBalance ? "Câmbio médio" : "Preço médio";
-  return costSource === "known" ? `${subject} de compra` : costSource === "opening" ? `${subject} com saldo inicial` : `${subject} estimado`;
+  const subject = dollarBalance ? "Average Exchange Rate" : "Average Price";
+  return costSource === "known" ? `${subject} at purchase` : costSource === "opening" ? `${subject} with opening balance` : `${subject} (estimated)`;
 }
 
 function PriceHistoryNotice({ state }: { state: PositionHistoryView["history"] }) {
   if (state?.state === "pending") {
     return (
-      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-primary">
-        Preparando o histórico de cotações deste ativo. Ele aparece depois da próxima atualização automática, em até
-        uma hora.
+      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-primary">Quote history is pending. Automatic updates will request the available history.
       </p>
     );
   }
 
   if (state?.state === "failed") {
     return (
-      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-destructive">
-        O histórico de cotações ainda não foi carregado ({state.error}). A atualização automática tenta de novo uma
-        vez por dia.
+      <p data-testid="price-history-pending" className="mt-2 text-[11px] text-destructive">Quote history has not loaded yet ({state.error}). Automatic updates retry once per day.
       </p>
     );
   }
@@ -820,7 +705,7 @@ function BackLink({ href, className }: { href: string; className?: string }) {
   return (
     <Link
       href={href}
-      aria-label="Voltar para Posições"
+      aria-label="Back to Positions"
       className={cn(
         "group inline-flex items-center gap-1.5 rounded-md text-[11px] font-semibold tracking-[0.16em] text-primary uppercase outline-none transition-colors hover:text-primary/80 focus-visible:ring-2 focus-visible:ring-ring/50",
         className,
@@ -831,26 +716,25 @@ function BackLink({ href, className }: { href: string; className?: string }) {
         size={12}
         weight="bold"
         className="transition-transform duration-150 group-hover:-translate-x-0.5"
-      />
-      Posições
+      />Positions
     </Link>
   );
 }
 
 function monthChangeEmpty(summary: PositionSummary, selectedLabel: string) {
   if (summary.state !== "present") {
-    return `Sem a posição em ${selectedLabel}`;
+    return `No position in ${selectedLabel}`;
   }
 
   if (!summary.previousMonth) {
-    return "Primeira competência do histórico";
+    return "First reporting month in history";
   }
 
   if (!summary.previousPresent) {
-    return `Entrou em ${selectedLabel}; sem a posição em ${monthLabel(summary.previousMonth)}`;
+    return `Opened in ${selectedLabel}; no position in ${monthLabel(summary.previousMonth)}`;
   }
 
-  return "Sem comparação";
+  return "No comparison";
 }
 
 function firstPresent(slots: HistorySlot[]) {
@@ -862,11 +746,9 @@ function lastPresentUpTo(slots: HistorySlot[], month: string) {
   return candidates.at(-1) ?? null;
 }
 
-function allAccountLabels(history: PositionHistoryView) {
-  return [history.institutionName, ...history.otherAccounts.map((other) => other.label)];
-}
 
-/** AAAA-MM-DD como DD/MM/AAAA. */
+
+
 function formatDayKey(day: string | null) {
   return day ? day.split("-").reverse().join("/") : "—";
 }

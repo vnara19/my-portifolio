@@ -1,5 +1,7 @@
 "use client";
 
+import { englishLabel } from "@/lib/english-labels";
+
 import { Slider } from "@base-ui/react/slider";
 import {
   useEffect,
@@ -13,11 +15,11 @@ import {
 
 import { cn } from "@/lib/utils";
 
-// O deslizante anda de 1 em 1 ponto; o campo numérico ao lado continua aceitando valor quebrado.
+
 const SLIDER_STEP = 1;
-// No toque, o dedo precisa andar esta distância na horizontal, em pixels, para o gesto virar arraste.
+
 const TOUCH_DRAG_THRESHOLD = 8;
-// Folga em volta do polegar, em pixels, para o toque contar como pegar o polegar e não o trilho.
+
 const THUMB_TOUCH_SLOP = 12;
 
 const KEY_DIRECTION: Partial<Record<string, 1 | -1>> = {
@@ -29,14 +31,7 @@ const KEY_DIRECTION: Partial<Record<string, 1 | -1>> = {
   PageDown: -1,
 };
 
-/**
- * Deslizante de 1 em 1 ponto. Um valor quebrado digitado no campo, como 12,5, é exibido na posição exata e
- * só muda quando o usuário arrasta o deslizante ou usa as setas; nesse caso as teclas vão para o inteiro
- * mais distante dentro do passo, em vez de arredondar e depois somar um passo.
- *
- * No toque, encostar o dedo não muda nada: o valor só muda num arraste horizontal, e um gesto vertical
- * que comece sobre o deslizante rola a página.
- */
+
 export function StepSlider({
   value,
   max,
@@ -69,8 +64,7 @@ export function StepSlider({
     onChange(wholeStepFrom(shown, direction * increment, max));
   };
 
-  // O `input type="range"` oculto guarda o valor ajustado ao passo, 16 para 15,5. Ajustes que passam por
-  // ele, como os gestos de leitores de tela, seguem a regra das setas a partir do valor exibido.
+
   const stepNativeFromFraction = (event: FormEvent<HTMLDivElement>) => {
     const input = event.target;
     if (!(input instanceof HTMLInputElement) || Number.isInteger(shown)) {
@@ -107,7 +101,7 @@ export function StepSlider({
           <Slider.Indicator className="rounded-full bg-primary" />
           <Slider.Thumb
             ref={thumbRef}
-            aria-label={label}
+            aria-label={englishLabel(label)}
             getAriaValueText={(_formatted, current) => valueText(current)}
             onKeyDown={stepFromFraction}
             onChangeCapture={stepNativeFromFraction}
@@ -122,13 +116,7 @@ export function StepSlider({
   );
 }
 
-/**
- * Gesto de toque do deslizante. O Base UI muda o valor assim que o dedo encosta e trata qualquer movimento
- * como arraste, o que fazia a rolagem da página, ao passar por uma lista de deslizantes, mudar metas e
- * arredondar valores quebrados. Aqui o toque é interceptado antes de chegar ao Base UI: um gesto vertical
- * fica com o navegador, que rola a página graças ao `touch-action: pan-y`; um toque sem movimento não muda
- * nada; só um arraste horizontal muda o valor, de 1 em 1 ponto. O mouse continua com o Base UI.
- */
+
 function useTouchDrag({
   rootRef,
   controlRef,
@@ -169,7 +157,7 @@ function useTouchDrag({
       if (!control || !thumb) {
         return null;
       }
-      // Mesma geometria do `thumbAlignment="edge"`: o centro do polegar anda de meia largura a meia largura.
+
       const travel = control.width - thumb.width;
       if (travel <= 0) {
         return null;
@@ -200,7 +188,7 @@ function useTouchDrag({
         const dx = Math.abs(event.clientX - gesture.startX);
         const dy = Math.abs(event.clientY - gesture.startY);
         if (dy >= TOUCH_DRAG_THRESHOLD && dy >= dx) {
-          // Gesto vertical: é rolagem, e o navegador já cuida dela.
+
           finish();
           return;
         }
@@ -227,7 +215,7 @@ function useTouchDrag({
       if (event.pointerType === "mouse") {
         return;
       }
-      // Sem propagar, o Base UI não vê o toque e não muda o valor ao encostar o dedo.
+
       event.stopPropagation();
       if (gesture || !event.isPrimary) {
         return;
@@ -239,7 +227,7 @@ function useTouchDrag({
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        // Pegando o polegar, ele acompanha o dedo sem saltar; fora dele, vai para onde o dedo está.
+
         thumbOffset: onThumb ? event.clientX - center : 0,
         dragging: false,
         last: readCurrent().value,
@@ -249,7 +237,7 @@ function useTouchDrag({
       document.addEventListener("pointercancel", onPointerEnd);
     };
 
-    // O Base UI também escuta `touchstart` direto no controle; o toque não deve chegar até ele.
+
     const onTouchStart = (event: TouchEvent) => event.stopPropagation();
 
     root.addEventListener("pointerdown", onPointerDown, { capture: true });
@@ -264,8 +252,7 @@ function useTouchDrag({
   return dragging;
 }
 
-// De um valor quebrado, anda até o inteiro mais distante sem passar do passo: de 12,5, +1 leva a 13, −1 a 12,
-// +10 a 22 e −10 a 3. O resultado fica entre 0 e o máximo do deslizante.
+
 function wholeStepFrom(value: number, delta: number, max: number) {
   const next = delta > 0 ? Math.floor(value + delta) : Math.ceil(value + delta);
   return Math.min(Math.max(next, 0), max);

@@ -1,25 +1,11 @@
-# Documentação do projeto
+# Project documentation
 
-Esta pasta receberá documentação destinada principalmente a humanos:
-arquitetura, decisões arquiteturais, regras de negócio, explicações
-funcionais e técnicas e guias de desenvolvimento.
+These documents describe the current English-language investment workspace.
+Historical discovery notes and specifications remain under `.ai/` in their original
+language and are read-only historical context unless a user requests their revision.
 
-O contexto de descoberta e trabalho dos agentes está em
-`../.ai/README.md`.
-
-## Guias disponíveis
-
-- [Guia de estilos](style-guide.md): cores, componentes, estados e
-  acessibilidade compartilhados por todas as áreas; leitura obrigatória
-  antes de alterar interfaces.
-- [Decisões de arquitetura e funcionamento](architecture.md):
-  escolhas confirmadas e questões ainda em aberto.
-- [Fluxo de Git e commits](git-workflow.md): aprovação do usuário,
-  padrão das mensagens e organização do histórico.
-
-Quando um documento daqui for a fonte principal de um assunto,
-os entrypoints e documentos de `.ai/` devem referenciá-lo,
-sem manter outra versão do mesmo conteúdo.
-
-Nenhuma decisão arquitetural da aplicação é estabelecida por este
-arquivo. A documentação será acrescentada conforme o projeto evoluir.
+- [Architecture](architecture.md): data boundaries and runtime behavior.
+- [Style guide](style-guide.md): shared visual rules and accessibility.
+- [Git workflow](git-workflow.md): Preview and production approval.
+- [Backup format](backup-format.md): compatibility and safe restore.
+- [Quote sync](quote-sync-job.md): market-data jobs and credentials.

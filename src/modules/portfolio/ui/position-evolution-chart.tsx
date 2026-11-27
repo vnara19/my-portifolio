@@ -1,23 +1,17 @@
 "use client";
+import { usePositionMoney } from "./position-money-context";
 
+import { englishLabel } from "@/lib/english-labels";
+
+import { investmentMonthReturn } from "../domain/position-money";
+import { CHART_PERIODS, periodStart, monthlyObservationTime } from "../domain/chart-period";
 import { useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Brush,
-  Line,
-  ReferenceArea,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { cn } from "@/lib/utils";
 import type { HistorySlot } from "@/modules/portfolio/domain/position-history";
-import { formatBrl, formatPriceBrl, formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
-import { formatQuantity, monthLabel } from "@/modules/portfolio/presentation/position-page";
+import { formatSharePercent } from "@/modules/portfolio/presentation/portfolio-format";
+import { monthLabel } from "@/modules/portfolio/presentation/position-page";
 import { useTouchTooltip } from "@/modules/portfolio/ui/use-touch-tooltip";
 
 type EvolutionRow = {
@@ -28,26 +22,14 @@ type EvolutionRow = {
   applied: number | null;
 } & Record<string, number | null | string | HistorySlot>;
 
-const PRESETS: { key: string; label: string; months: number | "ytd" | "all" }[] = [
-  { key: "6m", label: "6M", months: 6 },
-  { key: "12m", label: "12M", months: 12 },
-  { key: "ytd", label: "YTD", months: "ytd" },
-  { key: "all", label: "Tudo", months: "all" },
-];
+const PRESETS = CHART_PERIODS;
 
 const GAP_FILL = "oklch(1 0 0 / 0.035)";
 
-/**
- * Valor da posição mês a mês, com o calendário inteiro desde a entrada: meses
- * sem competência ficam sombreados e, quando a posição existe dos dois lados,
- * ligados por um traço; meses em que a posição falta interrompem a linha.
- */
+
 export function PositionEvolutionChart({
   slots,
   selectedMonth,
-  quoted,
-  quoteSymbol,
-  ticker,
   scopeLabel,
 }: {
   slots: HistorySlot[];
@@ -55,23 +37,26 @@ export function PositionEvolutionChart({
   quoted: boolean;
   quoteSymbol: string | null;
   ticker: string | null;
-  /** "desta conta" ou "da carteira", para o texto das ausências. */
+
   scopeLabel: "account" | "all";
 }) {
+ const { formatBrl } = usePositionMoney();
+
   const touch = useTouchTooltip();
 
   const { rows, bridges, missingRuns, defaultEnd } = useMemo(() => buildRows(slots, selectedMonth), [slots, selectedMonth]);
+  const [selectedPeriod, setSelectedPeriod] = useState("all");
   const [rangeState, setRange] = useState<{ key: string; range: [number, number] } | null>(null);
   const rangeKey = `${rows.length}:${rows[0]?.month ?? ""}`;
   const range: [number, number] =
-    rangeState && rangeState.key === rangeKey ? rangeState.range : [0, Math.max(defaultEnd, 0)];
+    rangeState && rangeState.key === rangeKey ? rangeState.range : [0, Math.max(rows.length - 1, 0)];
 
   if (rows.length === 0) {
     return null;
   }
 
   const selectedRow = rows.find((row) => row.month === selectedMonth);
-  // Valor aplicado em toda posição que o tenha (spec 073), não só nas cotadas.
+
   const hasApplied = rows.some((row) => row.applied !== null);
   const appliedEstimated = rows.some(
     (row) => row.slot.kind === "present" && row.applied !== null && row.slot.recorded === null,
@@ -93,51 +78,43 @@ export function PositionEvolutionChart({
       return;
     }
 
-    setRange({ key: rangeKey, range: [Math.max(defaultEnd - months + 1, 0), defaultEnd] });
+    if (months === 1) {
+      const cutoff = periodStart(monthlyObservationTime(rows[defaultEnd].month), "1m");
+      const first = rows.findIndex(row => monthlyObservationTime(row.month) >= cutoff);
+      setRange({ key: rangeKey, range: [Math.max(0, first), defaultEnd] });
+      return;
+    }
+    setRange({ key: rangeKey, range: [Math.max(defaultEnd - months, 0), defaultEnd] });
   };
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <ul aria-label="Legenda" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <ul aria-label="Legend" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="h-0.5 w-3.5 rounded-full bg-primary" />
-            Valor da posição
+            <span className="h-0.5 w-3.5 rounded-full bg-primary" />Position value
           </li>
           {hasApplied ? (
             <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="applied-legend">
               <span className="w-3.5 border-t border-dashed border-muted-foreground" />
-              {appliedEstimated ? "Valor aplicado (estimado)" : "Valor aplicado"}
+              {appliedEstimated ? "Invested amount (estimated)" : "Invested amount"}
             </li>
           ) : null}
           {missingRuns.length > 0 ? (
             <li className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="size-2.5 rounded-[3px] border border-border" style={{ backgroundColor: GAP_FILL }} />
-              Sem competência no histórico
+              <span className="size-2.5 rounded-[3px] border border-border" style={{ backgroundColor: GAP_FILL }} />No reporting month in history
             </li>
           ) : null}
         </ul>
 
-        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.key}
-              type="button"
-              onClick={() => applyPreset(preset.months)}
-              className="rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
+
       </div>
 
-      {/* Sem clique para trocar de mês (spec 078): o gráfico só mostra a
-          indicação, e o mês muda pela faixa de competências ou pelo mês a mês. */}
+
       <div className="h-[300px] w-full" data-testid="position-evolution-chart" {...touch.containerProps}>
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart
-            data={rows}
+            data={rows.slice(range[0], range[1] + 1)}
             margin={{ top: 8, right: 4, bottom: 0, left: 4 }}
           >
             <defs>
@@ -154,6 +131,8 @@ export function PositionEvolutionChart({
               minTickGap={12}
             />
             <YAxis
+              tickCount={10}
+              minTickGap={18}
               axisLine={false}
               tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
               tickFormatter={(value: number) => formatBrl(value, { compact: true })}
@@ -192,9 +171,6 @@ export function PositionEvolutionChart({
                 return (
                   <EvolutionTooltip
                     row={row}
-                    quoted={quoted}
-                    quoteSymbol={quoteSymbol}
-                    ticker={ticker}
                     scopeLabel={scopeLabel}
                   />
                 );
@@ -202,19 +178,19 @@ export function PositionEvolutionChart({
             />
             <Area
               dataKey="value"
-              name="Valor da posição"
+              name="Position value"
               type="monotone"
               stroke="var(--primary)"
               strokeWidth={2}
               fill="url(#position-value-fill)"
               connectNulls={false}
-              dot={(props) => <ValueDot {...props} rows={rows} selectedMonth={selectedMonth} />}
+              dot={(props) => <ValueDot {...props} rows={rows.slice(range[0], range[1] + 1)} selectedMonth={selectedMonth} />}
               activeDot={{ r: 4, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }}
             />
             {hasApplied ? (
               <Line
                 dataKey="applied"
-                name="Valor aplicado"
+                name="Invested amount"
                 type="stepAfter"
                 stroke="var(--muted-foreground)"
                 strokeOpacity={0.8}
@@ -240,23 +216,23 @@ export function PositionEvolutionChart({
                 legendType="none"
               />
             ))}
-            <Brush
-              dataKey="label"
-              height={26}
-              startIndex={range[0]}
-              endIndex={range[1]}
-              onChange={(next) => {
-                if (typeof next.startIndex === "number" && typeof next.endIndex === "number") {
-                  setRange({ key: rangeKey, range: [next.startIndex, next.endIndex] });
-                }
-              }}
-              fill="oklch(1 0 0 / 0.02)"
-              stroke="var(--border)"
-              travellerWidth={8}
-            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
+        <div className="mt-4 grid grid-cols-3 gap-1 sm:grid-cols-6">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              aria-pressed={selectedPeriod === preset.key}
+              onClick={() => { setSelectedPeriod(preset.key); applyPreset(preset.months); }}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 ${selectedPeriod === preset.key ? "bg-white/[0.06] text-foreground" : "text-muted-foreground"}`}
+            >
+              {englishLabel(preset.label)}
+              <span className={cn("mt-1 block font-mono text-[10px]", periodGain(rows, preset.months, defaultEnd).startsWith("-") ? "text-destructive" : "text-primary")}>{periodGain(rows, preset.months, defaultEnd)}</span>
+            </button>
+          ))}
+        </div>
     </div>
   );
 }
@@ -276,8 +252,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     applied: slot.kind === "present" ? slot.appliedBrl : null,
   }));
 
-  // Um traço por lacuna atravessada: a posição existe dos dois lados e não
-  // houve competência sem ela no meio.
+
   const bridges: string[] = [];
   let lastPresent = -1;
 
@@ -298,8 +273,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     lastPresent = index;
   });
 
-  // Sombra de cada sequência de meses sem competência, de uma competência
-  // vizinha à outra, porque o eixo de categorias não dá largura a um ponto só.
+
   const missingRuns: { key: string; from: string; to: string }[] = [];
   let runStart = -1;
 
@@ -318,8 +292,7 @@ function buildRows(slots: HistorySlot[], selectedMonth: string) {
     }
   });
 
-  // Uma posição que saiu da carteira abre até o mês da saída, ou até a
-  // competência selecionada, em vez de uma cauda vazia até hoje.
+
   const lastPresentIndex = rows.findLastIndex((row) => row.slot.kind === "present");
   const selectedIndex = rows.findIndex((row) => row.month === selectedMonth);
   const defaultEnd = Math.min(
@@ -370,52 +343,43 @@ function ValueDot({
 
 function EvolutionTooltip({
   row,
-  quoted,
-  quoteSymbol,
-  ticker,
   scopeLabel,
 }: {
   row: EvolutionRow;
-  quoted: boolean;
-  quoteSymbol: string | null;
-  ticker: string | null;
   scopeLabel: "account" | "all";
 }) {
+ const { formatBrl } = usePositionMoney();
+
   const slot = row.slot;
 
   return (
     <div className="max-w-[260px] rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
-      <p className="text-[11px] font-medium text-foreground">{row.label}</p>
+      <p className="text-[11px] font-medium text-foreground">{englishLabel(row.label)}</p>
       {slot.kind === "missing" ? (
-        <p className="mt-1 text-[11px] text-muted-foreground">Sem competência no histórico</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">No reporting month in history</p>
       ) : slot.kind === "absent" ? (
         <>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {scopeLabel === "account" ? "Fora desta conta" : "Fora da carteira"}
+            {scopeLabel === "account" ? "Outside this account" : "Outside the portfolio"}
           </p>
           {slot.elsewhere.length > 0 ? (
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Em {slot.elsewhere.join(", ")}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">In {slot.elsewhere.join(", ")}</p>
           ) : null}
         </>
       ) : (
         <>
           <p className="mt-1 font-mono text-xs text-foreground">{formatBrl(slot.valueBrl)}</p>
-          {quoted && slot.priceBrl !== null ? (
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-              {formatQuantity(slot.quantity, quoteSymbol, ticker)} × {formatPriceBrl(slot.priceBrl)}
-            </p>
-          ) : null}
           <div className={cn("mt-2 space-y-1")}>
             {slot.appliedBrl !== null ? (
               <>
-                <TooltipRow label="Valor aplicado" value={formatBrl(slot.appliedBrl)} />
-                <TooltipRow label="Rendimento" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
+                <TooltipRow label="Invested amount" value={formatBrl(slot.appliedBrl)} />
+                <TooltipRow label="Total Gain" value={formatBrl(slot.gainBrl ?? slot.valueBrl - slot.appliedBrl)} />
               </>
             ) : null}
-            <TooltipRow label="Da carteira" value={formatSharePercent(slot.share)} />
+            <TooltipRow label="Allocation" value={formatSharePercent(slot.share)} />
           </div>
           {scopeLabel === "all" ? (
-            <p className="mt-1.5 text-[10px] text-muted-foreground">Em {slot.accounts.join(", ")}</p>
+            <p className="mt-1.5 text-[10px] text-muted-foreground">In {slot.accounts.join(", ")}</p>
           ) : null}
         </>
       )}
@@ -426,8 +390,27 @@ function EvolutionTooltip({
 function TooltipRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className="text-[10px] text-muted-foreground">{englishLabel(label)}</span>
       <span className="ml-auto font-mono text-[10px] text-muted-foreground">{value}</span>
     </div>
   );
+}
+
+function periodGain(rows: EvolutionRow[], months: number | "ytd" | "all", end: number) {
+ if (months === 1) {
+  const cutoff = periodStart(monthlyObservationTime(rows[end].month), "1m");
+  // Exact trailing returns require a valuation at the boundary; monthly snapshots alone are insufficient.
+  if (!rows.some(row => monthlyObservationTime(row.month) === cutoff)) return "—";
+ }
+ const start = months === "all" ? 0 : months === "ytd" ? Math.max(0, rows.findIndex(r => r.month.startsWith(rows[end].month.slice(0,4))) - 1) : Math.max(0, end - months);
+ let factor = 1, count = 0;
+ for(let i = start + 1; i <= end; i++) {
+  const slot = rows[i].slot;
+  if(slot.kind !== "present") return "—";
+  const percent = investmentMonthReturn(slot, rows[i-1].value).percent;
+  if(percent === null) return "—";
+  factor *= 1 + percent / 100; count++;
+ }
+ const result = (factor - 1) * 100;
+ return count ? `${result >= 0 ? "+" : ""}${result.toFixed(2)}%` : "—";
 }

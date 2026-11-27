@@ -14,6 +14,6 @@ export function confirmDiscardChanges() {
   }
 
   return window.confirm(
-    `Há ${pendingChanges} ${pendingChanges === 1 ? "alteração não salva" : "alterações não salvas"}. Sair e descartá-las?`,
+    `There are ${pendingChanges} ${pendingChanges === 1 ? "unsaved change" : "unsaved changes"}. Leave and discard them?`,
   );
 }

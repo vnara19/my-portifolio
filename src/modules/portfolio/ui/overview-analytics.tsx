@@ -1,0 +1,70 @@
+"use client";
+import { useMemo, useState } from "react";
+import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, usePlotArea, type RectangleProps } from "recharts";
+import { monthlyProfitability, profitHistory, riskMetrics } from "../domain/overview-analytics";
+import { CHART_PERIODS, periodStart, type ChartPeriod } from "../domain/chart-period";
+import type { TwrObservation } from "../domain/time-weighted-return";
+import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
+import type { OverviewData } from "../application/get-overview-data";
+import { formatCurrency } from "../presentation/portfolio-format";
+import { RiskGauge } from "./risk-gauge";
+import { RiskHelp } from "./risk-help";
+import { hasDisplayedHoldingGain, holdingPerformanceScale } from "../presentation/holding-performance-scale";
+import { HoldingPerformanceRow, PerformanceScale } from "./performance-bars";
+import { useTouchTooltip } from "./use-touch-tooltip";
+
+const percent=(n:number)=>`${n>=0?"+":""}${n.toFixed(2)}%`;
+const button="rounded-full px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary";
+const selected=" bg-primary/15 text-primary";
+const panel="premium-panel mt-6 min-w-0 rounded-[24px] p-5 sm:p-7";
+
+export function OverviewAnalytics({overview,observations,usd,benchmark,rate,labels,asOf}:{overview:OverviewData;observations:TwrObservation[];usd:TwrObservation[];benchmark:Sp500Benchmark;rate:number|null;labels:Record<string,string>;asOf:string}){
+ const [profitSeries,setProfitSeries]=useState<"both"|"profit"|"realized">("both");
+ const [year,setYear]=useState("all");
+ const [period,setPeriod]=useState<ChartPeriod>("all");
+ const [filter,setFilter]=useState("all");
+ const [sold,setSold]=useState(false);
+ const [absolute,setAbsolute]=useState(false);
+ const touch=useTouchTooltip();
+ const rows=useMemo(()=>monthlyProfitability(observations,benchmark.points,asOf),[observations,benchmark.points,asOf]);
+ const risks=useMemo(()=>riskMetrics(rows,rate),[rows,rate]);
+ const years=[...new Set(rows.map(p=>p.month.slice(0,4)))].reverse();
+ const ttm=new Date(`${asOf.slice(0,7)}-01T00:00:00Z`);ttm.setUTCMonth(ttm.getUTCMonth()-11);
+ const months=rows.filter(r=>year==="all"||year==="ttm"&&r.month>=ttm.toISOString().slice(0,7)||r.month.startsWith(year));
+
+ const start=periodStart(Date.parse(asOf),period);
+ const history=useMemo(()=>overview.gains.totalUsd===null?[]:profitHistory(observations,usd,overview.realizedHistory,[],true),[observations,usd,overview.realizedHistory,overview.gains.totalUsd]);
+ const profits=useMemo(()=>history.filter(p=>Date.parse(p.day)>=start&&p.day<=asOf),[history,start,asOf]);
+ const profitValues=profits.flatMap(point=>point.profit===null?[]:[point.profit]);
+ const profitMax=Math.max(0,...profitValues),profitMin=Math.min(0,...profitValues);
+ const profitZero=profitMax===profitMin?1:profitMax/(profitMax-profitMin);
+ const holdings=overview.holdingResults.filter(r=>sold||!r.sold).map(r=>({...r,label:overview.distribution.assets.find(a=>a.key===r.assetId)?.label??labels[r.assetId]??"Asset",result:r.totalUsd,percentage:r.totalUsd===null||r.principal<=0?null:r.totalUsd/r.principal*100})) .filter(r=>hasDisplayedHoldingGain(absolute?r.result:r.percentage)).filter(r=>filter==="all"||filter==="gainers"&&r.totalUsd!==null&&r.totalUsd>0||filter==="losers"&&r.totalUsd!==null&&r.totalUsd<0).sort((a,b)=>(absolute?b.result??-Infinity:b.percentage??-Infinity)-(absolute?a.result??-Infinity:a.percentage??-Infinity));
+ const scale=holdingPerformanceScale(holdings.map(r=>(absolute?r.result:r.percentage)??0));
+ return <>
+  <section className={panel} aria-label="Portfolio Profitability">
+   <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">Portfolio Profitability</h2><div className="flex max-w-full flex-wrap gap-1" aria-label="Profitability year">{["all","ttm",...years].map(y=><button key={y} type="button" aria-pressed={year===y} title={y==="ttm"?"Trailing 12 Months":undefined} className={button+(year===y?selected:"")} onClick={()=>setYear(y)}>{y==="all"?"All":y==="ttm"?"TTM":y}</button>)}</div></div>
+   <div className="h-[300px] w-full min-w-0" {...touch.containerProps}><ResponsiveContainer width="100%" height="100%"><BarChart data={months} margin={{left:0,right:8,top:10,bottom:0}}><CartesianGrid vertical={false} strokeDasharray="3 5" stroke="var(--border)"/><XAxis dataKey="month" tick={{fontSize:11}} tickFormatter={v=>new Intl.DateTimeFormat("en-GB",{month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(`${String(v).split(":")[0]}-01`))}/><YAxis tickCount={10} interval={0} minTickGap={18} width={48} tick={{fontSize:11}} tickFormatter={v=>`${v}%`}/><Tooltip shared cursor={<ProfitabilityCursor/>} content={({active,payload})=>{
+ const entry=payload?.[0];if(!active||!entry)return null;
+ const month=entry.payload?.month;
+ const label=typeof month==="string"&&/^\d{4}-\d{2}$/.test(month)?new Intl.DateTimeFormat("en-GB",{month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(`${month}-01`)):"";
+ return <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs leading-5 shadow-xl"><p className="text-muted-foreground">{label}</p>{[{key:"portfolio",label:"Portfolio %",color:"#4086ff"},{key:"benchmark",label:"SPX %",color:"#48c9db"}].map(item=><p key={item.key} className="flex items-center gap-2"><span className="size-2 rounded-full" style={{backgroundColor:item.color}}/>{item.label}<span className="ml-auto font-mono">{typeof entry.payload?.[item.key]==="number"?percent(entry.payload[item.key]):"—"}</span></p>)}</div>;
+ }}/><Legend content={()=><div className="mt-2 flex justify-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 bg-[#4086ff]"/>Portfolio %</span><span className="flex items-center gap-1.5"><span className="size-2 bg-[#48c9db]"/>SPX %</span></div>}/><Bar dataKey="portfolio" name="Portfolio %" fill="#4086ff" activeBar={false} isAnimationActive={false} radius={[3,3,0,0]}/><Bar dataKey="benchmark" name="SPX %" fill="#48c9db" activeBar={false} isAnimationActive={false} radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>
+  </section>
+  <section className={panel} aria-label="Profit">
+   <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">Profit</h2><div className="flex flex-wrap" aria-label="Profit period">{CHART_PERIODS.map(p=><button key={p.key} type="button" aria-pressed={period===p.key} className={button+(period===p.key?selected:"")} onClick={()=>setPeriod(p.key)}>{p.label}</button>)}</div></div>
+   <div className="h-[320px] min-w-0" {...touch.containerProps}>{profits.length?<ResponsiveContainer width="100%" height="100%"><ComposedChart data={profits} margin={{left:0,right:12,top:10,bottom:0}}><defs><linearGradient id="profit-fill" x1="0" y1="0" x2="0" y2="1"><stop offset={profitZero} stopColor="#12b5a5"/><stop offset={profitZero} stopColor="var(--destructive)"/></linearGradient></defs><CartesianGrid vertical={false} strokeDasharray="3 5" stroke="var(--border)"/><ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.85} strokeWidth={1.5}/><XAxis dataKey="day" minTickGap={45} tick={{fontSize:11}} tickFormatter={v=>new Intl.DateTimeFormat("en-GB",{month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(v))}/><YAxis tickCount={10} interval={0} minTickGap={18} width={70} tick={{fontSize:11}} tickFormatter={v=>`$${Intl.NumberFormat("en",{notation:"compact"}).format(v)}`}/><Tooltip content={({active,payload,label})=>!active||!payload?.length?null:<div className="rounded-xl border border-border bg-card px-3 py-2 text-xs leading-5 shadow-xl"><p className="text-muted-foreground">{String(label)}</p>{payload.filter(item=>typeof item.value==="number").map(item=><p key={String(item.dataKey)} className="flex gap-4"><span style={{color:item.dataKey==="profit"?(Number(item.value)<0?"var(--destructive)":"#12b5a5"):"#a1a1aa"}}>{item.name}</span><span className="ml-auto font-mono">{formatCurrency(Number(item.value),"USD",true)}</span></p>)}</div>}/><Legend content={()=><div className="mt-2 flex flex-wrap justify-center gap-4 text-xs">{[{key:"realized",label:"Realized P&L",color:"#a1a1aa"},{key:"profit",label:"Total Profit",color:"#12b5a5"}].map(item=><button key={item.key} type="button" aria-pressed={profitSeries==="both"||profitSeries===item.key} className="flex items-center gap-1.5 rounded px-1 py-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary" onClick={()=>setProfitSeries(previous=>previous==="both"?(item.key as "realized"|"profit"):"both")}><span className="h-0.5 w-3" style={{backgroundColor:item.color}}/>{item.label}</button>)}</div>}/><Area hide={profitSeries==="realized"} type="linear" dataKey="profit" name="Total Profit" stroke="url(#profit-fill)" fill="url(#profit-fill)" fillOpacity={0.12} strokeWidth={2} isAnimationActive={false}/><Line hide={profitSeries==="profit"} type="stepAfter" strokeWidth={2} dataKey="realized" name="Realized P&L" stroke="#a1a1aa" strokeDasharray="4 4" dot={false} isAnimationActive={false}/></ComposedChart></ResponsiveContainer>:<p className="text-sm text-muted-foreground">Complete purchase history is needed.</p>}</div>
+  </section>
+  <section className={panel} aria-label="Risks"><h2 className="text-base font-semibold">Risks</h2><div className="mt-5 grid gap-6 md:grid-cols-3">{[
+   {name:"Beta",value:risks.beta,market:1,help:"How strongly your portfolio moves with SPX. 1 = similar sensitivity; above 1 = larger swings."},
+   {name:"Sharpe Ratio",value:risks.sharpe,market:risks.benchmarkSharpe,help:"Return above the risk-free rate for the volatility taken. Higher is better."},
+   {name:"Sortino Ratio",value:risks.sortino,market:risks.benchmarkSortino,help:"Like Sharpe, but focuses on downside movements. Higher is better."}
+  ].map(r=><article key={r.name} className="min-w-0"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">{r.name}</h3><RiskHelp name={r.name}>{r.help}</RiskHelp></div><RiskGauge name={r.name} value={r.value} market={r.market}/></article>)}</div><p className="mt-5 text-xs text-muted-foreground">{risks.months} Completed Months · Risk-Free Rate {rate===null?"—":`${rate}%`} Per Year · <a className="text-primary underline" href="/configuracao">Edit Rate</a></p></section>
+  <section className={panel} aria-label="Holdings Performance"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">Holdings Performance</h2><details className="relative"><summary aria-label="Holdings Performance settings" className="flex size-9 cursor-pointer list-none items-center justify-center rounded-xl border border-border focus-visible:outline-2 focus-visible:outline-primary">⚙</summary><fieldset className="absolute right-0 top-11 z-20 w-56 space-y-3 rounded-xl border border-border bg-card p-4 text-sm shadow-xl"><legend className="sr-only">Holdings Display</legend><label className="flex items-center justify-between gap-3">Display Sold<input type="checkbox" checked={sold} onChange={e=>setSold(e.target.checked)}/></label><hr className="border-border"/>{[{label:"Absolute",value:true},{label:"Percentage",value:false}].map(m=><label key={m.label} className="flex items-center gap-2"><input type="radio" name="holdings-value" checked={absolute===m.value} onChange={()=>setAbsolute(m.value)}/>{m.label}</label>)}</fieldset></details></div><div className="mt-4 flex gap-1">{["all","gainers","losers"].map(f=><button key={f} type="button" className={button+(filter===f?selected:"")} aria-pressed={filter===f} onClick={()=>setFilter(f)}>{f[0].toUpperCase()+f.slice(1)}</button>)}</div><div className="mt-5 space-y-4">{holdings.map(r=><HoldingPerformanceRow key={r.assetId} holding={r} absolute={absolute} scale={scale} totalValue={overview.distribution.assets.find(asset=>asset.key===r.assetId)?.valueUsd??(r.sold?0:null)}/>)}{holdings.length?<PerformanceScale scale={scale} absolute={absolute}/>:<p className="text-sm text-muted-foreground">No matching holdings.</p>}</div></section>
+ </>;
+}
+
+function ProfitabilityCursor(props:RectangleProps){
+ const plot=usePlotArea();
+ const x=Number(props.x??0),width=Number(props.width??0);
+ return <rect x={x} width={width} y={plot?.y??0} height={plot?.height??0} fill="var(--muted-foreground)" fillOpacity={0.07} pointerEvents="none"/>;
+}

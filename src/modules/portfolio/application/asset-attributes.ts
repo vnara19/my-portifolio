@@ -1,19 +1,15 @@
+import { LEGACY_DEBT_PRODUCTS, reviewedDebtProduct } from "../presentation/asset-classification";
+import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@/generated/prisma/client";
 import { cleanName, normalizeKey, USD_SYMBOL } from "@/modules/portfolio/domain/asset-kinds";
-import { MAX_LIQUIDITY_LENGTH, normalizeLiquidity } from "@/modules/portfolio/domain/liquidity";
 import { assetTypeOf, isAssetType } from "@/modules/portfolio/domain/classification";
 import { supportsAutoIncome } from "@/modules/portfolio/domain/fixed-income-policy";
 
-// Atributos do ativo editados pelo formulário da posição (spec 043): nome
-// (spec 040), liquidez (spec 039), vencimento (spec 026) e conta corrente
-// (spec 059). São do ativo, não
-// da competência, e valem para todos os meses.
+
 //
-// A chave do ativo leva o nome e, no fim, o vencimento:
-// `market:<nome>:<TICKER>[:vencimento]` ou
-// `private:<instituição>:<nome>[:vencimento]`. Ao editar, a chave acompanha o
-// nome e o vencimento novos e não pode coincidir com a de outro ativo. Nada é
-// inferido do nome: o vencimento é o que o usuário informa.
+
+
+
 
 const DAY_SUFFIX = /:\d{4}-\d{2}-\d{2}$/;
 export const MAX_ASSET_NAME_LENGTH = 80;
@@ -27,39 +23,34 @@ export class AssetAttributeError extends Error {
 
 export type AssetAttributes = {
   name: string;
-  liquidity: string | null;
-  /** AAAA-MM-DD */
+  /** YYYY-MM-DD */
   maturityDate: string | null;
-  /**
-   * Conta corrente (spec 059): só em ativos sem cotação de mercado (saldos em
-   * reais e caixa em dólar). Ausente, fica como está.
-   */
+
+
   cashAccount?: boolean;
-  /**
-   * Rendimento automático (spec 079), só na renda fixa e no caixa em reais; a
-   * taxa é de cada classificação do rateio. Ausente, fica como está.
-   */
+
+
   autoIncome?: boolean;
-  /** Tipo do ativo (spec 068), uma das chaves de `ASSET_TYPES`. Ausente, fica como está. */
+
   assetType?: string;
+  displayProduct?: string;
 };
 
-/** Estado do ativo antes da edição, para o desfazer. */
+
 export type AssetState = {
+  appliedOn?: Date | null;
+  fixedIncomeContract?: Prisma.InputJsonValue | null;
+  expectedFixedIncomeContract?: Prisma.InputJsonValue;
   id: string;
   name: string;
   normalizedKey: string;
-  liquidity: string | null;
   maturityDate: Date | null;
   cashAccount: boolean;
   autoIncome: boolean;
   assetType: string | null;
 };
 
-/**
- * Aplica nome, liquidez e vencimento ao ativo, na transação da edição da
- * posição. Devolve o estado anterior quando algo mudou, ou nulo.
- */
+
 export async function applyAssetAttributes(
   transaction: Prisma.TransactionClient,
   assetId: string,
@@ -71,77 +62,80 @@ export async function applyAssetAttributes(
       id: true,
       name: true,
       normalizedKey: true,
-      liquidity: true,
       maturityDate: true,
       quoteSymbol: true,
       cashAccount: true,
       autoIncome: true,
       assetType: true,
       baseCurrency: true,
+      fixedIncomeContract: true,
     },
   });
 
   if (!asset) {
-    throw new AssetAttributeError("Ativo não encontrado.");
+    throw new AssetAttributeError("Asset not found.");
   }
 
+  if (asset.assetType === "international-bond") throw new AssetAttributeError("Manage this bond from its valuation panel.");
+  if (next.assetType && ["brl-cash", "usd-balance", "eur-balance"].includes(next.assetType) && next.assetType !== asset.assetType) throw new AssetAttributeError("Cash-only positions are no longer supported.");
+  if (asset.assetType === "savings" && ((next.assetType && next.assetType !== "savings") || next.maturityDate || next.autoIncome)) throw new AssetAttributeError("Savings has no maturity. Manage its rates and movements in the Savings panel.");
   const name = cleanName(next.name);
   const normalizedName = normalizeKey(name);
 
   if (!normalizedName || name.length > MAX_ASSET_NAME_LENGTH) {
-    throw new AssetAttributeError(`Informe um nome com até ${MAX_ASSET_NAME_LENGTH} caracteres.`);
-  }
-
-  const liquidity = normalizeLiquidity(next.liquidity);
-
-  if (liquidity && liquidity.length > MAX_LIQUIDITY_LENGTH) {
-    throw new AssetAttributeError(`A liquidez aceita até ${MAX_LIQUIDITY_LENGTH} caracteres.`);
+    throw new AssetAttributeError(`Enter a name with up to ${MAX_ASSET_NAME_LENGTH} characters.`);
   }
 
   const maturity = next.maturityDate;
 
-  // Saldos em dólar, como o Time Deposit, aceitam vencimento (spec 040).
+
   const treasuryMaturity = asset.quoteSymbol?.startsWith("TD:") ? asset.quoteSymbol.slice(-10) : null;
   if (treasuryMaturity && maturity !== treasuryMaturity) {
-    throw new AssetAttributeError("O vencimento do Tesouro é definido pelo título selecionado.");
+    throw new AssetAttributeError("The selected Tesouro Direto security determines its maturity.");
   }
   if (maturity && asset.quoteSymbol && asset.quoteSymbol !== USD_SYMBOL && !treasuryMaturity) {
-    throw new AssetAttributeError("Ativos cotados não têm vencimento.");
+    throw new AssetAttributeError("Quoted assets do not have a maturity date.");
   }
 
   if (maturity && !isValidDay(maturity)) {
-    throw new AssetAttributeError("Informe uma data de vencimento válida.");
+    throw new AssetAttributeError("Enter a valid maturity date.");
   }
 
   const currentMaturity = asset.maturityDate ? asset.maturityDate.toISOString().slice(0, 10) : null;
   const cashAccount = next.cashAccount ?? asset.cashAccount;
 
   if (cashAccount && asset.quoteSymbol && asset.quoteSymbol !== USD_SYMBOL) {
-    throw new AssetAttributeError("Só caixas em reais ou em dólar podem ser conta corrente.");
+    throw new AssetAttributeError("Only BRL or USD cash can be a current account.");
   }
 
-  // Rendimento automático (spec 079): só renda fixa e caixa em reais, sem
-  // cotação de mercado. A taxa de cada classificação é conferida com o rateio.
+
   const autoIncome = next.autoIncome ?? asset.autoIncome;
   const typeForIncome = next.assetType ?? assetTypeOf({ ...asset, name: asset.name });
 
   if (autoIncome && (asset.quoteSymbol || !supportsAutoIncome(typeForIncome))) {
-    throw new AssetAttributeError("Só renda fixa e caixa em reais, sem cotação de mercado, têm rendimento automático.");
+    throw new AssetAttributeError("Only fixed income and BRL cash without market quotes support automatic accrual.");
   }
 
   if (next.assetType !== undefined && !isAssetType(next.assetType)) {
-    throw new AssetAttributeError("Escolha um tipo de ativo da lista.");
+    throw new AssetAttributeError("Choose an asset type from the list.");
   }
 
   const assetType = next.assetType ?? asset.assetType;
+  let contract = asset.fixedIncomeContract;
+  if (next.displayProduct !== undefined) {
+    if (assetType !== "fixed-income" || !(LEGACY_DEBT_PRODUCTS as readonly string[]).includes(next.displayProduct)) throw new AssetAttributeError("Choose the exact debt product.");
+    const original = contract && typeof contract === "object" && !Array.isArray(contract) ? contract : {};
+    if ("product" in original && original.product !== next.displayProduct) throw new AssetAttributeError("The investment contract determines its product; create the correct investment instead.");
+    contract = { ...original, displayProduct: next.displayProduct };
+  }
+  const productChanged = reviewedDebtProduct(contract) !== reviewedDebtProduct(asset.fixedIncomeContract);
 
   if (
     asset.name === name &&
-    asset.liquidity === liquidity &&
     currentMaturity === maturity &&
     asset.cashAccount === cashAccount &&
     asset.autoIncome === autoIncome &&
-    asset.assetType === assetType
+    asset.assetType === assetType && !productChanged
   ) {
     return null;
   }
@@ -150,7 +144,7 @@ export async function applyAssetAttributes(
   const nameIndex = parts[0] === "private" ? 2 : 1;
 
   if (parts.length <= nameIndex) {
-    throw new AssetAttributeError("Não foi possível identificar a chave deste ativo.");
+    throw new AssetAttributeError("Could not identify this asset's key.");
   }
 
   parts[nameIndex] = normalizedName;
@@ -161,7 +155,7 @@ export async function applyAssetAttributes(
 
     if (twin && twin.id !== asset.id) {
       throw new AssetAttributeError(
-        maturity ? "Já existe um ativo com este nome e este vencimento." : "Já existe um ativo com este nome.",
+        maturity ? "An asset with this name and maturity already exists." : "An asset with this name already exists.",
       );
     }
   }
@@ -171,11 +165,11 @@ export async function applyAssetAttributes(
     data: {
       name,
       normalizedKey,
-      liquidity,
       maturityDate: maturity ? new Date(`${maturity}T00:00:00.000Z`) : null,
       cashAccount,
       autoIncome,
       assetType,
+      ...(productChanged ? { fixedIncomeContract: contract as Prisma.InputJsonValue } : {}),
     },
   });
 
@@ -183,20 +177,24 @@ export async function applyAssetAttributes(
     id: asset.id,
     name: asset.name,
     normalizedKey: asset.normalizedKey,
-    liquidity: asset.liquidity,
     maturityDate: asset.maturityDate,
     cashAccount: asset.cashAccount,
     autoIncome: asset.autoIncome,
     assetType: asset.assetType,
+    ...(productChanged ? { fixedIncomeContract: asset.fixedIncomeContract as Prisma.InputJsonValue | null, expectedFixedIncomeContract: contract as Prisma.InputJsonValue } : {}),
   };
 }
 
-/** Volta o ativo ao estado de antes da edição, se a chave antiga ainda estiver livre. */
+
 export async function restoreAssetState(transaction: Prisma.TransactionClient, state: AssetState) {
+  if (state.expectedFixedIncomeContract) {
+    const current = await transaction.asset.findUnique({ where: { id: state.id }, select: { fixedIncomeContract: true } });
+    if (!isDeepStrictEqual(current?.fixedIncomeContract, state.expectedFixedIncomeContract)) throw new AssetAttributeError("This bond has changed since the update; it cannot be undone safely.");
+  }
   const twin = await transaction.asset.findFirst({ where: { normalizedKey: state.normalizedKey }, select: { id: true } });
 
   if (twin && twin.id !== state.id) {
-    throw new AssetAttributeError("Outro ativo passou a usar o nome anterior; o desfazer não é possível.");
+    throw new AssetAttributeError("Another asset now uses the previous name; this change cannot be undone.");
   }
 
   await transaction.asset.updateMany({
@@ -204,11 +202,12 @@ export async function restoreAssetState(transaction: Prisma.TransactionClient, s
     data: {
       name: state.name,
       normalizedKey: state.normalizedKey,
-      liquidity: state.liquidity,
       maturityDate: state.maturityDate,
       cashAccount: state.cashAccount,
       autoIncome: state.autoIncome,
+      ...(state.appliedOn !== undefined ? { appliedOn: state.appliedOn } : {}),
       assetType: state.assetType,
+      ...(state.fixedIncomeContract !== undefined ? { fixedIncomeContract: state.fixedIncomeContract ?? Prisma.DbNull } : {}),
     },
   });
 }
@@ -222,7 +221,7 @@ function isValidDay(day: string) {
   );
 }
 
-/** Percentual do CDI: maior que zero, até 1.000%, com até três casas (spec 060). */
+
 export function parseCdiPercent(raw: string | null) {
   if (raw === null || raw.trim() === "") {
     return null;
@@ -232,19 +231,19 @@ export function parseCdiPercent(raw: string | null) {
   const text = normalized.includes(",") ? normalized.replace(/\./g, "").replace(",", ".") : normalized;
 
   if (!/^\d+(?:\.\d+)?$/.test(text)) {
-    throw new AssetAttributeError("Informe o percentual do CDI, como 105 para 105% do CDI.");
+    throw new AssetAttributeError("Enter the CDI percentage, such as 105 for 105% of CDI.");
   }
 
   const value = new Prisma.Decimal(text);
 
   if (!value.greaterThan(0) || value.greaterThan(1000) || value.decimalPlaces() > 3) {
-    throw new AssetAttributeError("Use um percentual do CDI maior que zero e até 1.000%, com até três casas.");
+    throw new AssetAttributeError("Use a CDI percentage greater than zero and up to 1,000%, with at most three decimal places.");
   }
 
   return value;
 }
 
-/** Taxa ao ano do prefixado (spec 079): maior que zero, até 100%, com até quatro casas. */
+
 export function parseFixedRate(raw: string | null) {
   if (raw === null || raw.trim() === "") {
     return null;
@@ -254,13 +253,13 @@ export function parseFixedRate(raw: string | null) {
   const text = normalized.includes(",") ? normalized.replace(/\./g, "").replace(",", ".") : normalized;
 
   if (!/^\d+(?:\.\d+)?$/.test(text)) {
-    throw new AssetAttributeError("Informe a taxa ao ano, como 12,5 para 12,5% a.a.");
+    throw new AssetAttributeError("Enter the annual rate, such as 12.5 for 12.5% p.a.");
   }
 
   const value = new Prisma.Decimal(text);
 
   if (!value.greaterThan(0) || value.greaterThan(100) || value.decimalPlaces() > 4) {
-    throw new AssetAttributeError("Use uma taxa ao ano maior que zero e até 100%, com até quatro casas.");
+    throw new AssetAttributeError("Use an annual rate greater than zero and up to 100%, with at most four decimal places.");
   }
 
   return value;

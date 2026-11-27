@@ -2,8 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// Backup dos dados (spec 042). Os testes rodam sobre os dados reais: baixam o
-// backup e conferem um arquivo, que só lê, mas nunca confirmam a restauração.
+
 test.beforeEach(async ({ page }) => {
   await stubQuoteChecks(page);
 });
@@ -15,10 +14,10 @@ async function downloadBackup(page: Page) {
 }
 
 function backupPanel(page: Page) {
-  return page.getByRole("region", { name: "Backup dos dados" });
+  return page.getByRole("region", { name: "Data backup" });
 }
 
-test("exporta todos os dados num arquivo", async ({ page }) => {
+test("exports all portfolio data in one file", async ({ page }) => {
   const { response, backup } = await downloadBackup(page);
 
   expect(response.headers()["content-disposition"]).toMatch(
@@ -26,8 +25,8 @@ test("exporta todos os dados num arquivo", async ({ page }) => {
   );
   expect(backup.format).toBe("meu-portfolio-backup");
   expect(backup.version).toBe(5);
-  // Sem as tabelas da importação do Excel, com o registro de importações (spec 047);
-  // da carteira do usuário, sem as execuções da atualização, que são de todos
+
+
   // (spec 052).
   expect(Object.keys(backup.tables)).toContain("dataImports");
   expect(Object.keys(backup.tables)).toContain("manualQuotes");
@@ -40,18 +39,18 @@ test("exporta todos os dados num arquivo", async ({ page }) => {
   expect(backup.tables.targetPlans.length).toBeGreaterThan(0);
 
   await page.goto("/configuracao");
-  await expect(backupPanel(page).getByRole("link", { name: "Exportar backup" })).toHaveAttribute("href", "/api/backup");
+  await expect(backupPanel(page).getByRole("link", { name: "Export backup" })).toHaveAttribute("href", "/api/backup");
 });
 
-test("confere um backup, mostra o resumo e cancela sem gravar", async ({ page }) => {
+test("validates a backup, shows its summary and cancels without writing", async ({ page }) => {
   const { backup } = await downloadBackup(page);
 
   await page.goto("/configuracao");
   await backupPanel(page)
-    .getByLabel("Arquivo de backup")
+    .getByLabel("Backup file")
     .setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });
 
-  const dialog = page.getByRole("dialog", { name: "Importar este backup?" });
+  const dialog = page.getByRole("dialog", { name: "Import this backup?" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("row", { name: /^Posições/ })).toContainText(
     backup.tables.positions.length.toLocaleString("pt-BR"),
@@ -60,22 +59,22 @@ test("confere um backup, mostra o resumo e cancela sem gravar", async ({ page })
     backup.tables.portfolioMonths.length.toLocaleString("pt-BR"),
   );
 
-  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
 });
 
-test("recusa um arquivo que não é backup", async ({ page }) => {
+test("rejects a file that is not a backup", async ({ page }) => {
   await page.goto("/configuracao");
   const panel = backupPanel(page);
 
   await panel
-    .getByLabel("Arquivo de backup")
+    .getByLabel("Backup file")
     .setInputFiles({ name: "outro.json", mimeType: "application/json", buffer: Buffer.from('{"format":"outro"}') });
-  await expect(panel.getByRole("alert")).toHaveText("O arquivo não é um backup deste aplicativo.");
+  await expect(panel.getByRole("alert")).toHaveText("The file is not a backup from this application.");
 
   await panel
-    .getByLabel("Arquivo de backup")
-    .setInputFiles({ name: "texto.json", mimeType: "application/json", buffer: Buffer.from("não é json") });
-  await expect(panel.getByRole("alert")).toHaveText("texto.json não é um arquivo de backup válido.");
+    .getByLabel("Backup file")
+    .setInputFiles({ name: "texto.json", mimeType: "application/json", buffer: Buffer.from("not JSON") });
+  await expect(panel.getByRole("alert")).toHaveText("texto.json is not a valid backup file.");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });

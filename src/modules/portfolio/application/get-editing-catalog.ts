@@ -3,35 +3,28 @@ import { toMonthParam } from "@/modules/portfolio/presentation/reference-month";
 import { currentReferenceMonth, toDateKey } from "@/modules/quotes/domain/calendar";
 
 export type EditingCatalog = {
-  institutions: { id: string; name: string }[];
-  accounts: { id: string; label: string; institutionId: string; name: string }[];
+  portfolioAccountId: string | null;
   assets: {
     id: string;
-    /** Identidade do ativo, para o diálogo recusar um ativo novo repetido. */
+
     normalizedKey: string;
     name: string;
     ticker: string | null;
     quoteSymbol: string | null;
     baseCurrency: string;
     maturityDate: string | null;
-    liquidity: string | null;
     appliedOn?: string | null;
-    /**
-     * Rateio da posição mais recente do ativo, em %, para a inclusão de uma
-     * posição dele já vir preenchida (spec 043).
-     */
+
+
     allocations: { assetClass: string; subclass: string; duration: string; weight: number; ratePercent: number | null }[];
   }[];
-  strategies: string[];
   allocation: { classes: string[]; subclasses: string[] };
   clone: { allowed: boolean; sourceMonth: string | null; targetMonth: string | null };
 };
 
 const EMPTY_CATALOG: EditingCatalog = {
-  institutions: [],
-  accounts: [],
+  portfolioAccountId: null,
   assets: [],
-  strategies: [],
   allocation: { classes: [], subclasses: [] },
   clone: { allowed: false, sourceMonth: null, targetMonth: null },
 };
@@ -44,10 +37,11 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
   }
 
   try {
-    const [institutions, accounts, assets, strategies, allocations, targets, latest, assetPositions] = await Promise.all([
-      prisma.institution.findMany({ select: { id: true, name: true } }),
-      prisma.account.findMany({
-        select: { id: true, name: true, institutionId: true, institution: { select: { name: true } } },
+    const [portfolioAccount, assets, allocations, targets, latest, assetPositions] = await Promise.all([
+      prisma.account.findFirst({
+        where: { name: "Main", institution: { name: "Portfolio" } },
+        orderBy: { id: "asc" },
+        select: { id: true },
       }),
       prisma.asset.findMany({
         orderBy: { name: "asc" },
@@ -59,21 +53,15 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
           quoteSymbol: true,
           baseCurrency: true,
           maturityDate: true,
-          liquidity: true,
           appliedOn: true,
         },
-      }),
-      prisma.position.findMany({
-        where: { strategy: { not: null } },
-        distinct: ["strategy"],
-        select: { strategy: true },
       }),
       prisma.positionAllocation.findMany({
         distinct: ["assetClass", "subclass", "duration"],
         select: { assetClass: true, subclass: true, duration: true },
       }),
       prisma.allocationTarget.findMany({
-        where: { scope: { in: ["ASSET_CLASS", "STRATEGY"] } },
+        where: { scope: "ASSET_CLASS" },
         select: { scope: true, primaryLabel: true },
       }),
       prisma.portfolioMonth.findFirst({
@@ -108,31 +96,19 @@ export async function getEditingCatalog(): Promise<EditingCatalog> {
     }
 
     const sorted = (values: Iterable<string>) =>
-      [...new Set(values)].sort((left, right) => left.localeCompare(right, "pt-BR"));
+      [...new Set(values)].sort((left, right) => left.localeCompare(right, "en-GB"));
     const target = latest
       ? new Date(Date.UTC(latest.referenceDate.getUTCFullYear(), latest.referenceDate.getUTCMonth() + 1, 1))
       : null;
 
     return {
-      institutions: institutions.sort((left, right) => left.name.localeCompare(right.name, "pt-BR")),
-      accounts: accounts
-        .map((account) => ({
-          id: account.id,
-          label: `${account.institution.name} · ${account.name}`,
-          institutionId: account.institutionId,
-          name: account.name,
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label, "pt-BR")),
+      portfolioAccountId: portfolioAccount?.id ?? null,
       assets: assets.map((asset) => ({
         ...asset,
         maturityDate: asset.maturityDate ? toDateKey(asset.maturityDate) : null,
         appliedOn: asset.appliedOn ? toDateKey(asset.appliedOn) : null,
         allocations: latestAllocations.get(asset.id) ?? [],
       })),
-      strategies: sorted([
-        ...strategies.flatMap((entry) => (entry.strategy ? [entry.strategy] : [])),
-        ...targets.filter((entry) => entry.scope === "STRATEGY").map((entry) => entry.primaryLabel),
-      ]),
       allocation: {
         classes: sorted([
           ...allocations.map((entry) => entry.assetClass),

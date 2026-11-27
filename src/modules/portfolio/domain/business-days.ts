@@ -1,9 +1,7 @@
-// Dias úteis do mercado financeiro brasileiro (spec 079), para o prefixado:
-// segunda a sexta, menos os feriados nacionais, que são os do calendário da
-// ANBIMA usado pelos bancos na contagem de dias úteis (base 252). Sem
-// dependências, para o servidor e a tela.
 
-/** Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher), como AAAA-MM-DD. */
+/** Brazilian business-day calendar for 252-day fixed-income accrual; English display does not change local market rules. */
+
+
 export function easterSunday(year: number) {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -24,11 +22,7 @@ export function easterSunday(year: number) {
 
 const holidayCache = new Map<number, Set<string>>();
 
-/**
- * Feriados nacionais do ano: as datas fixas, o Dia da Consciência Negra (desde
- * 2024) e os móveis pela Páscoa: segunda e terça de Carnaval, Sexta-feira
- * Santa e Corpus Christi.
- */
+
 export function nationalHolidays(year: number) {
   const cached = holidayCache.get(year);
 
@@ -54,7 +48,7 @@ export function isBusinessDay(day: string) {
   return weekday !== 0 && weekday !== 6 && !nationalHolidays(Number(day.slice(0, 4))).has(day);
 }
 
-/** Dias úteis em [início, fim): início incluído e fim excluído, como na B3. */
+
 export function businessDaysBetween(start: string, end: string) {
   let count = 0;
 

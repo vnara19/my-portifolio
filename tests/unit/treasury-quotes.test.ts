@@ -7,15 +7,21 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import {
   getTreasuryCatalog,
   parseTreasuryCsv,
+  parseTreasurySnapshot,
+  treasuryDailyHistoryPoints,
   treasuryMonthEndPoints,
   treasuryProviderId,
   treasurySeriesOf,
   treasurySymbol,
 } from "@/modules/quotes/domain/treasury";
-import { createTreasurySource, fetchTreasuryQuotes, TREASURY_CSV_URL } from "@/modules/quotes/infrastructure/treasury";
+import { createTreasurySource, resilientTreasuryBook, fetchTreasuryQuotes, TREASURY_CURRENT_URL } from "@/modules/quotes/infrastructure/treasury";
+
+import { QuoteHttpError } from "@/modules/quotes/infrastructure/http";
 
 const header = "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha";
 const fixture = `${header}\nTesouro IPCA+;15/05/2035;02/10/2026;7,10;7,22;1.500,00;1.480,00;1.479,25\nTesouro IPCA+;15/08/2035;02/10/2026;7,10;7,22;1.600,00;1.580,00;1.579,25\nTesouro IPCA+;15/05/2035;30/09/2026;7,10;7,22;1.450,00;1.430,00;1.429,25\nTesouro IPCA+;15/05/2035;31/08/2026;7,10;7,22;1.400,00;1.380,00;1.379,25\nTesouro Prefixado com Juros Semestrais;01/01/2033;02/10/2026;13,0;13,1;1.000,00;990,00;989,50\nTesouro Prefixado;01/01/2026;31/12/2025;13,0;13,1;1.000,00;990,00;989,50\nTesouro Selic;01/03/2031;02/10/2026;0,1;0,2;20.100,00;20.000,00;0,00\n`;
+const snapshot = { totalCount: 1, items: [{ treasuryBondName: "Tesouro IPCA+ 2035", maturityDate: "2035-05-15T00:00:00Z", dateModified: "2026-10-02T15:00:00Z", unitaryRedemptionValue: 1479.25, unitaryInvestmentValue: 1500, availableInvestmentBondQuantity: 100, investmentProfitabilityFee: 7.1, financialIndexerName: "IPCA" }] };
+
 const identity = {
   symbol: treasurySymbol("Tesouro IPCA+", "2035-05-15"),
   providerId: treasuryProviderId("Tesouro IPCA+", "2035-05-15"),
@@ -23,7 +29,7 @@ const identity = {
   baseCurrency: "BRL",
 };
 
-test("usa PU Base D0 e identifica dois vencimentos do mesmo tipo/ano", () => {
+test("official base price distinguishes securities with different maturities in the same year", () => {
   const book = parseTreasuryCsv(`\uFEFF${fixture.replace(/\n/g, "\r\n")}`);
   const bonds = getTreasuryCatalog(book, "2026-10-04");
   assert.equal(bonds.length, 3);
@@ -35,7 +41,7 @@ test("usa PU Base D0 e identifica dois vencimentos do mesmo tipo/ano", () => {
   assert.equal(bonds.some((bond) => bond.type === "Tesouro Selic"), false);
 });
 
-test("consulta atrasada preserva data oficial e consulta passada não usa preço futuro", async () => {
+test("delayed queries retain official dates and historical queries do not use future prices", async () => {
   const loadBook = async () => parseTreasuryCsv(fixture);
   const [now] = await fetchTreasuryQuotes([identity], { today: "2026-10-04", loadBook });
   assert.deepEqual(now, { symbol: identity.symbol, provider: "tesouro", status: "SUCCESS", valueBrl: 1479.25, quoteDate: "2026-10-02" });
@@ -44,7 +50,7 @@ test("consulta atrasada preserva data oficial e consulta passada não usa preço
   if (past.status === "SUCCESS") assert.equal(past.quoteDate, "2026-09-30");
 });
 
-test("identificador conflitante, ausência e título vencido são falhas sem preço substituto", async () => {
+test("conflicting identifiers, missing and matured securities fail without substitute prices", async () => {
   const loadBook = async () => parseTreasuryCsv(fixture);
   const results = await fetchTreasuryQuotes([
     { ...identity, providerId: treasuryProviderId("Tesouro IPCA+", "2035-08-15") },
@@ -55,7 +61,7 @@ test("identificador conflitante, ausência e título vencido são falhas sem pre
   assert.equal(results.some((result) => "valueBrl" in result), false);
 });
 
-test("falha da fonte não se converte em cotação e uma nova carga pode recuperar", async () => {
+test("source failures do not create prices and a later load can recover", async () => {
   let calls = 0;
   const loadBook = createTreasurySource(async () => {
     calls += 1;
@@ -70,7 +76,7 @@ test("falha da fonte não se converte em cotação e uma nova carga pode recuper
   assert.equal(calls, 2);
 });
 
-test("catálogo, preços e histórico compartilham uma carga concorrente e expiram após uma hora", async () => {
+test("catalog, prices and history share a concurrent cache that expires after an hour", async () => {
   let clock = 100;
   let calls = 0;
   const loadBook = createTreasurySource(async () => { calls += 1; return fixture; }, () => clock);
@@ -84,34 +90,34 @@ test("catálogo, preços e histórico compartilham uma carga concorrente e expir
   assert.equal(calls, 2);
 });
 
-test("histórico guarda fechamentos observados e rejeita buraco dentro da cobertura", () => {
+test("history stores observed closes and rejects gaps within coverage", () => {
   const book = parseTreasuryCsv(fixture);
   const series = treasurySeriesOf(book, identity)!;
   const closes = treasuryMonthEndPoints(series, ["2026-07", "2026-08", "2026-09"], "2026-10");
-  assert.equal(closes.size, 2); // Julho é anterior ao primeiro PU observado.
+  assert.equal(closes.size, 2);
   assert.equal(closes.get("2026-09")?.day, "2026-09-30");
   const gap = { ...series, points: series.points.filter((point) => !point.day.startsWith("2026-09")) };
   assert.throws(() => treasuryMonthEndPoints(gap, ["2026-08", "2026-09"], "2026-10"), /2026-09/);
 });
 
-test("mudança de colunas, datas impossíveis, arquivo parcial e PU inválido são recusados", () => {
-  assert.throws(() => parseTreasuryCsv(fixture.replace("PU Base Manha", "PU Venda")), /colunas/);
-  assert.throws(() => parseTreasuryCsv(fixture.replace("02/10/2026", "31/02/2026")), /data inválida/);
-  assert.throws(() => parseTreasuryCsv(`${header}\nTesouro IPCA+;15/05/2035\n`), /linha incompleta/);
-  assert.throws(() => parseTreasuryCsv(fixture.replace("1.479,25", "não-disponível")), /preço inválido/);
-  assert.throws(() => parseTreasuryCsv(`${header}\n"incompleto`), /incompleto/);
+test("changed columns, impossible dates, partial files and invalid base prices are rejected", () => {
+  assert.throws(() => parseTreasuryCsv(fixture.replace("PU Base Manha", "PU Venda")), /columns/);
+  assert.throws(() => parseTreasuryCsv(fixture.replace("02/10/2026", "31/02/2026")), /invalid date/);
+  assert.throws(() => parseTreasuryCsv(`${header}\nTesouro IPCA+;15/05/2035\n`), /incomplete row/);
+  assert.throws(() => parseTreasuryCsv(fixture.replace("1.479,25", "unavailable")), /invalid price/);
+  assert.throws(() => parseTreasuryCsv(`${header}\n"incompleto`), /incomplete/);
 });
 
-test("cadeia atual usa somente Tesouro para TESOURO, com data da fonte", async () => {
+test("Tesouro Direto assets use only the official provider and its quote date", async () => {
   const originalFetch = globalThis.fetch;
   const urls: string[] = [];
   globalThis.fetch = async (input) => {
     urls.push(String(input));
-    return new Response(fixture, { status: 200 });
+    return Response.json(snapshot);
   };
   try {
     const [result] = await fetchCurrentQuotes([identity], {}, "2026-10-04");
-    assert.deepEqual(urls, [TREASURY_CSV_URL]);
+    assert.deepEqual(urls, [TREASURY_CURRENT_URL]);
     assert.equal(result.status, "SUCCESS");
     if (result.status === "SUCCESS") assert.equal(result.quoteDate, "2026-10-02");
   } finally {
@@ -130,20 +136,59 @@ function syncFixture() {
     failureCount: 0,
     historySyncedUntil: new Date("2026-09-01T00:00:00Z"),
   };
+  const registry = [symbol, ...["USD", "EUR"].map((currency) => ({
+    ...symbol, symbol: currency, instrumentType: "FIAT", baseCurrency: currency,
+    lastSuccessAt: new Date("2026-10-04T15:00:00Z"), historyAttemptedAt: new Date("2026-10-04T15:00:00Z"),
+  }))];
   const client = {
     $executeRaw: async (parts: TemplateStringsArray, ...values: unknown[]) => { raw.push({ sql: parts.join("?"), values }); return 0; },
     portfolioMonth: { findMany: async () => [{ id: "month", referenceDate: new Date("2026-10-01T00:00:00Z") }] },
     position: { findMany: async () => [{ asset: { quoteSymbol: identity.symbol } }] },
-    quoteSymbol: { findMany: async () => [symbol], updateMany: async () => ({}), update: async () => ({}) },
+    quoteSymbol: { findMany: async () => registry, updateMany: async () => ({}), update: async () => ({}) },
     quoteRefreshRun: { updateMany: async () => ({}), findFirst: async () => null, create: async () => ({ id: "run" }), update: async () => ({}) },
     quoteRefreshResult: { createMany: async ({ data }: { data: typeof results }) => { results.push(...data); return { count: data.length }; } },
     manualQuote: { deleteMany: async () => ({}) },
   };
   const prisma = { ...client, $transaction: async (run: (transaction: typeof client) => Promise<unknown>) => run(client) } as unknown as PrismaClient;
-  return { prisma, raw, results };
+  return { prisma, raw, results, registry };
 }
 
-test("job persiste data oficial por símbolo e reprecifica pelo preço mensal aceito", async () => {
+test("navigation refresh only fetches due owned symbols and skips maintenance", async () => {
+  const fixture = syncFixture();
+  fixture.registry.push({ ...fixture.registry[0], symbol: "UNRELATED" });
+  const requested: string[] = [];
+  const forbidden = async () => { throw new Error("Maintenance must not run on opening"); };
+  const result = await syncQuotes({
+    prisma: fixture.prisma, now: new Date("2026-10-04T15:00:00Z"), symbols: [identity.symbol], currentOnly: true,
+    fetchQuotes: async requests => { requested.push(...requests.map(r => r.symbol)); return [{ symbol: identity.symbol, provider: "tesouro", status: "SUCCESS", valueBrl: 1479.25, quoteDate: "2026-10-02" }]; },
+    loadHistory: forbidden, fetchSelicRate: forbidden, fetchCdiRates: forbidden,
+  });
+  assert.equal(result.state, "done");
+  assert.deepEqual(requested, [identity.symbol]);
+  if (result.state === "done") {
+    assert.deepEqual(result.histories, []);
+    assert.equal(result.selic, undefined);
+    assert.equal(result.cdi, undefined);
+  }
+});
+
+test("navigation respects recent quotes, retry backoff and an empty scope", async () => {
+  for (const mode of ["recent", "backoff", "empty"]) {
+    const fixture = syncFixture();
+    if (mode === "recent") Object.assign(fixture.registry[0], { lastSuccessAt: new Date("2026-10-04T14:56:00Z") });
+    if (mode === "backoff") Object.assign(fixture.registry[0], { nextAttemptAt: new Date("2026-10-04T16:00:00Z") });
+    let called = false;
+    const result = await syncQuotes({
+      prisma: fixture.prisma, now: new Date("2026-10-04T15:00:00Z"), symbols: mode === "empty" ? [] : [identity.symbol], currentOnly: true,
+      fetchQuotes: async () => { called = true; return []; },
+    });
+    assert.equal(result.state, "idle");
+    assert.equal(called, false);
+    assert.equal(fixture.raw.some(q => q.sql.includes('UPDATE "positions"')), false);
+  }
+});
+
+test("the job persists official dates per symbol and reprices accepted monthly quotes", async () => {
   const fixture = syncFixture();
   const result = await syncQuotes({
     prisma: fixture.prisma,
@@ -163,7 +208,7 @@ test("job persiste data oficial por símbolo e reprecifica pelo preço mensal ac
   assert.match(positions.sql, /"q"\."value_brl"/);
 });
 
-test("job recusa data impossível ou futura sem gravar preço inválido", async () => {
+test("the job rejects impossible or future dates without writing invalid prices", async () => {
   for (const quoteDate of ["2026-10-05", "2026-02-31"]) {
     const fixture = syncFixture();
     const result = await syncQuotes({
@@ -176,4 +221,103 @@ test("job recusa data impossível ou futura sem gravar preço inválido", async 
     assert.equal(fixture.raw.some((query) => query.sql.includes('INSERT INTO "daily_quotes"')), false);
     assert.equal(fixture.raw.some((query) => query.sql.includes('UPDATE "positions"')), false);
   }
+});
+
+
+test("current catalog keeps redemption prices and outstanding titles outside the purchase offer", () => {
+  const old = { ...snapshot.items[0], treasuryBondName: "Tesouro Renda+ Aposentadoria Extra 2065", maturityDate: "2084-12-15T00:00:00Z", targetYear: 2065, unitaryInvestmentValue: 0, availableInvestmentBondQuantity: 0 };
+  const bonds = getTreasuryCatalog(parseTreasurySnapshot({ totalCount: 2, items: [...snapshot.items, old] }), "2026-10-04");
+  assert.equal(bonds.length, 2);
+  const renda = bonds.find((bond) => bond.targetYear === 2065)!;
+  assert.equal(renda.offered, false);
+  assert.equal(renda.maturityDate, "2084-12-15");
+  assert.equal(renda.valueBrl, 1479.25);
+  assert.equal(renda.providerId, "Tesouro Renda+ Aposentadoria Extra|2084-12-15");
+});
+
+test("current catalog rejects partial, duplicate or invalid official records", () => {
+  assert.throws(() => parseTreasurySnapshot({ ...snapshot, totalCount: 2 }), /Incomplete/);
+  assert.throws(() => parseTreasurySnapshot({ totalCount: 2, items: [snapshot.items[0], snapshot.items[0]] }), /Duplicate/);
+  assert.throws(() => parseTreasurySnapshot({ totalCount: 1, items: [{ ...snapshot.items[0], unitaryRedemptionValue: 0 }] }), /Invalid/);
+});
+
+test("navigation can backfill a new Treasury's history without global maintenance",async()=>{
+ const fixture=syncFixture();
+ Object.assign(fixture.registry[0],{historySyncedUntil:null});
+ Object.assign(fixture.prisma,{dailyQuote:{findMany:async()=>[]},marketQuote:{findMany:async()=>[]}});
+ let loaded=false;
+ const result=await syncQuotes({prisma:fixture.prisma,now:new Date("2026-10-04T15:00:00Z"),symbols:[identity.symbol],currentOnly:true,treasuryHistory:true,
+ fetchQuotes:async()=>[{symbol:identity.symbol,provider:"tesouro",status:"SUCCESS",valueBrl:1479.25,quoteDate:"2026-10-02"}],
+ loadHistory:async(_db,target)=>{assert.equal(target.instrumentType,"TESOURO");loaded=true;return {provider:"tesouro",inserted:200};},
+ fetchSelicRate:async()=>{throw new Error("Unexpected maintenance");},fetchCdiRates:async()=>{throw new Error("Unexpected maintenance");}});
+ assert.equal(loaded,true);
+ assert.equal(result.state,"done");
+ if(result.state==="done")assert.equal(result.histories[0].status,"SUCCESS");
+});
+
+test("Treasury backfill retains daily observations rather than only month ends",()=>{
+ const book=parseTreasuryCsv(fixture);
+ const series=treasurySeriesOf(book,identity)!;
+ const daily=treasuryDailyHistoryPoints(series,["2026-09","2026-10"],"2026-10-02");
+ assert.ok(daily.length>0);
+ assert.ok(daily.every(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
+ assert.deepEqual(daily,series.points.filter(p=>p.day>="2026-09-01"&&p.day<="2026-10-02"));
+});
+
+
+test("incomplete live Treasury publications retry once then use a dated official fallback",async()=>{
+ const book=parseTreasuryCsv(fixture);let attempts=0,fallbacks=0;
+ const result=await resilientTreasuryBook(async()=>{attempts++;throw new Error("Incomplete listing");},async()=>{fallbacks++;return book;});
+ assert.equal(result,book);assert.equal(attempts,2);assert.equal(fallbacks,1);
+ const [quote]=await fetchTreasuryQuotes([identity],{today:"2026-10-04",loadBook:async()=>result});
+ assert.equal(quote.status,"SUCCESS");assert.equal(quote.quoteDate,"2026-10-02");
+ const [stale]=await fetchTreasuryQuotes([identity],{today:"2026-10-20",loadBook:async()=>result});assert.equal(stale.status,"FAILED");
+});
+test("a recovered live Treasury retry does not load the CSV",async()=>{
+ const book=parseTreasuryCsv(fixture);let attempts=0;
+ assert.equal(await resilientTreasuryBook(async()=>{if(++attempts===1)throw new Error("Incomplete");return book;},async()=>{throw new Error("Unexpected fallback");}),book);
+});
+
+
+test("dated CSV fallback retains purchase prices and rates without leaking future metadata", () => {
+  const book = parseTreasuryCsv(fixture);
+  const current = getTreasuryCatalog(book, "2026-10-04").find(bond => bond.symbol === identity.symbol)!;
+  assert.equal(current.purchasePrice, 1500);
+  assert.equal(current.purchaseRate, 7.1);
+  assert.equal(current.indexer, "IPCA");
+  assert.equal(current.quoteDate, "2026-10-02");
+  const past = getTreasuryCatalog(book, "2026-10-01").find(bond => bond.symbol === identity.symbol)!;
+  assert.equal(past.purchasePrice, 1450);
+  assert.equal(past.quoteDate, "2026-09-30");
+  const fixed = getTreasuryCatalog(book, "2026-10-04").find(bond => bond.type.startsWith("Tesouro Prefixado"))!;
+  assert.equal(fixed.purchaseRate, 13);
+  assert.equal(fixed.indexer, "Fixed");
+});
+
+
+test("Treasury access refusals use the official fallback without hammering the listing", async () => {
+  for (const status of [403, 429, 451]) {
+    let calls = 0;
+    const book = parseTreasuryCsv(fixture);
+    assert.equal(await resilientTreasuryBook(async () => { calls++; throw new QuoteHttpError(status, "Unavailable"); }, async () => book), book);
+    assert.equal(calls, 1);
+  }
+});
+
+test("an official source outage reuses dated observations for a bounded period", async () => {
+  let clock = 100, calls = 0;
+  const loadBook = createTreasurySource(async () => {
+    if (++calls > 1) throw new QuoteHttpError(403, "Unavailable");
+    return fixture;
+  }, () => clock);
+  const original = await loadBook();
+  clock += 60 * 60_000 + 1;
+  assert.equal(await loadBook(), original);
+  const [quote] = await fetchTreasuryQuotes([identity], { today: "2026-10-04", loadBook });
+  assert.equal(quote.status, "SUCCESS");
+  if (quote.status === "SUCCESS") assert.equal(quote.quoteDate, "2026-10-02");
+  const [stale] = await fetchTreasuryQuotes([identity], { today: "2026-10-20", loadBook });
+  assert.equal(stale.status, "FAILED");
+  clock += 24 * 60 * 60_000;
+  await assert.rejects(loadBook(), /Unavailable/);
 });

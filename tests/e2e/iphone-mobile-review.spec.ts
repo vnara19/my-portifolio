@@ -5,9 +5,9 @@ import { competenceSheet, competenceTrigger, openCompetenceSheet, waitForCompete
 import { chooseKind, closeForm, continueForm, expectFormStep, openAddForm, openEditableMonth } from "./support/position-form";
 import { stubQuoteChecks } from "./support/quote-checks";
 
-// Spec 062: revisão de layout e roteamento de gestos, sem salvar dados da carteira.
+
 test.beforeEach(async ({ page, isMobile }) => {
-  test.skip(!isMobile, "Revisão da interface de toque.");
+  test.skip(!isMobile, "Touch interface review.");
   await stubQuoteChecks(page);
 });
 
@@ -26,7 +26,7 @@ async function assertInputSize(scope: Locator) {
   }
 }
 
-// Eventos sintéticos conferem quem recebe o gesto; não simulam a física do Safari.
+
 async function swipe(target: Locator, dx: number) {
   const touch = { identifier: 1, clientX: 210, clientY: 220 };
   await target.dispatchEvent("touchstart", { touches: [touch], changedTouches: [touch] });
@@ -36,7 +36,7 @@ async function swipe(target: Locator, dx: number) {
   });
 }
 
-test("viewport respeita áreas seguras e mantém zoom disponível", async ({ page }) => {
+test("the viewport respects safe areas and keeps zoom available", async ({ page }) => {
   await page.goto("/");
   const viewport = await page.locator('meta[name="viewport"]').getAttribute("content");
   expect(viewport).toContain("viewport-fit=cover");
@@ -46,14 +46,14 @@ test("viewport respeita áreas seguras e mantém zoom disponível", async ({ pag
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", /.+/);
 });
 
-test("telas principais cabem em retrato e paisagem", async ({ context }) => {
+test("main screens fit portrait and landscape layouts", async ({ context }) => {
   for (const viewport of [{ width: 430, height: 739 }, { width: 814, height: 380 }]) {
     for (const url of ["/", "/posicoes", "/posicoes/cotacoes", "/configuracao"]) {
       const page = await context.newPage();
       await stubQuoteChecks(page);
       await page.setViewportSize(viewport);
       await page.goto(url);
-      await expect(page.getByRole("navigation", { name: "Navegação principal" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Main navigation" })).toBeVisible();
       await assertPageWidth(page);
       await assertInputSize(page.locator("body"));
       await page.close();
@@ -61,11 +61,11 @@ test("telas principais cabem em retrato e paisagem", async ({ context }) => {
   }
 });
 
-test("o trilho de metas usa uma linha inteira no celular", async ({ page }) => {
+test("target sliders use a full-width row on mobile", async ({ page }) => {
   await page.goto("/configuracao");
-  const slider = page.getByRole("slider", { name: "Meta de Caixa", exact: true });
+  const slider = page.getByRole("slider", { name: "Cash target", exact: true });
   const control = page.locator("[data-base-ui-slider-control]").filter({ has: slider });
-  const input = page.getByRole("textbox", { name: "Percentual de Caixa" });
+  const input = page.getByRole("textbox", { name: "Cash percentage" });
   await expect(slider).toBeVisible();
   const track = await control.boundingBox();
   const field = await input.boundingBox();
@@ -76,27 +76,27 @@ test("o trilho de metas usa uma linha inteira no celular", async ({ page }) => {
   await assertInputSize(page.locator("body"));
 });
 
-test("arrastar para o lado não troca a aba; só o toque na aba troca", async ({ page }) => {
-  // O arraste entre abas da spec 062 saiu (spec 077): mudava de tela sem querer.
+test("horizontal swiping does not switch tabs; tapping does", async ({ page }) => {
+
   await page.goto("/?mes=2026-09");
-  const heading = page.getByRole("heading", { name: "Patrimônio consolidado" });
+  const heading = page.getByRole("heading", { name: "Portfolio overview" });
   await expect(heading).toBeVisible();
   await swipe(heading, -100);
   await swipe(heading, 100);
   await expect(page).toHaveURL(/\/\?mes=2026-09$/);
   await expect(heading).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Navegação principal" }).getByRole("link", { name: "Posições" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Positions" }).click();
   await expect(page).toHaveURL(/\/posicoes\?mes=2026-09$/);
-  await swipe(page.getByRole("heading", { name: "Carteira do mês" }), 100);
+  await swipe(page.getByRole("heading", { name: "Monthly portfolio" }), 100);
   await expect(page).toHaveURL(/\/posicoes\?mes=2026-09$/);
 });
 
-test("competência abre numa folha com o mês ativo e alvos de toque", async ({ page }) => {
+test("the month sheet opens on the active month with usable touch targets", async ({ page }) => {
   await page.goto("/?mes=2026-09");
   await waitForCompetenceHydration(page);
   const trigger = competenceTrigger(page);
-  await expect(trigger).toHaveAccessibleName("Competência: Setembro de 2026");
+  await expect(trigger).toHaveAccessibleName("Reporting month: September 2026");
   expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(40);
 
   await openCompetenceSheet(page);
@@ -110,36 +110,36 @@ test("competência abre numa folha com o mês ativo e alvos de toque", async ({ 
   await expect(competenceSheet(page)).toHaveCount(0);
 });
 
-test("formulário da posição continua rolável com viewport reduzida", async ({ page }) => {
-  test.skip(!(await openEditableMonth(page)), "Não há competência aberta nos dados de teste.");
+test("the position form remains scrollable in a reduced viewport", async ({ page }) => {
+  test.skip(!(await openEditableMonth(page)), "No open reporting month in the test data.");
   const dialog = await openAddForm(page);
-  await expectFormStep(dialog, "Posição");
+  await expectFormStep(dialog, "Position");
   await chooseKind(page, dialog, /Renda fixa/);
-  const institution = dialog.getByRole("combobox", { name: "Instituição", exact: true });
+  const institution = dialog.getByRole("combobox", { name: "Institution", exact: true });
   await institution.click();
   await page.getByRole("option", { name: "C6", exact: true }).click();
-  await continueForm(dialog, "Ativo");
-  await dialog.getByRole("textbox", { name: "Nome do ativo", exact: true }).fill("CDB Teste mobile");
-  await dialog.getByRole("textbox", { name: "Saldo (R$)", exact: true }).fill("1000");
+  await continueForm(dialog, "Asset");
+  await dialog.getByRole("textbox", { name: "Asset name", exact: true }).fill("CDB Teste mobile");
+  await dialog.getByRole("textbox", { name: "Balance (BRL)", exact: true }).fill("1000");
   await page.setViewportSize({ width: 430, height: 420 });
-  await expect(dialog.getByRole("button", { name: "Continuar", exact: true })).toBeInViewport();
-  await expect(dialog.getByRole("button", { name: "Voltar", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeInViewport();
   const box = await dialog.boundingBox();
   expect(box!.height).toBeLessThanOrEqual(420);
   await assertInputSize(dialog);
   await closeForm(dialog);
 });
 
-test.describe("entrada sem sessão", () => {
+test.describe("sign-in without a session", () => {
   test.use({ storageState: SIGNED_OUT });
 
-  test("entrada e cadastro têm campos legíveis sem cortar ações", async ({ page }) => {
+  test("sign-in and registration fields remain readable without clipping actions", async ({ page }) => {
     await page.goto("/entrar");
-    await expect(page.getByLabel("E-mail")).toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
     await assertInputSize(page.locator("body"));
     await assertPageWidth(page);
-    await page.getByRole("button", { name: "Criar conta", exact: true }).click();
-    await expect(page.getByLabel("Nome")).toBeVisible();
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+    await expect(page.getByLabel("Name")).toBeVisible();
     await assertInputSize(page.locator("body"));
     await assertPageWidth(page);
   });

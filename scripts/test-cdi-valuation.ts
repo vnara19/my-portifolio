@@ -21,13 +21,13 @@ function value(asOf: string, movements: CdiMovement[] = [], options: { opening?:
   return result;
 }
 
-// O próprio dia é zero; a taxa do dia da aplicação é incluída na avaliação seguinte.
+
 assert.equal(value("2026-10-01").balance, "1000.00");
 assert.equal(value("2026-10-02").balance, "1010.00");
 assert.equal(value("2026-10-06").balance, "1030.30");
 assert.equal(value("2026-10-06").rateDays, 3);
 
-// Dois aportes têm períodos distintos; não render o segundo desde o início.
+
 const deposits = value("2026-10-06", [
   { date: "2026-10-01", kind: "CONTRIBUTION", amount: "1000" },
   { date: "2026-10-05", kind: "CONTRIBUTION", amount: "1000" },
@@ -35,24 +35,24 @@ const deposits = value("2026-10-06", [
 assert.equal(deposits.balance, "2040.30");
 assert.equal(deposits.income, "40.30100000");
 
-// Retirada na segunda-feira recebe os fatores anteriores; só o saldo restante rende depois.
+
 const withdrawal = value("2026-10-06", [{ date: "2026-10-05", kind: "WITHDRAWAL", amount: "500" }]);
 assert.equal(withdrawal.balance, "525.30");
 assert.equal(withdrawal.income, "25.30100000");
 
-// Vencimento exclusive; 105% do CDI aplica a fração ao percentual diário, não ao saldo.
+
 assert.equal(value("2026-10-06", [], { maturity: "2026-10-02" }).balance, "1010.00");
 assert.equal(value("2026-10-02", [], { percentage: "105" }).balance, "1010.50");
 
-// Uma janela não conferida impede cálculo; uma ausência dentro de resposta integral não é forward-fill.
+
 const missing = calculateCdiMonth({ openingBalance: "1000", startDate: "2026-10-01", asOf: "2026-10-06", cdiPercent: "100", movements: [], rates, verifiedCoverage: [] });
 assert.equal(missing.state, "unavailable");
 const holiday = calculateCdiMonth({ openingBalance: "1000", startDate: "2026-10-01", asOf: "2026-10-06", cdiPercent: "100", movements: [], rates: rates.filter((entry) => entry.date !== "2026-10-02"), verifiedCoverage: coverage });
 assert.equal(holiday.state === "calculated" && holiday.balance, "1020.10");
 
-// O saldo fica negativo na data da retirada mesmo havendo aporte posterior: deve recusar.
+
 const invalidWithdrawal = calculateCdiMonth({ openingBalance: "0", startDate: "2026-10-01", asOf: "2026-10-06", cdiPercent: "100", movements: [{ date: "2026-10-02", kind: "WITHDRAWAL", amount: "500" }, { date: "2026-10-05", kind: "CONTRIBUTION", amount: "1000" }], rates, verifiedCoverage: coverage });
 assert.equal(invalidWithdrawal.state, "unavailable");
 
 assert.equal(projectCdiBalance({ balance: "1000", dailyPercent: "1", cdiPercent: "100", businessDays: 3 }), "1030.30");
-console.log("CDI: datas de aportes/retirada, vencimento, cobertura e projeção passaram, sem banco.");
+console.log("CDI: contribution/withdrawal dates, maturity, coverage and projection passed without a database.");
