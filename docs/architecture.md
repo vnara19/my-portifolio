@@ -845,3 +845,12 @@ a normalized gross BRL accrual series from the existing rate/day-count engine,
 without deposits or withdrawals. Periods before investment, missing CDI/IPCA
 observations or unverified coverage remain unavailable. Tooltips distinguish this
 contractual accrual from market-price performance, taxes and USD portfolio gains.
+
+## Free-tier compute budget
+
+Visible browser tabs check for due quote updates every five minutes, matching the
+existing minimum market-provider refresh cadence. Opening checks and background
+schedules remain enabled; hidden tabs do not poll. Provider TTLs and history are
+unchanged. Portfolio performance uses request-local indexed dated-price/FX lookups
+with the same seven-day freshness rule, avoiding repeated linear history scans.
+No private valuation cache is shared across users.

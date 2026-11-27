@@ -6,12 +6,11 @@ import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { hasUnreadQuoteIssue, inspectQuoteRun, readInspectedQuoteRun, serverInspectedQuoteRun, subscribeInspectedQuoteRun } from "@/components/product/quote-issue-read";
 
-import { runOpenCheck } from "@/components/product/quote-refresh-client";
+import { QUOTE_OPEN_CHECK_INTERVAL_MS, runOpenCheck } from "@/components/product/quote-refresh-client";
 import { useQuoteRefresh } from "@/components/product/use-quote-refresh";
 import { cn } from "@/lib/utils";
 import type { QuoteRefreshSummary } from "@/modules/quotes/domain/quote-refresh";
 
-const OPEN_CHECK_POLL_MS = 60 * 1000;
 
 
 export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: QuoteRefreshSummary | null }) {
@@ -37,7 +36,7 @@ export function QuoteRefreshIndicator({ summary: serverSummary }: { summary: Quo
     };
 
 
-    const timer = window.setInterval(checkWhenVisible, OPEN_CHECK_POLL_MS);
+    const timer = window.setInterval(checkWhenVisible, QUOTE_OPEN_CHECK_INTERVAL_MS);
 
     document.addEventListener("visibilitychange", checkWhenVisible);
     return () => {

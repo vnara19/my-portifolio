@@ -10,7 +10,7 @@ import { dailyOpenGain } from "../domain/overview-performance-metrics";
 import { getUserDb } from "@/lib/user-db";
 import type { PortfolioLedger } from "./get-portfolio-ledger";
 import type { OverviewData } from "./get-overview-data";
-import { datedFx } from "../domain/position-money";
+import { datedObservationLookup } from "../domain/dated-observation-lookup";
 import { historyThroughMonth, type TwrObservation } from "../domain/time-weighted-return";
 import { Prisma } from "@/generated/prisma/client";
 import { reportingFxSeries, tradeReportingFx } from "../domain/trade-reporting-fx";
@@ -40,7 +40,7 @@ export const getOverviewPerformance = cache(async function getOverviewPerformanc
   const quotes=await db.dailyQuote.findMany({where:{symbol:{in:symbols}},orderBy:{quoteDate:"asc"},select:{symbol:true,quoteDate:true,valueBrl:true,baseCurrency:true,provider:true,fetchedAt:true}});
   const operationRates = reportingFxSeries(quotes);
   const usd=quotes.filter(q=>q.symbol==="USD").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
-  const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency})).reverse()]));
+  const prices=new Map(symbols.map(symbol=>[symbol,quotes.filter(q=>q.symbol===symbol).map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber(),currency:q.baseCurrency}))]));
   const snapshots=new Map(history.map(h=>[h.day??new Date(Date.UTC(h.date.getUTCFullYear(),h.date.getUTCMonth()+1,0)).toISOString().slice(0,10),(currency==="EUR"?h.totalEur:h.totalUsd)??null]));
   const end=[...snapshots.keys()].sort().at(-1)!;
   const bankAssets = assets.flatMap(asset => {
@@ -94,30 +94,30 @@ export const getOverviewPerformance = cache(async function getOverviewPerformanc
   const assetMap=new Map(assets.map(a=>[a.id,a]));
   const bonds=new Map(assets.flatMap(asset=>{const bond=readInternationalBond(asset.fixedIncomeContract);return bond?[[asset.id,bond] as const]:[];}));
   const eur=quotes.filter(q=>q.symbol==="EUR").map(q=>({day:q.quoteDate.toISOString().slice(0,10),rate:q.valueBrl.toNumber()}));
-  const reportingRates=currency==="EUR"?eur:usd;
-  const emptyMonthlyRates = new Map<string, number>();
+  const priceAt = new Map([...prices].map(([symbol, points]) => [symbol, datedObservationLookup(points)]));
+  const fxAt = { USD: datedObservationLookup(usd.filter(point => point.rate > 0)), EUR: datedObservationLookup(eur.filter(point => point.rate > 0)) };
+  const readFx = (day: string, selected: "USD" | "EUR" | "BRL") => selected === "BRL" ? { rate: 1 } : fxAt[selected](day);
   const bankValue = (id: string, day: string) => {
     const balance = bankBalances.get(id)?.get(day);
-    const fx = datedFx(day, null, currency, reportingRates, emptyMonthlyRates);
+    const fx = readFx(day, currency);
     return balance !== undefined && fx ? balance / fx.rate : null;
   };
   const readUnitReporting=(id:string,on:string)=>{
     const asset=assetMap.get(id),symbol=asset?.quoteSymbol;
     const bond=bonds.get(id);
     if(bond){
-      const nativeFx=datedFx(on,null,bond.currency,bond.currency==="EUR"?eur:usd,emptyMonthlyRates);
-      const reportingFx=datedFx(on,null,currency,reportingRates,emptyMonthlyRates);
+      const nativeFx=readFx(on,bond.currency);
+      const reportingFx=readFx(on,currency);
       return bondReportingUnitPrice(bond,on,nativeFx?.rate??null,reportingFx?.rate??null);
     }
-    const price=symbol?prices.get(symbol)?.find(p=>p.day<=on&&Date.parse(on)-Date.parse(p.day)<=7*86400000):null;
+    const price=symbol?priceAt.get(symbol)?.(on):null;
     if(!price)return null;
     const nativeCurrency=asset?.assetType==="crypto"?"USD":price.currency;
     if(!["USD","EUR","BRL"].includes(nativeCurrency))return null;
     const native=nativeCurrency as "USD"|"EUR"|"BRL";
-    const rates=native==="EUR"?eur:usd;
-    const observed=datedFx(price.day,null,native,rates,emptyMonthlyRates);
-    const current=datedFx(on,null,native,rates,emptyMonthlyRates);
-    const reporting=datedFx(on,null,currency,reportingRates,emptyMonthlyRates);
+    const observed=readFx(price.day,native);
+    const current=readFx(on,native);
+    const reporting=readFx(on,currency);
     return observed&&current&&reporting?price.rate/observed.rate*current.rate/reporting.rate:null;
   };
   // Keep only the current and previous valuation dates. They are shared by
