@@ -2,14 +2,13 @@
 
 import { useQueryState } from "nuqs";
 import { useState, useTransition } from "react";
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { englishLabel } from "@/lib/english-labels";
 import { cn } from "@/lib/utils";
 import type { OverviewHistoryPoint } from "../application/get-overview-data";
 import { CHART_PERIODS, type ChartPeriod } from "../domain/chart-period";
 import { returnBaselineDay, timeWeightedReturns, type TwrObservation } from "../domain/time-weighted-return";
 import { chartPeriodChange, portfolioPeriodStart } from "../domain/period-performance";
-import { categoryColor } from "../presentation/category-colors";
 import { formatCurrency, formatMonthCompact } from "../presentation/portfolio-format";
 import type { Sp500Benchmark } from "@/modules/quotes/application/sp500-benchmark";
 import { useTouchTooltip } from "./use-touch-tooltip";
@@ -21,6 +20,9 @@ const MODES: {key:Mode;label:string}[] = [
 ];
 const PURPLE="#a66bd4";
 const TEAL="#12b5a5";
+// These stacked views use the workspace palette without changing category colors elsewhere.
+const STACK_COLORS:Record<string,string>={"Fixed Income":"#12b5a5",Equities:"#5596d6",Cryptocurrency:"#a58bd4",Commodities:"#91aaa5","Cash Account":"#65c5cc",BRL:"#12b5a5",USD:"#5596d6",EUR:"#a58bd4",BTC:"#91aaa5"};
+const stackColor=(key:string)=>STACK_COLORS[englishLabel(key)]??"#91aaa5";
 const dateLabel=(day:string)=>new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(day));
 
 export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,classLabels,currencyLabels,observations=[],returnObservations=observations,benchmark={points:[],source:"S&P 500",available:false}}:{
@@ -62,6 +64,9 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
   const isPerformance=mode==="performance";
   const isLine=mode==="value"||isPerformance;
   const series=mode==="class"?classLabels:mode==="currency"?currencyLabels:["total"];
+  const performanceValues=data.flatMap(point=>point.portfolio===null?[]:[point.portfolio]);
+  const maximum=Math.max(0,...performanceValues),minimum=Math.min(0,...performanceValues);
+  const zeroOffset=maximum===minimum?1:maximum/(maximum-minimum);
   const unavailable=isPerformance&&data.some(p=>p.portfolio===null);
   const format=(value:number)=>isPerformance?`${value.toLocaleString("en-GB",{maximumFractionDigits:2})}%`:formatCurrency(value,"USD");
   return <div data-testid="portfolio-change-chart">
@@ -82,16 +87,17 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
           const row=data.find(p=>p.day===String(state?.activeLabel??""));
           if(row)void setMonth(row.month);
         }}>
-          <defs><linearGradient id="portfolio-value-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.25}/><stop offset="100%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.01}/></linearGradient></defs>
+          <defs><linearGradient id="portfolio-performance-sign" x1="0" y1="0" x2="0" y2="1"><stop offset={zeroOffset} stopColor={TEAL}/><stop offset={zeroOffset} stopColor="var(--destructive)"/></linearGradient><linearGradient id="portfolio-value-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.25}/><stop offset="100%" stopColor={isPerformance?TEAL:PURPLE} stopOpacity={0.01}/></linearGradient></defs>
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 4"/>
+          {isPerformance?<ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.85} strokeWidth={1.5}/>:null}
           <XAxis dataKey="day" tickFormatter={day=>new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"2-digit",timeZone:"UTC"}).format(new Date(day))} axisLine={false} tickLine={false} minTickGap={28} tick={{fill:"var(--muted-foreground)",fontSize:10}}/>
           <YAxis tickCount={10} minTickGap={16} orientation="right" width={70} axisLine={false} tickLine={false} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickFormatter={v=>isPerformance?`${v}%`:new Intl.NumberFormat("en-GB",{style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:0}).format(v)}/>
           <Tooltip cursor={{stroke:"var(--muted-foreground)",strokeDasharray:"3 3"}} content={({active,payload})=>{
             if(!active||!payload?.length)return null;
             const point=payload[0]?.payload as typeof data[number];
-            return <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"><p className="mb-2 text-xs text-muted-foreground">{dateLabel(point.day)}</p>{payload.filter(p=>typeof p.value==="number").map(p=><p key={String(p.dataKey)} className="flex gap-4 text-xs"><span style={{color:p.color}}>{englishLabel(String(p.name))}</span><span className="ml-auto font-mono">{format(Number(p.value))}</span></p>)}</div>;
+            return <div className="rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"><p className="mb-2 text-xs text-muted-foreground">{dateLabel(point.day)}</p>{payload.filter(p=>typeof p.value==="number").map(p=><p key={String(p.dataKey)} className="flex gap-4 text-xs"><span style={{color:isPerformance&&p.dataKey==="portfolio"?(Number(p.value)<0?"var(--destructive)":TEAL):isLine?p.color:stackColor(String(p.dataKey))}}>{englishLabel(String(p.name))}</span><span className="ml-auto font-mono">{format(Number(p.value))}</span></p>)}</div>;
           }}/>
-          {isLine?<Area type="linear" dataKey={isPerformance?"portfolio":"total"} name="Portfolio" stroke={isPerformance?TEAL:PURPLE} fill="url(#portfolio-value-fill)" strokeWidth={2.2} dot={false} activeDot={{r:4}} connectNulls={false} isAnimationActive={false}/>:series.map(key=><Bar key={key} dataKey={key} name={key==="total"?"Portfolio":englishLabel(key)} stackId="portfolio" maxBarSize={65} isAnimationActive={false}>{data.map(row=><Cell key={row.month} fill={key==="total"?"var(--primary)":categoryColor(key)} fillOpacity={row.month===selectedMonth?1:0.5}/>)}</Bar>)}
+          {isLine?<Area type="linear" dataKey={isPerformance?"portfolio":"total"} name="Portfolio" stroke={isPerformance?"url(#portfolio-performance-sign)":PURPLE} fill={isPerformance?"url(#portfolio-performance-sign)":"url(#portfolio-value-fill)"} fillOpacity={isPerformance?0.12:1} strokeWidth={2.2} dot={false} activeDot={{r:4}} connectNulls={false} isAnimationActive={false}/>:series.map(key=><Bar key={key} dataKey={key} name={key==="total"?"Portfolio":englishLabel(key)} stackId="portfolio" fill={stackColor(key)} maxBarSize={65} isAnimationActive={false}>{data.map(row=><Cell key={row.month} fill={key==="total"?"var(--primary)":stackColor(key)} fillOpacity={row.month===selectedMonth?1:0.72}/>)}</Bar>)}
           {isPerformance?<Line type="linear" dataKey="spx" name="S&P 500 TR" stroke="#9ca3af" strokeDasharray="3 3" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false}/>:null}
         </ComposedChart>
       </ResponsiveContainer>
