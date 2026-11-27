@@ -72,7 +72,7 @@ export function PortfolioEvolutionChart({history,eurUsd=null,selectedMonth,class
 
     </div>
     {isPerformance?<div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-      <span title="Portfolio TWR is measured in EUR, the common reference currency. Monetary values are displayed in USD."><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
+      <span title="Portfolio TWR is measured in USD and includes exchange-rate changes. Monetary values are displayed in USD."><span className="mr-2 inline-block size-2 rounded-full" style={{backgroundColor:TEAL}}/>Portfolio · TWR</span>
       <span title={benchmark.source}><span className="mr-2 inline-block size-2 rounded-full bg-neutral-400"/>S&amp;P 500 · Total Return</span>
     </div>:null}
     <div className="h-[310px] w-full sm:h-[360px]" {...touch.containerProps}>
