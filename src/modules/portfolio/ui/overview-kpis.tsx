@@ -16,7 +16,7 @@ export function OverviewKpis({overview,metrics}:{overview:OverviewData;metrics:O
   unresolved: "The annualized return could not be determined reliably.",
   unique: "XIRR from dated whole-portfolio funding and value in USD.",
  }[metrics.annualizedStatus];
- return <section aria-label="Portfolio summary" className="grid auto-rows-fr gap-3 lg:grid-cols-4 [&>article]:h-full [&>article]:min-h-[132px] [&>article]:min-w-0">
+ return <section aria-label="Portfolio summary" className="grid auto-rows-fr gap-3 min-[520px]:grid-cols-2 min-[960px]:grid-cols-4 [&>article]:h-full [&>article]:min-h-[132px] [&>article]:min-w-0">
   <KpiCard compact valueClassName="text-xl" label="Portfolio Value" testId="portfolio-total" valueText={money(total.USD,"USD",false)} value={total.USD===null?"—":<NumberFlow value={total.USD} format={{style:"currency",currency:"USD",currencyDisplay:"code",maximumFractionDigits:2}} locales="en-GB"/>} detail={<span className="flex flex-wrap gap-x-3 gap-y-1 font-mono"><span data-currency="EUR">{money(total.EUR,"EUR",false)}</span><span data-currency="BRL">{formatCurrency(total.BRL,"BRL")}</span></span>}/>
   <GainCard label="Unrealized Gain" testId="unrealized-gain" value={gains.unrealizedUsd} percentage={gains.unrealizedPercent} percentageTitle="Unrealized return in the USD reference currency." detail={gains.unrealizedUsd===null?reason:<span className="mt-1 block">Last Day <span className="font-mono">{money(metrics.dailyUsd)} · {percent(metrics.dailyPercent)}</span></span>}/>
   <GainCard label="Realized Gain" testId="realized-gain" value={gains.realizedUsd} percentage={gains.realizedPercent} percentageTitle="Realized return, including commissions, in the USD reference currency." detail={gains.realizedUsd===null?reason:null}/>

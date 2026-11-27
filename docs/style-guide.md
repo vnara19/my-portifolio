@@ -51,8 +51,8 @@ Keep database category keys separate from translated labels and free-form user n
 
 Overview summary cards share the same content bounds as the heading, reference
 strip and charts, including ultrawide monitors. Do not add viewport-width breakout
-wrappers around individual sections. Summary cards use one column below 1024px and four columns from 1024px; never
-use an intermediate two-by-two grid. Values wrap
+wrappers around individual sections. Summary cards use one column below 520px, two columns from 520px and four
+columns from 960px to preserve the desktop row for as long as readable. Values wrap
 rather than shrinking abruptly on wider monitors. Below 360px the header quote
 status is hidden so all three navigation tabs and the account control fit. Full
 quote status remains available on the Quotes screen. Verify loaded content, not
