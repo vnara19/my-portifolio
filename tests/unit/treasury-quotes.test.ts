@@ -136,8 +136,8 @@ function syncFixture() {
     failureCount: 0,
     historySyncedUntil: new Date("2026-09-01T00:00:00Z"),
   };
-  const registry = [symbol, ...["USD", "EUR"].map((currency) => ({
-    ...symbol, symbol: currency, instrumentType: "FIAT", baseCurrency: currency,
+  const registry = [symbol, ...["USD", "EUR", "BTC"].map((currency) => ({
+    ...symbol, symbol: currency, instrumentType: currency === "BTC" ? "CRYPTO" : "FIAT", baseCurrency: currency === "BTC" ? "USD" : currency,
     lastSuccessAt: new Date("2026-10-04T15:00:00Z"), historyAttemptedAt: new Date("2026-10-04T15:00:00Z"),
   }))];
   const client = {
